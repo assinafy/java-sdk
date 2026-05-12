@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (JDK 25)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Run unit tests
+        run: mvn -B -ntp test
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: ignore
+
+  package:
+    name: Package JAR
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build JAR and sources
+        run: mvn -B -ntp -DskipTests package
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: assinafy-sdk-jars
+          path: |
+            target/*.jar
+          if-no-files-found: error
+
+  publish:
+    name: Publish to GitLab Maven registry
+    needs: [test, package]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Authenticates via a deploy token stored in repo secrets.
+      # Required secrets:
+      #   GITLAB_PROJECT_ID    — numeric project ID on git.febacapital.com
+      #   GITLAB_DEPLOY_TOKEN  — token with read_package_registry + write_package_registry
+      #   GITLAB_DEPLOY_USER   — username paired with the deploy token
+      - name: Configure Maven settings for GitLab
+        env:
+          GITLAB_DEPLOY_USER: ${{ secrets.GITLAB_DEPLOY_USER }}
+          GITLAB_DEPLOY_TOKEN: ${{ secrets.GITLAB_DEPLOY_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <servers>
+              <server>
+                <id>gitlab-maven</id>
+                <configuration>
+                  <httpHeaders>
+                    <property>
+                      <name>Deploy-Token</name>
+                      <value>${env.GITLAB_DEPLOY_TOKEN}</value>
+                    </property>
+                  </httpHeaders>
+                </configuration>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Deploy to GitLab Maven registry
+        env:
+          GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
+          GITLAB_DEPLOY_TOKEN: ${{ secrets.GITLAB_DEPLOY_TOKEN }}
+        run: |
+          mvn -B -ntp -DskipTests deploy \
+            -DaltDeploymentRepository=gitlab-maven::default::https://git.febacapital.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/maven
