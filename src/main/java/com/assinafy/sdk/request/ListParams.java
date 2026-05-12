@@ -34,7 +34,7 @@ public class ListParams {
     public Map<String, Object> toQueryParams() {
         Map<String, Object> params = new HashMap<>();
         if (page != null) params.put("page", page);
-        if (perPage != null) params.put("per_page", perPage);
+        if (perPage != null) params.put("per-page", perPage);
         if (search != null && !search.isBlank()) params.put("search", search);
         if (sort != null && !sort.isBlank()) params.put("sort", sort);
         params.putAll(extra);
