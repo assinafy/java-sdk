@@ -15,7 +15,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
@@ -197,8 +197,12 @@ Assignment updated = client.assignments().resetExpiration(documentId, assignment
 // Resend notification
 ResendEmailResponse res = client.assignments().resendNotification(documentId, assignmentId, signerId);
 
-// Cancel (uses undocumented endpoint)
-Object cancelResult = client.assignments().cancel(documentId, "Reason for cancellation");
+// Signer-side decline (requires signer-access-code)
+Map<String, Object> declined = client.assignments().decline(
+        documentId, assignmentId, signerAccessCode, "Unfavorable terms");
+
+// Inspect WhatsApp notification delivery state
+Map<String, Object> waState = client.assignments().getWhatsappNotifications(documentId, assignmentId);
 ```
 
 ### Webhooks
@@ -242,6 +246,83 @@ PaginatedResult<TemplateListItem> templates = client.templates().list();
 
 // Get
 Template template = client.templates().get(templateId);
+```
+
+### Field Definitions
+
+Field definitions describe the typed inputs that signers fill in during a
+`collect`-method assignment. The SDK exposes the full CRUD surface plus the
+validation helpers.
+
+```java
+// Create
+FieldDefinition field = client.fields().create(
+    CreateFieldRequest.builder()
+        .type("text")
+        .name("Address")
+        .isRequired(true)
+        .build()
+);
+
+// List / Get / Update / Delete
+PaginatedResult<FieldDefinition> fields = client.fields().list();
+FieldDefinition one = client.fields().get(fieldId);
+client.fields().update(fieldId, UpdateFieldRequest.builder().isRequired(false).build());
+client.fields().delete(fieldId);
+
+// Validate a value (omit signer-access-code when calling as an authenticated user)
+Map<String, Object> result = client.fields().validate(fieldId, "400.676.228-36", null);
+
+// Validate multiple in one round-trip
+Map<String, Object> bulk = client.fields().validateMultiple(
+    List.of(Map.of("field_id", fieldId, "value", "12345")),
+    null
+);
+
+// Discover supported types
+List<FieldType> types = client.fields().listTypes();
+```
+
+### Public Documents
+
+Endpoints that do not require auth (useful for embedded signer flows).
+
+```java
+// Basic info — anyone can call
+Map<String, Object> basic = client.publicDocuments().getBasicInfo(documentId);
+
+// Request a new signer-access-code to be sent to the recipient
+Map<String, Object> sent = client.publicDocuments().sendToken(
+    documentId, "signer@example.com", "email"
+);
+```
+
+### Signer Self-Service
+
+These endpoints are used by the signer's browser/app (signer-access-code based).
+
+```java
+// Get a signer's own info
+Signer me = client.signers().getSelf(signerAccessCode);
+
+// Confirm/accept terms
+client.signers().acceptTerms(signerAccessCode);
+
+// Email verification
+client.signers().verifyEmail(signerAccessCode, "123456");
+
+// Signature image (PNG or JPEG)
+client.signers().uploadSignature(signerAccessCode, "signature", pngBytes);
+byte[] image = client.signers().downloadSignature(signerAccessCode, "signature");
+
+// Documents assigned to the signer
+Map<String, Object> current = client.signers().getCurrentDocument(signerId, signerAccessCode);
+PaginatedResult<DocumentListItem> mine = client.signers().listDocuments(signerId, signerAccessCode);
+byte[] pdf = client.signers().downloadDocument(signerId, docId, "certificated", signerAccessCode);
+
+// Bulk sign / decline
+client.signers().signMultiple(signerAccessCode, List.of(docId1, docId2));
+client.signers().declineMultiple(signerAccessCode, List.of(docId1), "Reason");
 ```
 
 ### Workspaces
@@ -360,12 +441,22 @@ PaginationMeta meta = result.getMeta();
 # Build
 mvn compile
 
-# Run tests
+# Run unit tests
 mvn test
+
+# Run the live API smoke test against the real Assinafy API
+ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
+    mvn test -Dtest=LiveApiSmokeIT
 
 # Package
 mvn package
 ```
+
+The live smoke test (`src/test/java/com/assinafy/sdk/it/LiveApiSmokeIT.java`)
+is excluded from the default `mvn test` run (Surefire skips classes whose names
+end in `IT`). When enabled, it exercises read endpoints, uploads a tiny PDF,
+estimates an assignment cost, and creates + deletes an ephemeral signer. No
+emails are sent at any point.
 
 ## License
 
