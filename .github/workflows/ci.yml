@@ -61,10 +61,12 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish to GitLab Maven registry
+    name: Publish release artifact
     needs: [test, package]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && env.MAVEN_DEPLOY_URL != ''
     runs-on: ubuntu-latest
+    env:
+      MAVEN_DEPLOY_URL: ${{ secrets.MAVEN_DEPLOY_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -75,27 +77,21 @@ jobs:
           java-version: '25'
           cache: maven
 
-      # Authenticates via a deploy token stored in repo secrets.
-      # Required secrets:
-      #   GITLAB_PROJECT_ID    — numeric project ID on git.febacapital.com
-      #   GITLAB_DEPLOY_TOKEN  — token with read_package_registry + write_package_registry
-      #   GITLAB_DEPLOY_USER   — username paired with the deploy token
-      - name: Configure Maven settings for GitLab
+      - name: Configure Maven settings
         env:
-          GITLAB_DEPLOY_USER: ${{ secrets.GITLAB_DEPLOY_USER }}
-          GITLAB_DEPLOY_TOKEN: ${{ secrets.GITLAB_DEPLOY_TOKEN }}
+          DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
         run: |
           mkdir -p ~/.m2
           cat > ~/.m2/settings.xml <<'EOF'
           <settings>
             <servers>
               <server>
-                <id>gitlab-maven</id>
+                <id>release-registry</id>
                 <configuration>
                   <httpHeaders>
                     <property>
                       <name>Deploy-Token</name>
-                      <value>${env.GITLAB_DEPLOY_TOKEN}</value>
+                      <value>${env.DEPLOY_TOKEN}</value>
                     </property>
                   </httpHeaders>
                 </configuration>
@@ -104,10 +100,9 @@ jobs:
           </settings>
           EOF
 
-      - name: Deploy to GitLab Maven registry
+      - name: Deploy artifact
         env:
-          GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
-          GITLAB_DEPLOY_TOKEN: ${{ secrets.GITLAB_DEPLOY_TOKEN }}
+          DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
         run: |
           mvn -B -ntp -DskipTests deploy \
-            -DaltDeploymentRepository=gitlab-maven::default::https://git.febacapital.com/api/v4/projects/${GITLAB_PROJECT_ID}/packages/maven
+            -DaltDeploymentRepository=release-registry::default::${MAVEN_DEPLOY_URL}

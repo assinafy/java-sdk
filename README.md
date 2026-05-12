@@ -458,28 +458,6 @@ end in `IT`). When enabled, it exercises read endpoints, uploads a tiny PDF,
 estimates an assignment cost, and creates + deletes an ephemeral signer. No
 emails are sent at any point.
 
-## Continuous Integration
-
-CI runs on GitHub Actions (`.github/workflows/ci.yml`), since this repo is
-mirrored to a public GitHub project. Three jobs:
-
-- **test** — `mvn test` on Temurin JDK 25 (every push and PR to `main`).
-- **package** — builds the JAR + sources JAR and uploads them as artifacts.
-- **publish** — fires only on `v*` tags. Deploys the artifact to the GitLab
-  Maven registry at `git.febacapital.com`.
-
-The publish job needs three GitHub repo secrets:
-
-| Secret                | Description                                                       |
-|-----------------------|-------------------------------------------------------------------|
-| `GITLAB_PROJECT_ID`   | Numeric project ID for `feba/assinafy/sdk/java` on GitLab.        |
-| `GITLAB_DEPLOY_USER`  | Username paired with the deploy token (informational only).        |
-| `GITLAB_DEPLOY_TOKEN` | Deploy token with `write_package_registry` scope.                  |
-
-To cut a release: tag `v1.3.0`, push the tag, and the publish job will
-upload `assinafy-sdk-1.3.0.jar` and `assinafy-sdk-1.3.0-sources.jar` to the
-GitLab Maven registry.
-
 ## License
 
 MIT
