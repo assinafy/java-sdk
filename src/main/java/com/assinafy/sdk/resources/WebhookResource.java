@@ -9,7 +9,6 @@ import com.assinafy.sdk.models.WebhookEventTypeInfo;
 import com.assinafy.sdk.models.WebhookSubscription;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RegisterWebhookRequest;
-import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.HashMap;
 import java.util.List;
@@ -115,5 +114,4 @@ public class WebhookResource extends BaseResource {
         String did = requireId(dispatchId, "Dispatch ID");
         return call("Failed to retry webhook dispatch", () -> http.post("/accounts/" + id + "/webhooks/" + did + "/retry", null), WebhookDispatch.class);
     }
-
-    }
+}

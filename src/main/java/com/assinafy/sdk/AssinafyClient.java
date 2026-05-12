@@ -13,6 +13,8 @@ import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
 import com.assinafy.sdk.resources.AssignmentResource;
 import com.assinafy.sdk.resources.DocumentResource;
+import com.assinafy.sdk.resources.FieldResource;
+import com.assinafy.sdk.resources.PublicDocumentResource;
 import com.assinafy.sdk.resources.SignerResource;
 import com.assinafy.sdk.resources.TemplateResource;
 import com.assinafy.sdk.resources.WebhookResource;
@@ -31,6 +33,8 @@ public class AssinafyClient {
     private final AssignmentResource assignments;
     private final WebhookResource webhooks;
     private final TemplateResource templates;
+    private final FieldResource fields;
+    private final PublicDocumentResource publicDocuments;
     private final WebhookVerifier webhookVerifier;
     private final Logger logger;
     private final String defaultAccountId;
@@ -58,6 +62,8 @@ public class AssinafyClient {
         this.assignments = new AssignmentResource(http, defaultAccountId, this.logger);
         this.webhooks = new WebhookResource(http, defaultAccountId, this.logger);
         this.templates = new TemplateResource(http, defaultAccountId, this.logger);
+        this.fields = new FieldResource(http, defaultAccountId, this.logger);
+        this.publicDocuments = new PublicDocumentResource(http, this.logger);
         this.webhookVerifier = new WebhookVerifier(options.getWebhookSecret());
     }
 
@@ -76,6 +82,8 @@ public class AssinafyClient {
         this.assignments = new AssignmentResource(http, defaultAccountId, this.logger);
         this.webhooks = new WebhookResource(http, defaultAccountId, this.logger);
         this.templates = new TemplateResource(http, defaultAccountId, this.logger);
+        this.fields = new FieldResource(http, defaultAccountId, this.logger);
+        this.publicDocuments = new PublicDocumentResource(http, this.logger);
         this.webhookVerifier = new WebhookVerifier(options.getWebhookSecret());
     }
 
@@ -154,6 +162,8 @@ public class AssinafyClient {
     public AssignmentResource assignments() { return assignments; }
     public WebhookResource webhooks() { return webhooks; }
     public TemplateResource templates() { return templates; }
+    public FieldResource fields() { return fields; }
+    public PublicDocumentResource publicDocuments() { return publicDocuments; }
     public WebhookVerifier webhookVerifier() { return webhookVerifier; }
 
     private static String normaliseBaseUrl(String url) {

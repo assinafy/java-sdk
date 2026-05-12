@@ -158,6 +158,47 @@ class SignerResourceTest {
     }
 
     @Test
+    void listUsesHyphenatedPerPageParam() {
+        mock.enqueue(200, EMPTY_LIST);
+        resource.list(ListParams.builder().perPage(25).build());
+
+        MockApiHttpClient.CapturedRequest req = mock.lastCaptured();
+        assertThat(req.getQueryParams()).containsEntry("per-page", 25);
+        assertThat(req.getQueryParams()).doesNotContainKey("per_page");
+    }
+
+    @Test
+    void getSelfUrlEncodesSignerAccessCode() {
+        mock.enqueue(200, SIGNER_123);
+        resource.getSelf("abc def");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/signers/self?signer-access-code=abc+def");
+    }
+
+    @Test
+    void signMultipleRequiresDocumentIds() {
+        assertThatThrownBy(() -> resource.signMultiple("code", java.util.List.of()))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void signMultiplePutsToCorrectEndpoint() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        resource.signMultiple("code", java.util.List.of("d1", "d2"));
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/signers/documents/sign-multiple?signer-access-code=code");
+        assertThat(mock.lastCaptured().getJsonBody()).contains("d1").contains("d2");
+    }
+
+    @Test
+    void declineMultipleIncludesDeclineReason() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        resource.declineMultiple("code", java.util.List.of("d1"), "no");
+        assertThat(mock.lastCaptured().getJsonBody()).contains("decline_reason").contains("no");
+    }
+
+    @Test
     void createNormalisesCpfByStrippingNonDigits() {
         mock.enqueue(200, EMPTY_LIST)
             .enqueue(200, SIGNER_123);

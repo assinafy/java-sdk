@@ -7,6 +7,8 @@ import com.assinafy.sdk.models.Template;
 import com.assinafy.sdk.models.TemplateListItem;
 import com.assinafy.sdk.request.ListParams;
 
+import java.util.Map;
+
 public class TemplateResource extends BaseResource {
 
     public TemplateResource(ApiHttpClient http, String defaultAccountId, Logger logger) {
@@ -27,8 +29,9 @@ public class TemplateResource extends BaseResource {
 
     public PaginatedResult<TemplateListItem> list(ListParams params, String accountId) {
         String id = accountId(accountId);
+        Map<String, Object> queryParams = params != null ? params.toQueryParams() : Map.of();
         return callList("Failed to list templates",
-                () -> http.get("/accounts/" + id + "/templates", params != null ? params.toQueryParams() : null),
+                () -> http.get("/accounts/" + id + "/templates", queryParams),
                 TemplateListItem.class);
     }
 

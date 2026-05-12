@@ -11,6 +11,8 @@ import com.assinafy.sdk.http.ThrowingSupplier;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.util.ResponseHandler;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public abstract class BaseResource {
@@ -119,5 +121,9 @@ public abstract class BaseResource {
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialise request", e);
         }
+    }
+
+    protected static String encode(String value) {
+        return URLEncoder.encode(value != null ? value : "", StandardCharsets.UTF_8);
     }
 }

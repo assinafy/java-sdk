@@ -4,14 +4,15 @@ import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
+import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.UpdateSignerRequest;
-import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -155,7 +156,7 @@ public class SignerResource extends BaseResource {
     public Signer getSelf(String signerAccessCode) {
         requireId(signerAccessCode, "Signer access code");
         return call("Failed to fetch signer self info",
-                () -> http.get("/signers/self?signer-access-code=" + signerAccessCode),
+                () -> http.get("/signers/self?signer-access-code=" + encode(signerAccessCode)),
                 Signer.class);
     }
 
@@ -182,13 +183,66 @@ public class SignerResource extends BaseResource {
         requireId(type, "Signature type");
         logger.info("Uploading signature", Map.of("signerAccessCode", signerAccessCode, "type", type));
         callVoid("Failed to upload signature",
-                () -> http.postSignature("/signature?signer-access-code=" + signerAccessCode + "&type=" + type, imageData));
+                () -> http.postSignature(
+                        "/signature?signer-access-code=" + encode(signerAccessCode) + "&type=" + encode(type),
+                        imageData));
     }
 
     public byte[] downloadSignature(String signerAccessCode, String type) {
         requireId(signerAccessCode, "Signer access code");
         requireId(type, "Signature type");
         return callBinary("Failed to download signature",
-                () -> http.getBinary("/signature/" + type + "?signer-access-code=" + signerAccessCode));
+                () -> http.getBinary("/signature/" + encode(type) + "?signer-access-code=" + encode(signerAccessCode)));
+    }
+
+    public Map<String, Object> getCurrentDocument(String signerId, String signerAccessCode) {
+        String sid = requireId(signerId, "Signer ID");
+        requireId(signerAccessCode, "Signer access code");
+        return callMap("Failed to fetch signer's current document",
+                () -> http.get("/signers/" + sid + "/document?signer-access-code=" + encode(signerAccessCode)));
+    }
+
+    public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode) {
+        String sid = requireId(signerId, "Signer ID");
+        requireId(signerAccessCode, "Signer access code");
+        return callList("Failed to list signer's documents",
+                () -> http.get("/signers/" + sid + "/documents?signer-access-code=" + encode(signerAccessCode)),
+                DocumentListItem.class);
+    }
+
+    public byte[] downloadDocument(String signerId, String documentId, String artifactName, String signerAccessCode) {
+        String sid = requireId(signerId, "Signer ID");
+        String docId = requireId(documentId, "Document ID");
+        String artifact = artifactName != null ? artifactName : "certificated";
+        requireId(signerAccessCode, "Signer access code");
+        return callBinary("Failed to download signer document",
+                () -> http.getBinary(
+                        "/signers/" + sid + "/documents/" + docId + "/download/" + encode(artifact)
+                                + "?signer-access-code=" + encode(signerAccessCode)));
+    }
+
+    public Map<String, Object> signMultiple(String signerAccessCode, List<String> documentIds) {
+        requireId(signerAccessCode, "Signer access code");
+        if (documentIds == null || documentIds.isEmpty()) {
+            throw new ValidationException("At least one document ID is required");
+        }
+        String json = serialise(Map.of("document_ids", documentIds));
+        return callMap("Failed to sign multiple documents",
+                () -> http.put("/signers/documents/sign-multiple?signer-access-code=" + encode(signerAccessCode), json));
+    }
+
+    public Map<String, Object> declineMultiple(String signerAccessCode, List<String> documentIds, String declineReason) {
+        requireId(signerAccessCode, "Signer access code");
+        if (documentIds == null || documentIds.isEmpty()) {
+            throw new ValidationException("At least one document ID is required");
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("document_ids", documentIds);
+        if (declineReason != null && !declineReason.isBlank()) {
+            body.put("decline_reason", declineReason);
+        }
+        String json = serialise(body);
+        return callMap("Failed to decline multiple documents",
+                () -> http.put("/signers/documents/decline-multiple?signer-access-code=" + encode(signerAccessCode), json));
     }
 }

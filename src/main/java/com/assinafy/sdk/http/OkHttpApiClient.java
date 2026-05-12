@@ -13,8 +13,9 @@ public class OkHttpApiClient implements ApiHttpClient {
     private static final MediaType PDF = MediaType.parse("application/pdf");
     private static final MediaType PNG = MediaType.parse("image/png");
     private static final MediaType JPEG = MediaType.parse("image/jpeg");
+    private static final byte[] JPEG_MAGIC = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
 
-    private static final String SDK_VERSION = "1.2.0";
+    private static final String SDK_VERSION = "1.3.0";
 
     private final OkHttpClient client;
     private final String baseUrl;
@@ -128,13 +129,21 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse postSignature(String path, byte[] imageData) throws IOException {
-        MediaType mediaType = PNG;
+        MediaType mediaType = detectImageMediaType(imageData);
         RequestBody body = RequestBody.create(imageData, mediaType);
         Request request = new Request.Builder()
                 .url(baseUrl + path)
                 .post(body)
                 .build();
         return execute(request);
+    }
+
+    private static MediaType detectImageMediaType(byte[] data) {
+        if (data != null && data.length >= 3
+                && data[0] == JPEG_MAGIC[0] && data[1] == JPEG_MAGIC[1] && data[2] == JPEG_MAGIC[2]) {
+            return JPEG;
+        }
+        return PNG;
     }
 
     private HttpRawResponse execute(Request request) throws IOException {

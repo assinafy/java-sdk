@@ -26,6 +26,12 @@ public class Signer {
     @JsonProperty("has_accepted_terms")
     private Boolean hasAcceptedTerms;
 
+    @JsonProperty("has_signature")
+    private Boolean hasSignature;
+
+    @JsonProperty("has_initial")
+    private Boolean hasInitial;
+
     @JsonProperty("metadata")
     private Map<String, Object> metadata;
 
@@ -48,6 +54,12 @@ public class Signer {
 
     public Boolean getHasAcceptedTerms() { return hasAcceptedTerms; }
     public void setHasAcceptedTerms(Boolean hasAcceptedTerms) { this.hasAcceptedTerms = hasAcceptedTerms; }
+
+    public Boolean getHasSignature() { return hasSignature; }
+    public void setHasSignature(Boolean hasSignature) { this.hasSignature = hasSignature; }
+
+    public Boolean getHasInitial() { return hasInitial; }
+    public void setHasInitial(Boolean hasInitial) { this.hasInitial = hasInitial; }
 
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }

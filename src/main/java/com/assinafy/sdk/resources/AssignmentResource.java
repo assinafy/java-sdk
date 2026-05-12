@@ -7,7 +7,6 @@ import com.assinafy.sdk.models.Assignment;
 import com.assinafy.sdk.models.ResendEmailResponse;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.SignerReference;
-import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.HashMap;
 import java.util.List;
@@ -68,17 +67,37 @@ public class AssignmentResource extends BaseResource {
                 () -> http.post("/documents/" + docId + "/assignments/" + asgId + "/signers/" + sid + "/estimate-resend-cost", null));
     }
 
-    public Object cancel(String documentId, String reason) {
-        return cancel(documentId, reason, null);
+    /**
+     * Signer-side decline of an assignment. Requires the signer-access-code that was issued
+     * to the signer in the invitation flow.
+     *
+     * <p>Maps to {@code PUT /documents/{documentId}/assignments/{assignmentId}/reject}.
+     */
+    public Map<String, Object> decline(String documentId, String assignmentId, String signerAccessCode, String declineReason) {
+        String docId = requireId(documentId, "Document ID");
+        String asgId = requireId(assignmentId, "Assignment ID");
+        requireId(signerAccessCode, "Signer access code");
+        Map<String, Object> body = new HashMap<>();
+        if (declineReason != null && !declineReason.isBlank()) {
+            body.put("decline_reason", declineReason);
+        }
+        String json = serialise(body);
+        return callMap("Failed to decline assignment",
+                () -> http.put(
+                        "/documents/" + docId + "/assignments/" + asgId + "/reject?signer-access-code=" + encode(signerAccessCode),
+                        json));
     }
 
-    public Object cancel(String documentId, String reason, String accountId) {
+    /**
+     * Inspect WhatsApp notification delivery status for an assignment.
+     *
+     * <p>Maps to {@code GET /documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications}.
+     */
+    public Map<String, Object> getWhatsappNotifications(String documentId, String assignmentId) {
         String docId = requireId(documentId, "Document ID");
-        String accId = accountId(accountId);
-        logger.info("Cancelling signature request", Map.of("documentId", docId, "reason", reason != null ? reason : ""));
-        String json = serialise(Map.of("document_id", docId, "reason", reason != null ? reason : ""));
-        return callMap("Failed to cancel signature request",
-                () -> http.post("/accounts/" + accId + "/signature-requests/" + docId + "/cancel", json));
+        String asgId = requireId(assignmentId, "Assignment ID");
+        return callMap("Failed to fetch WhatsApp notifications",
+                () -> http.get("/documents/" + docId + "/assignments/" + asgId + "/whatsapp-notifications"));
     }
 
     static Map<String, Object> buildAssignmentPayload(CreateAssignmentRequest request, boolean allowSignersWithoutId) {
@@ -112,5 +131,4 @@ public class AssignmentResource extends BaseResource {
         if (ref.getNotificationMethods() != null) map.put("notification_methods", ref.getNotificationMethods());
         return map;
     }
-
-    }
+}

@@ -111,11 +111,37 @@ class AssignmentResourceTest {
     }
 
     @Test
-    void cancelRequiresAnAccountId() {
+    void declineRequiresAccessCode() {
         MockApiHttpClient mock = new MockApiHttpClient();
-        AssignmentResource resource = new AssignmentResource(mock);
-        assertThatThrownBy(() -> resource.cancel("doc", "reason"))
+        AssignmentResource resource = new AssignmentResource(mock, "acc");
+        assertThatThrownBy(() -> resource.decline("doc", "asg", "", "no"))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void declinePutsToRejectEndpointWithEncodedAccessCode() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, "{\"status\":200,\"data\":{}}");
+
+        AssignmentResource resource = new AssignmentResource(mock, "acc");
+        resource.decline("doc", "asg", "code with space", "no");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/documents/doc/assignments/asg/reject?signer-access-code=code+with+space");
+        assertThat(mock.lastCaptured().getJsonBody()).contains("\"decline_reason\":\"no\"");
+    }
+
+    @Test
+    void getWhatsappNotificationsGetsCorrectPath() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        AssignmentResource resource = new AssignmentResource(mock, "acc");
+        resource.getWhatsappNotifications("doc", "asg");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/documents/doc/assignments/asg/whatsapp-notifications");
     }
 
     @Test

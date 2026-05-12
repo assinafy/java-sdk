@@ -12,7 +12,6 @@ import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.SigningProgress;
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest;
 import com.assinafy.sdk.request.ListParams;
-import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.ArrayList;
 import java.util.HashMap;

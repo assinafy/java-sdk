@@ -7,7 +7,6 @@ import com.assinafy.sdk.models.Workspace;
 import com.assinafy.sdk.models.WorkspaceListItem;
 import com.assinafy.sdk.request.CreateWorkspaceRequest;
 import com.assinafy.sdk.request.UpdateWorkspaceRequest;
-import com.assinafy.sdk.util.ResponseHandler;
 
 public class WorkspaceResource extends BaseResource {
 
@@ -43,5 +42,4 @@ public class WorkspaceResource extends BaseResource {
         String id = requireId(accountId, "Account ID");
         callVoid("Failed to delete workspace", () -> http.delete("/accounts/" + id));
     }
-
-    }
+}
