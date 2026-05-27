@@ -14,7 +14,8 @@ import static org.assertj.core.api.Assertions.*;
 class WebhookVerifierTest {
 
     private static final String SECRET = "super-secret";
-    private static final String PAYLOAD = "{\"event\":\"document_ready\",\"data\":{\"document_id\":\"doc-1\"}}";
+    private static final String PAYLOAD =
+            "{\"id\":7,\"event\":\"document_ready\",\"object\":{\"id\":\"doc-1\",\"type\":\"Document\"},\"account_id\":\"a1\"}";
 
     private static String computeHmac(String secret, String payload) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -64,8 +65,9 @@ class WebhookVerifierTest {
         WebhookPayload event = verifier.extractEvent(PAYLOAD);
         assertThat(event).isNotNull();
         assertThat(event.getEvent()).isEqualTo("document_ready");
-        assertThat(event.getData()).isNotNull();
-        assertThat(event.getData().get("document_id")).isEqualTo("doc-1");
+        assertThat(event.getObject()).isNotNull();
+        assertThat(event.getObject().get("id")).isEqualTo("doc-1");
+        assertThat(event.getAccountId()).isEqualTo("a1");
     }
 
     @Test
@@ -81,7 +83,7 @@ class WebhookVerifierTest {
         assertThat(verifier.getEventType(event)).isEqualTo("document_ready");
 
         Map<String, Object> data = verifier.getEventData(event);
-        assertThat(data.get("document_id")).isEqualTo("doc-1");
+        assertThat(data.get("id")).isEqualTo("doc-1");
     }
 
     @Test

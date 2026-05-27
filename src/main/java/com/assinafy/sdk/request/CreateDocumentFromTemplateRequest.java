@@ -23,6 +23,10 @@ public class CreateDocumentFromTemplateRequest {
     @JsonProperty("editor_fields")
     private List<Object> editorFields;
 
+    /** Tag names to attach to the new document. Names that don't exist yet are auto-created. */
+    @JsonProperty("tags")
+    private List<String> tags;
+
     public CreateDocumentFromTemplateRequest() {}
 
     public static Builder builder() {
@@ -44,6 +48,9 @@ public class CreateDocumentFromTemplateRequest {
     public List<Object> getEditorFields() { return editorFields; }
     public void setEditorFields(List<Object> editorFields) { this.editorFields = editorFields; }
 
+    public List<String> getTags() { return tags; }
+    public void setTags(List<String> tags) { this.tags = tags; }
+
     public static final class Builder {
         private final CreateDocumentFromTemplateRequest req = new CreateDocumentFromTemplateRequest();
 
@@ -52,6 +59,7 @@ public class CreateDocumentFromTemplateRequest {
         public Builder message(String message) { req.setMessage(message); return this; }
         public Builder expiresAt(String expiresAt) { req.setExpiresAt(expiresAt); return this; }
         public Builder editorFields(List<Object> fields) { req.setEditorFields(fields); return this; }
+        public Builder tags(List<String> tags) { req.setTags(tags); return this; }
         public CreateDocumentFromTemplateRequest build() { return req; }
     }
 }

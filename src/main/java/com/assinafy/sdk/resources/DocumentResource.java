@@ -10,6 +10,7 @@ import com.assinafy.sdk.models.DocumentStatusInfo;
 import com.assinafy.sdk.models.DocumentUploadResponse;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.SigningProgress;
+import com.assinafy.sdk.models.Tag;
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest;
 import com.assinafy.sdk.request.ListParams;
 
@@ -206,13 +207,92 @@ public class DocumentResource extends BaseResource {
                 DocumentStatusInfo.class).getData();
     }
 
+    /**
+     * @deprecated This is a signer self-service operation; use
+     * {@link com.assinafy.sdk.resources.SignerResource#confirmSignerData(String, String, Map)}
+     * (via {@code client.signers().confirmSignerData(...)}) instead. Retained for backwards
+     * compatibility.
+     */
+    @Deprecated
     public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data) {
         String docId = requireId(documentId, "Document ID");
         requireId(signerAccessCode, "Signer access code");
-        Map<String, Object> body = new HashMap<>(data);
+        Map<String, Object> body = data != null ? new HashMap<>(data) : new HashMap<>();
         String json = serialise(body);
         callVoid("Failed to confirm signer data",
-                () -> http.put("/documents/" + docId + "/signers/confirm-data?signer-access-code=" + signerAccessCode, json));
+                () -> http.put("/documents/" + docId + "/signers/confirm-data?signer-access-code=" + encode(signerAccessCode), json));
+    }
+
+    /**
+     * List the tags currently attached to a document.
+     *
+     * <p>{@code GET /accounts/{accountId}/documents/{documentId}/tags}.
+     */
+    public List<Tag> listTags(String documentId) {
+        return listTags(documentId, null);
+    }
+
+    public List<Tag> listTags(String documentId, String accountId) {
+        String accId = accountId(accountId);
+        String docId = requireId(documentId, "Document ID");
+        return callList("Failed to list document tags",
+                () -> http.get("/accounts/" + accId + "/documents/" + docId + "/tags"),
+                Tag.class).getData();
+    }
+
+    /**
+     * Replace the document's tag set with the supplied tag names. Unknown names are
+     * auto-created; an empty list detaches all tags.
+     *
+     * <p>{@code PUT /accounts/{accountId}/documents/{documentId}/tags}.
+     */
+    public List<Tag> replaceTags(String documentId, List<String> tagNames) {
+        return replaceTags(documentId, tagNames, null);
+    }
+
+    public List<Tag> replaceTags(String documentId, List<String> tagNames, String accountId) {
+        String accId = accountId(accountId);
+        String docId = requireId(documentId, "Document ID");
+        String json = serialise(Map.of("tags", tagNames != null ? tagNames : List.of()));
+        return callList("Failed to replace document tags",
+                () -> http.put("/accounts/" + accId + "/documents/" + docId + "/tags", json),
+                Tag.class).getData();
+    }
+
+    /**
+     * Attach additional tags to a document without removing existing ones. Idempotent;
+     * unknown names are auto-created.
+     *
+     * <p>{@code POST /accounts/{accountId}/documents/{documentId}/tags}.
+     */
+    public List<Tag> appendTags(String documentId, List<String> tagNames) {
+        return appendTags(documentId, tagNames, null);
+    }
+
+    public List<Tag> appendTags(String documentId, List<String> tagNames, String accountId) {
+        String accId = accountId(accountId);
+        String docId = requireId(documentId, "Document ID");
+        String json = serialise(Map.of("tags", tagNames != null ? tagNames : List.of()));
+        return callList("Failed to append document tags",
+                () -> http.post("/accounts/" + accId + "/documents/" + docId + "/tags", json),
+                Tag.class).getData();
+    }
+
+    /**
+     * Detach a single tag from a document (the tag itself is not deleted).
+     *
+     * <p>{@code DELETE /accounts/{accountId}/documents/{documentId}/tags/{tagId}}.
+     */
+    public void detachTag(String documentId, String tagId) {
+        detachTag(documentId, tagId, null);
+    }
+
+    public void detachTag(String documentId, String tagId, String accountId) {
+        String accId = accountId(accountId);
+        String docId = requireId(documentId, "Document ID");
+        String tid = requireId(tagId, "Tag ID");
+        callVoid("Failed to detach document tag",
+                () -> http.delete("/accounts/" + accId + "/documents/" + docId + "/tags/" + tid));
     }
 
     private void validateUpload(byte[] fileData, String fileName) {

@@ -4,6 +4,7 @@ import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.FieldDefinition;
 import com.assinafy.sdk.models.FieldType;
+import com.assinafy.sdk.models.FieldValidationResult;
 import com.assinafy.sdk.request.CreateFieldRequest;
 import com.assinafy.sdk.request.UpdateFieldRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,12 +68,14 @@ class FieldResourceTest {
 
     @Test
     void validateWithSignerAccessCodeAppendsQueryParam() {
-        mock.enqueue(200, "{\"status\":200,\"data\":{\"success\":true}}");
-        resource.validate("f1", "value", "code 1");
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"type\":\"email\",\"success\":true,\"error_message\":\"\"}}");
+        FieldValidationResult result = resource.validate("f1", "value", "code 1");
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(mock.lastCaptured().getPath())
                 .isEqualTo("/accounts/acc/fields/f1/validate?signer-access-code=code+1");
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getType()).isEqualTo("email");
     }
 
     @Test
@@ -84,12 +87,16 @@ class FieldResourceTest {
     }
 
     @Test
-    void validateMultipleSerialisesEntries() {
-        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
-        resource.validateMultiple(List.of(Map.of("field_id", "f1", "value", "v")), null);
+    void validateMultipleSerialisesEntriesAndReturnsTypedList() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"field_id\":\"f1\",\"type\":\"cpf\",\"success\":false,\"error_message\":\"bad\"}]}");
+        List<FieldValidationResult> results =
+                resource.validateMultiple(List.of(Map.of("field_id", "f1", "value", "v")), null);
 
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/fields/validate-multiple");
         assertThat(mock.lastCaptured().getJsonBody()).contains("field_id").contains("f1");
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getFieldId()).isEqualTo("f1");
+        assertThat(results.get(0).getSuccess()).isFalse();
     }
 
     @Test

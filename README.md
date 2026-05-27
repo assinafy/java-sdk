@@ -15,7 +15,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.3.0</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
@@ -84,7 +84,7 @@ AssinafyClient client = new AssinafyClient(
 | `apiKey`        | String   | —                                    | Preferred credential (X-Api-Key header).  |
 | `token`         | String   | —                                    | Legacy access token (Bearer header).      |
 | `accountId`     | String   | —                                    | Default workspace/account ID.             |
-| `baseUrl`       | String   | `https://api.assinafy.com.br/v1`     | API base URL. Use sandbox for testing.    |
+| `baseUrl`       | String   | `https://api.assinafy.com.br/v1`     | API base URL. Use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
 | `webhookSecret`  | String   | —                                    | Shared secret for webhook verification.   |
 | `timeoutMs`      | long     | 30000                                | Request timeout in milliseconds.          |
 | `logger`        | Logger   | No-op                                | Optional logger instance.                |
@@ -168,10 +168,22 @@ client.signers().delete(signerId);
 // Find by email
 Signer signer = client.signers().findByEmail("john@example.com");
 
+// Create a WhatsApp-only signer (email is optional; full_name is required)
+Signer waSigner = client.signers().create(
+    CreateSignerRequest.builder()
+        .fullName("Maria Silva")
+        .whatsappPhoneNumber("+5548999990000")
+        .build()
+);
+
 // Self-service (signer-access-code based)
 Signer selfInfo = client.signers().getSelf(signerAccessCode);
-Map<String, Object> result = client.signers().acceptTerms(signerAccessCode);
+Signer accepted = client.signers().acceptTerms(signerAccessCode);   // returns the signer
 Map<String, Object> verifyResult = client.signers().verifyEmail(signerAccessCode, "123456");
+
+// Confirm signer contact data + terms (signer self-service)
+client.signers().confirmSignerData(documentId, signerAccessCode,
+    Map.of("email", "maria@example.com", "has_accepted_terms", true));
 ```
 
 ### Assignments
@@ -197,12 +209,20 @@ Assignment updated = client.assignments().resetExpiration(documentId, assignment
 // Resend notification
 ResendEmailResponse res = client.assignments().resendNotification(documentId, assignmentId, signerId);
 
-// Signer-side decline (requires signer-access-code)
+// Signer-side decline (requires signer-access-code and a non-blank reason)
 Map<String, Object> declined = client.assignments().decline(
         documentId, assignmentId, signerAccessCode, "Unfavorable terms");
 
-// Inspect WhatsApp notification delivery state
-Map<String, Object> waState = client.assignments().getWhatsappNotifications(documentId, assignmentId);
+// Inspect WhatsApp notification delivery state (one entry per tracked notification)
+List<Map<String, Object>> waState = client.assignments().getWhatsappNotifications(documentId, assignmentId);
+
+// Clear an assignment's expiration entirely
+client.assignments().resetExpiration(documentId, assignmentId, null);
+
+// Signer-side flows (signer-access-code based)
+Map<String, Object> toSign = client.assignments().getForSigner(signerAccessCode);
+client.assignments().sign(documentId, assignmentId, signerAccessCode,
+        List.of(Map.of("itemId", "i1", "fieldId", "f1", "pageId", "p1", "value", "text")));
 ```
 
 ### Webhooks
@@ -271,10 +291,13 @@ client.fields().update(fieldId, UpdateFieldRequest.builder().isRequired(false).b
 client.fields().delete(fieldId);
 
 // Validate a value (omit signer-access-code when calling as an authenticated user)
-Map<String, Object> result = client.fields().validate(fieldId, "400.676.228-36", null);
+FieldValidationResult result = client.fields().validate(fieldId, "400.676.228-36", null);
+if (!Boolean.TRUE.equals(result.getSuccess())) {
+    System.err.println(result.getErrorMessage());
+}
 
 // Validate multiple in one round-trip
-Map<String, Object> bulk = client.fields().validateMultiple(
+List<FieldValidationResult> bulk = client.fields().validateMultiple(
     List.of(Map.of("field_id", fieldId, "value", "12345")),
     null
 );
@@ -282,6 +305,41 @@ Map<String, Object> bulk = client.fields().validateMultiple(
 // Discover supported types
 List<FieldType> types = client.fields().listTypes();
 ```
+
+### Tags
+
+Workspace tags can be created, renamed, and deleted, and attached to documents.
+
+```java
+// Workspace-level tag CRUD
+Tag tag = client.tags().create(CreateTagRequest.builder().name("Contracts").color("FF0000").build());
+PaginatedResult<Tag> tags = client.tags().list();
+client.tags().rename(tag.getId(), RenameTagRequest.builder().name("2026 Contracts").build());
+client.tags().delete(tag.getId());          // 409 if the tag is still attached…
+client.tags().delete(tag.getId(), true);    // …pass force=true to detach + delete
+
+// Document tags (tag names are auto-created if they don't exist)
+client.documents().appendTags(documentId, List.of("Urgent"));      // add without removing
+client.documents().replaceTags(documentId, List.of("Contracts"));  // replace the whole set
+List<Tag> docTags = client.documents().listTags(documentId);
+client.documents().detachTag(documentId, tagId);                   // detach one tag
+```
+
+### API Key Management
+
+Manage the API key for the authenticated user (`/users/api-keys`). The
+generated key is shown in full only once — store it securely and never expose
+it to a frontend.
+
+```java
+ApiKey current = client.apiKeys().get();          // masked (last 4 chars only), or null
+ApiKey rotated = client.apiKeys().create("password");  // full key; invalidates the previous one
+client.apiKeys().delete();
+```
+
+> The wider user-account/auth surface (login, social login, password
+> change/reset) is intentionally **out of scope** for this server-side SDK —
+> those are web-app concerns. Only API-key management is provided.
 
 ### Public Documents
 
@@ -454,9 +512,11 @@ mvn package
 
 The live smoke test (`src/test/java/com/assinafy/sdk/it/LiveApiSmokeIT.java`)
 is excluded from the default `mvn test` run (Surefire skips classes whose names
-end in `IT`). When enabled, it exercises read endpoints, uploads a tiny PDF,
-estimates an assignment cost, and creates + deletes an ephemeral signer. No
-emails are sent at any point.
+end in `IT`). When enabled, it runs 16 read/write flows: it exercises the read
+endpoints, uploads a tiny PDF, estimates an assignment cost, appends/lists/detaches
+a document tag, validates a field value, reads the masked API key, and creates +
+deletes ephemeral signers and a workspace tag. No emails are sent at any point and
+every created resource is cleaned up.
 
 ## License
 

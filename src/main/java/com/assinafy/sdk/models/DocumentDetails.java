@@ -14,6 +14,9 @@ public class DocumentDetails {
     @JsonProperty("account_id")
     private String accountId;
 
+    @JsonProperty("template_id")
+    private String templateId;
+
     @JsonProperty("name")
     private String name;
 
@@ -36,7 +39,10 @@ public class DocumentDetails {
     private DocumentArtifacts artifacts;
 
     @JsonProperty("pages")
-    private List<Object> pages;
+    private List<DocumentPage> pages;
+
+    @JsonProperty("tags")
+    private List<Tag> tags;
 
     @JsonProperty("created_at")
     private String createdAt;
@@ -50,6 +56,10 @@ public class DocumentDetails {
     @JsonProperty("decline_reason")
     private String declineReason;
 
+    /** The signer who declined the document, or {@code null}. Shape varies, so left untyped. */
+    @JsonProperty("declined_by")
+    private Object declinedBy;
+
     @JsonProperty("activities")
     private List<DocumentActivity> activities;
 
@@ -60,6 +70,9 @@ public class DocumentDetails {
 
     public String getAccountId() { return accountId; }
     public void setAccountId(String accountId) { this.accountId = accountId; }
+
+    public String getTemplateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -82,8 +95,11 @@ public class DocumentDetails {
     public DocumentArtifacts getArtifacts() { return artifacts; }
     public void setArtifacts(DocumentArtifacts artifacts) { this.artifacts = artifacts; }
 
-    public List<Object> getPages() { return pages; }
-    public void setPages(List<Object> pages) { this.pages = pages; }
+    public List<DocumentPage> getPages() { return pages; }
+    public void setPages(List<DocumentPage> pages) { this.pages = pages; }
+
+    public List<Tag> getTags() { return tags; }
+    public void setTags(List<Tag> tags) { this.tags = tags; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
@@ -96,6 +112,9 @@ public class DocumentDetails {
 
     public String getDeclineReason() { return declineReason; }
     public void setDeclineReason(String declineReason) { this.declineReason = declineReason; }
+
+    public Object getDeclinedBy() { return declinedBy; }
+    public void setDeclinedBy(Object declinedBy) { this.declinedBy = declinedBy; }
 
     public List<DocumentActivity> getActivities() { return activities; }
     public void setActivities(List<DocumentActivity> activities) { this.activities = activities; }

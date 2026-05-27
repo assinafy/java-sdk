@@ -3,6 +3,8 @@ package com.assinafy.sdk.models;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class DocumentListItem {
 
@@ -20,6 +22,25 @@ public class DocumentListItem {
 
     @JsonProperty("template_id")
     private String templateId;
+
+    @JsonProperty("artifacts")
+    private DocumentArtifacts artifacts;
+
+    @JsonProperty("signing_url")
+    private String signingUrl;
+
+    @JsonProperty("pages")
+    private List<DocumentPage> pages;
+
+    @JsonProperty("tags")
+    private List<Tag> tags;
+
+    @JsonProperty("decline_reason")
+    private String declineReason;
+
+    /** The signer who declined the document, or {@code null}. Shape varies, so left untyped. */
+    @JsonProperty("declined_by")
+    private Object declinedBy;
 
     @JsonProperty("created_at")
     private String createdAt;
@@ -46,6 +67,24 @@ public class DocumentListItem {
 
     public String getTemplateId() { return templateId; }
     public void setTemplateId(String templateId) { this.templateId = templateId; }
+
+    public DocumentArtifacts getArtifacts() { return artifacts; }
+    public void setArtifacts(DocumentArtifacts artifacts) { this.artifacts = artifacts; }
+
+    public String getSigningUrl() { return signingUrl; }
+    public void setSigningUrl(String signingUrl) { this.signingUrl = signingUrl; }
+
+    public List<DocumentPage> getPages() { return pages; }
+    public void setPages(List<DocumentPage> pages) { this.pages = pages; }
+
+    public List<Tag> getTags() { return tags; }
+    public void setTags(List<Tag> tags) { this.tags = tags; }
+
+    public String getDeclineReason() { return declineReason; }
+    public void setDeclineReason(String declineReason) { this.declineReason = declineReason; }
+
+    public Object getDeclinedBy() { return declinedBy; }
+    public void setDeclinedBy(Object declinedBy) { this.declinedBy = declinedBy; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

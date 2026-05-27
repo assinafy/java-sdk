@@ -15,8 +15,13 @@ public class DocumentActivity {
     @JsonProperty("message")
     private String message;
 
+    /** Event-specific payload. May be an object or an (empty) array, so it is left untyped. */
+    @JsonProperty("payload")
+    private Object payload;
+
+    /** Originating IP / user agent, or {@code null} when not recorded. */
     @JsonProperty("origin")
-    private String origin;
+    private ActivityOrigin origin;
 
     @JsonProperty("created_at")
     private String createdAt;
@@ -32,8 +37,11 @@ public class DocumentActivity {
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
 
-    public String getOrigin() { return origin; }
-    public void setOrigin(String origin) { this.origin = origin; }
+    public Object getPayload() { return payload; }
+    public void setPayload(Object payload) { this.payload = payload; }
+
+    public ActivityOrigin getOrigin() { return origin; }
+    public void setOrigin(ActivityOrigin origin) { this.origin = origin; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

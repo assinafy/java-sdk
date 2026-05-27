@@ -67,10 +67,20 @@ public class WebhookResource extends BaseResource {
         return callOptional("Failed to fetch webhook subscription", () -> http.get("/accounts/" + id + "/webhooks/subscriptions"), WebhookSubscription.class);
     }
 
+    /**
+     * @deprecated The {@code DELETE /accounts/{id}/webhooks/subscriptions} route is not served
+     * by the live API (it returns 404). Use {@link #inactivate()} to stop webhook delivery.
+     * Retained because the API reference lists the verb on the subscription object.
+     */
+    @Deprecated
     public void delete() {
         delete(null);
     }
 
+    /**
+     * @deprecated see {@link #delete()} — prefer {@link #inactivate(String)}.
+     */
+    @Deprecated
     public void delete(String accountId) {
         String id = accountId(accountId);
         logger.info("Deleting webhook subscription");

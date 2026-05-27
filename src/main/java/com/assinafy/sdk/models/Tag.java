@@ -1,15 +1,18 @@
 package com.assinafy.sdk.models;
 
-import com.fasterxml.jackson.annotation.JsonAnyGetter;
-import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.HashMap;
-import java.util.Map;
-
+/**
+ * A workspace tag. The full object ({@code created_at}/{@code updated_at} populated) is
+ * returned by the Tag and document-tag endpoints; when a tag appears inline inside a
+ * document or template payload only {@code id}, {@code name} and {@code color} are present.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class TemplateRole {
+public class Tag {
+
+    @JsonProperty("resource")
+    private String resource;
 
     @JsonProperty("id")
     private String id;
@@ -17,9 +20,9 @@ public class TemplateRole {
     @JsonProperty("name")
     private String name;
 
-    /** Role kind, e.g. {@code Signer} or {@code Editor}. */
-    @JsonProperty("assignment_type")
-    private String assignmentType;
+    /** Six-character hex colour without a leading {@code #}, or {@code null}. */
+    @JsonProperty("color")
+    private String color;
 
     @JsonProperty("created_at")
     private String createdAt;
@@ -27,15 +30,10 @@ public class TemplateRole {
     @JsonProperty("updated_at")
     private String updatedAt;
 
-    private final Map<String, Object> additionalProperties = new HashMap<>();
+    public Tag() {}
 
-    public TemplateRole() {}
-
-    @JsonAnyGetter
-    public Map<String, Object> getAdditionalProperties() { return additionalProperties; }
-
-    @JsonAnySetter
-    public void setAdditionalProperty(String name, Object value) { additionalProperties.put(name, value); }
+    public String getResource() { return resource; }
+    public void setResource(String resource) { this.resource = resource; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -43,8 +41,8 @@ public class TemplateRole {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
-    public String getAssignmentType() { return assignmentType; }
-    public void setAssignmentType(String assignmentType) { this.assignmentType = assignmentType; }
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

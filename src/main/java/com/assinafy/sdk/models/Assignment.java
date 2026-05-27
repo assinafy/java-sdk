@@ -4,10 +4,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
-import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Assignment {
+
+    @JsonProperty("resource")
+    private String resource;
 
     @JsonProperty("id")
     private String id;
@@ -21,28 +23,28 @@ public class Assignment {
     @JsonProperty("expires_at")
     private String expiresAt;
 
-    @JsonProperty("expiration")
-    private String expiration;
-
     @JsonProperty("message")
     private String message;
 
     @JsonProperty("signers")
-    private List<Signer> signers;
+    private List<AssignmentSigner> signers;
 
     @JsonProperty("copy_receivers")
-    private List<String> copyReceivers;
+    private List<Object> copyReceivers;
 
     @JsonProperty("items")
-    private List<Object> items;
+    private List<AssignmentItem> items;
 
     @JsonProperty("summary")
     private AssignmentSummary summary;
 
     @JsonProperty("signing_urls")
-    private Map<String, String> signingUrls;
+    private List<SigningUrl> signingUrls;
 
     public Assignment() {}
+
+    public String getResource() { return resource; }
+    public void setResource(String resource) { this.resource = resource; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -56,24 +58,21 @@ public class Assignment {
     public String getExpiresAt() { return expiresAt; }
     public void setExpiresAt(String expiresAt) { this.expiresAt = expiresAt; }
 
-    public String getExpiration() { return expiration; }
-    public void setExpiration(String expiration) { this.expiration = expiration; }
-
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
 
-    public List<Signer> getSigners() { return signers; }
-    public void setSigners(List<Signer> signers) { this.signers = signers; }
+    public List<AssignmentSigner> getSigners() { return signers; }
+    public void setSigners(List<AssignmentSigner> signers) { this.signers = signers; }
 
-    public List<String> getCopyReceivers() { return copyReceivers; }
-    public void setCopyReceivers(List<String> copyReceivers) { this.copyReceivers = copyReceivers; }
+    public List<Object> getCopyReceivers() { return copyReceivers; }
+    public void setCopyReceivers(List<Object> copyReceivers) { this.copyReceivers = copyReceivers; }
 
-    public List<Object> getItems() { return items; }
-    public void setItems(List<Object> items) { this.items = items; }
+    public List<AssignmentItem> getItems() { return items; }
+    public void setItems(List<AssignmentItem> items) { this.items = items; }
 
     public AssignmentSummary getSummary() { return summary; }
     public void setSummary(AssignmentSummary summary) { this.summary = summary; }
 
-    public Map<String, String> getSigningUrls() { return signingUrls; }
-    public void setSigningUrls(Map<String, String> signingUrls) { this.signingUrls = signingUrls; }
+    public List<SigningUrl> getSigningUrls() { return signingUrls; }
+    public void setSigningUrls(List<SigningUrl> signingUrls) { this.signingUrls = signingUrls; }
 }

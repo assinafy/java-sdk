@@ -3,6 +3,8 @@ package com.assinafy.sdk;
 public class AssinafyClientOptions {
 
     public static final String DEFAULT_BASE_URL = "https://api.assinafy.com.br/v1";
+    /** Sandbox base URL for development/testing. */
+    public static final String SANDBOX_BASE_URL = "https://sandbox.assinafy.com.br/v1";
     public static final long DEFAULT_TIMEOUT_MS = 30_000L;
 
     private String apiKey;

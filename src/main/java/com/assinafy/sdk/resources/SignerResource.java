@@ -37,24 +37,34 @@ public class SignerResource extends BaseResource {
     }
 
     public Signer create(CreateSignerRequest request, String accountId) {
-        assertEmail(request.getEmail());
         String id = accountId(accountId);
+        if (request == null || request.getFullName() == null || request.getFullName().isBlank()) {
+            throw new ValidationException("Signer full_name is required");
+        }
+        String email = request.getEmail();
+        boolean hasEmail = email != null && !email.isBlank();
 
-        Signer existing = findByEmail(request.getEmail(), id);
-        if (existing != null) {
-            logger.info("Using existing signer", Map.of("email", request.getEmail()));
-            return existing;
+        // Email is optional per the API (a signer may have only a name + WhatsApp number).
+        // When an email is supplied we validate it and reuse an existing signer with the same
+        // address to keep create() idempotent.
+        if (hasEmail) {
+            assertEmail(email);
+            Signer existing = findByEmail(email, id);
+            if (existing != null) {
+                logger.info("Using existing signer", Map.of("email", email));
+                return existing;
+            }
         }
 
-        logger.info("Creating signer", Map.of("email", request.getEmail()));
+        logger.info("Creating signer", Map.of("hasEmail", hasEmail));
         try {
             String body = serialise(normaliseSignerRequest(request));
             return call("Failed to create signer", () -> http.post("/accounts/" + id + "/signers", body), Signer.class);
         } catch (ApiException e) {
-            if (e.getStatusCode() == 409) {
-                Signer duplicate = findByEmail(request.getEmail(), id);
+            if (e.getStatusCode() == 409 && hasEmail) {
+                Signer duplicate = findByEmail(email, id);
                 if (duplicate != null) {
-                    logger.info("Signer already exists, using existing signer", Map.of("email", request.getEmail()));
+                    logger.info("Signer already exists, using existing signer", Map.of("email", email));
                     return duplicate;
                 }
             }
@@ -160,11 +170,28 @@ public class SignerResource extends BaseResource {
                 Signer.class);
     }
 
-    public Map<String, Object> acceptTerms(String signerAccessCode) {
+    public Signer acceptTerms(String signerAccessCode) {
         requireId(signerAccessCode, "Signer access code");
         String json = serialise(Map.of("signer-access-code", signerAccessCode));
-        return callMap("Failed to accept terms",
-                () -> http.put("/signers/accept-terms", json));
+        return call("Failed to accept terms",
+                () -> http.put("/signers/accept-terms", json),
+                Signer.class);
+    }
+
+    /**
+     * Signer-self confirmation of contact data and terms acceptance.
+     *
+     * <p>Maps to {@code PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}}.
+     * The {@code data} map may carry {@code email}, {@code whatsapp_phone_number} and
+     * {@code has_accepted_terms}.
+     */
+    public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data) {
+        String docId = requireId(documentId, "Document ID");
+        requireId(signerAccessCode, "Signer access code");
+        Map<String, Object> body = data != null ? new HashMap<>(data) : new HashMap<>();
+        String json = serialise(body);
+        callVoid("Failed to confirm signer data",
+                () -> http.put("/documents/" + docId + "/signers/confirm-data?signer-access-code=" + encode(signerAccessCode), json));
     }
 
     public Map<String, Object> verifyEmail(String signerAccessCode, String verificationCode) {
@@ -203,10 +230,20 @@ public class SignerResource extends BaseResource {
     }
 
     public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode) {
+        return listDocuments(signerId, signerAccessCode, null);
+    }
+
+    /**
+     * List the documents assigned to a signer, with optional {@code status}, {@code method},
+     * {@code search}, {@code sort} and paging filters supplied via {@link ListParams}.
+     */
+    public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode, ListParams params) {
         String sid = requireId(signerId, "Signer ID");
         requireId(signerAccessCode, "Signer access code");
+        Map<String, Object> query = params != null ? new HashMap<>(params.toQueryParams()) : new HashMap<>();
+        query.put("signer-access-code", signerAccessCode);
         return callList("Failed to list signer's documents",
-                () -> http.get("/signers/" + sid + "/documents?signer-access-code=" + encode(signerAccessCode)),
+                () -> http.get("/signers/" + sid + "/documents", query),
                 DocumentListItem.class);
     }
 
@@ -236,11 +273,10 @@ public class SignerResource extends BaseResource {
         if (documentIds == null || documentIds.isEmpty()) {
             throw new ValidationException("At least one document ID is required");
         }
+        requireId(declineReason, "Decline reason");
         Map<String, Object> body = new HashMap<>();
         body.put("document_ids", documentIds);
-        if (declineReason != null && !declineReason.isBlank()) {
-            body.put("decline_reason", declineReason);
-        }
+        body.put("decline_reason", declineReason);
         String json = serialise(body);
         return callMap("Failed to decline multiple documents",
                 () -> http.put("/signers/documents/decline-multiple?signer-access-code=" + encode(signerAccessCode), json));

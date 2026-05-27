@@ -20,6 +20,10 @@ public class TemplateSigner {
     @JsonProperty("notification_methods")
     private List<String> notificationMethods;
 
+    /** Optional positive integer controlling signing order (see {@link SignerReference#getStep()}). */
+    @JsonProperty("step")
+    private Integer step;
+
     public TemplateSigner() {}
 
     public static Builder builder() {
@@ -38,6 +42,9 @@ public class TemplateSigner {
     public List<String> getNotificationMethods() { return notificationMethods; }
     public void setNotificationMethods(List<String> notificationMethods) { this.notificationMethods = notificationMethods; }
 
+    public Integer getStep() { return step; }
+    public void setStep(Integer step) { this.step = step; }
+
     public static final class Builder {
         private final TemplateSigner ts = new TemplateSigner();
 
@@ -45,6 +52,7 @@ public class TemplateSigner {
         public Builder id(String id) { ts.setId(id); return this; }
         public Builder verificationMethod(String method) { ts.setVerificationMethod(method); return this; }
         public Builder notificationMethods(List<String> methods) { ts.setNotificationMethods(methods); return this; }
+        public Builder step(Integer step) { ts.setStep(step); return this; }
         public TemplateSigner build() { return ts; }
     }
 }

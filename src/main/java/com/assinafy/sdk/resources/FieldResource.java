@@ -4,11 +4,13 @@ import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.FieldDefinition;
 import com.assinafy.sdk.models.FieldType;
+import com.assinafy.sdk.models.FieldValidationResult;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.request.CreateFieldRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.UpdateFieldRequest;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -96,41 +98,45 @@ public class FieldResource extends BaseResource {
      * Validate a single value against a field definition. Authenticated callers may omit
      * {@code signerAccessCode}; signer self-service callers must supply it.
      */
-    public Map<String, Object> validate(String fieldId, Object value, String signerAccessCode) {
+    public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode) {
         return validate(fieldId, value, signerAccessCode, null);
     }
 
-    public Map<String, Object> validate(String fieldId, Object value, String signerAccessCode, String accountId) {
+    public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode, String accountId) {
         String id = accountId(accountId);
         String fid = requireId(fieldId, "Field ID");
-        String body = serialise(Map.of("value", value));
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("value", value);
+        String body = serialise(payload);
         String path = "/accounts/" + id + "/fields/" + fid + "/validate";
         if (signerAccessCode != null && !signerAccessCode.isBlank()) {
             path = path + "?signer-access-code=" + encode(signerAccessCode);
         }
         String finalPath = path;
-        return callMap("Failed to validate field",
-                () -> http.post(finalPath, body));
+        return call("Failed to validate field",
+                () -> http.post(finalPath, body),
+                FieldValidationResult.class);
     }
 
     /**
      * Validate multiple values in one round-trip. {@code entries} is the list of
      * {@code {field_id, value}} objects to validate.
      */
-    public Map<String, Object> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode) {
+    public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode) {
         return validateMultiple(entries, signerAccessCode, null);
     }
 
-    public Map<String, Object> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode, String accountId) {
+    public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode, String accountId) {
         String id = accountId(accountId);
-        String body = serialise(entries);
+        String body = serialise(entries != null ? entries : List.of());
         String path = "/accounts/" + id + "/fields/validate-multiple";
         if (signerAccessCode != null && !signerAccessCode.isBlank()) {
             path = path + "?signer-access-code=" + encode(signerAccessCode);
         }
         String finalPath = path;
-        return callMap("Failed to validate fields",
-                () -> http.post(finalPath, body));
+        return callList("Failed to validate fields",
+                () -> http.post(finalPath, body),
+                FieldValidationResult.class).getData();
     }
 
     /**

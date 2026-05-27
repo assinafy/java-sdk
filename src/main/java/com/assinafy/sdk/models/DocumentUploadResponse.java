@@ -45,7 +45,7 @@ public class DocumentUploadResponse {
     private String declineReason;
 
     @JsonProperty("declined_by")
-    private String declinedBy;
+    private Object declinedBy;
 
     public DocumentUploadResponse() {}
 
@@ -85,6 +85,6 @@ public class DocumentUploadResponse {
     public String getDeclineReason() { return declineReason; }
     public void setDeclineReason(String declineReason) { this.declineReason = declineReason; }
 
-    public String getDeclinedBy() { return declinedBy; }
-    public void setDeclinedBy(String declinedBy) { this.declinedBy = declinedBy; }
+    public Object getDeclinedBy() { return declinedBy; }
+    public void setDeclinedBy(Object declinedBy) { this.declinedBy = declinedBy; }
 }

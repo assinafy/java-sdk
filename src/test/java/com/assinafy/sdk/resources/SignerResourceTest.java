@@ -212,4 +212,57 @@ class SignerResourceTest {
         String body = mock.capturedAt(1).getJsonBody();
         assertThat(body).contains("\"cpf\":\"12345678900\"");
     }
+
+    @Test
+    void createWithoutEmailPostsDirectlyWithoutLookup() {
+        // email is optional per the API: a WhatsApp-only signer must be creatable, and
+        // create() must skip the findByEmail dedupe pre-check when no email is supplied.
+        mock.enqueue(200, SIGNER_123);
+
+        Signer signer = resource.create(CreateSignerRequest.builder()
+                .fullName("WhatsApp Only")
+                .whatsappPhoneNumber("+5548999990000")
+                .build());
+
+        assertThat(signer.getId()).isEqualTo("123");
+        assertThat(mock.capturedCount()).isEqualTo(1);
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/test-account/signers");
+        assertThat(mock.lastCaptured().getJsonBody()).doesNotContain("\"email\"");
+    }
+
+    @Test
+    void createRequiresFullName() {
+        assertThatThrownBy(() -> resource.create(CreateSignerRequest.builder()
+                .email("john@example.com")
+                .build()))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void acceptTermsReturnsSigner() {
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s1\",\"full_name\":\"John\",\"has_accepted_terms\":true}}");
+        Signer signer = resource.acceptTerms("code");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/signers/accept-terms");
+        assertThat(signer.getHasAcceptedTerms()).isTrue();
+        assertThat(signer.getId()).isEqualTo("s1");
+    }
+
+    @Test
+    void confirmSignerDataEncodesAccessCode() {
+        mock.enqueue(200, "{\"status\":200,\"data\":{}}");
+        resource.confirmSignerData("doc", "code with space", Map.of("has_accepted_terms", true));
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/documents/doc/signers/confirm-data?signer-access-code=code+with+space");
+    }
+
+    @Test
+    void declineMultipleRequiresReason() {
+        assertThatThrownBy(() -> resource.declineMultiple("code", java.util.List.of("d1"), ""))
+                .isInstanceOf(ValidationException.class);
+    }
 }

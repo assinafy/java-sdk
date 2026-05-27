@@ -15,7 +15,7 @@ public class OkHttpApiClient implements ApiHttpClient {
     private static final MediaType JPEG = MediaType.parse("image/jpeg");
     private static final byte[] JPEG_MAGIC = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
 
-    private static final String SDK_VERSION = "1.3.0";
+    private static final String SDK_VERSION = "1.4.0";
 
     private final OkHttpClient client;
     private final String baseUrl;

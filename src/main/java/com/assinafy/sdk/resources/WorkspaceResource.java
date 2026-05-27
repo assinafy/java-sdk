@@ -8,6 +8,15 @@ import com.assinafy.sdk.models.WorkspaceListItem;
 import com.assinafy.sdk.request.CreateWorkspaceRequest;
 import com.assinafy.sdk.request.UpdateWorkspaceRequest;
 
+/**
+ * Workspace (account) resource — maps to the {@code /accounts} endpoints.
+ *
+ * <p>{@link #get(String)} and {@link #list()} are part of the documented API. The mutating
+ * operations {@link #create(CreateWorkspaceRequest)}, {@link #update(String, UpdateWorkspaceRequest)}
+ * and {@link #delete(String)} are not described in the public API reference but exist on the
+ * live API; they are exposed here for completeness. Treat {@link #delete(String)} with care —
+ * it removes a real workspace.
+ */
 public class WorkspaceResource extends BaseResource {
 
     public WorkspaceResource(ApiHttpClient http, String defaultAccountId, Logger logger) {

@@ -8,6 +8,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * The JSON body delivered to a webhook endpoint when a subscribed event fires. Mirrors the
+ * documented common envelope: {@code id}, {@code event}, {@code message}, {@code payload},
+ * {@code origin}, {@code created_at}, {@code subject}, {@code object} and {@code account_id}.
+ *
+ * <p>{@code subject} (the actor that triggered the event) and {@code object} (the entity the
+ * event is about) are polymorphic — each carries a {@code type} discriminator — and are
+ * therefore exposed as {@code Map<String, Object>}.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WebhookPayload {
 
@@ -17,23 +26,31 @@ public class WebhookPayload {
     @JsonProperty("event")
     private String event;
 
-    @JsonProperty("type")
-    private String type;
-
     @JsonProperty("message")
     private String message;
 
+    /** Event-specific extra data, or {@code null}. */
     @JsonProperty("payload")
     private Map<String, Object> payload;
 
-    @JsonProperty("account_id")
-    private String accountId;
+    /** Originating IP / user agent of the request that triggered the event. */
+    @JsonProperty("origin")
+    private Map<String, Object> origin;
 
-    @JsonProperty("data")
-    private Map<String, Object> data;
+    /** Event creation time as a Unix timestamp (seconds). */
+    @JsonProperty("created_at")
+    private Long createdAt;
 
+    /** The actor that triggered the event (carries a {@code type} discriminator). */
+    @JsonProperty("subject")
+    private Map<String, Object> subject;
+
+    /** The entity the event is about (carries a {@code type} discriminator). */
     @JsonProperty("object")
     private Map<String, Object> object;
+
+    @JsonProperty("account_id")
+    private String accountId;
 
     private final Map<String, Object> additionalProperties = new HashMap<>();
 
@@ -55,21 +72,24 @@ public class WebhookPayload {
     public String getEvent() { return event; }
     public void setEvent(String event) { this.event = event; }
 
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
 
     public Map<String, Object> getPayload() { return payload; }
     public void setPayload(Map<String, Object> payload) { this.payload = payload; }
 
-    public String getAccountId() { return accountId; }
-    public void setAccountId(String accountId) { this.accountId = accountId; }
+    public Map<String, Object> getOrigin() { return origin; }
+    public void setOrigin(Map<String, Object> origin) { this.origin = origin; }
 
-    public Map<String, Object> getData() { return data; }
-    public void setData(Map<String, Object> data) { this.data = data; }
+    public Long getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }
+
+    public Map<String, Object> getSubject() { return subject; }
+    public void setSubject(Map<String, Object> subject) { this.subject = subject; }
 
     public Map<String, Object> getObject() { return object; }
     public void setObject(Map<String, Object> object) { this.object = object; }
+
+    public String getAccountId() { return accountId; }
+    public void setAccountId(String accountId) { this.accountId = accountId; }
 }

@@ -1,19 +1,24 @@
 package com.assinafy.sdk.it;
 
 import com.assinafy.sdk.AssinafyClient;
+import com.assinafy.sdk.models.ApiKey;
 import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.DocumentStatusInfo;
 import com.assinafy.sdk.models.DocumentUploadResponse;
 import com.assinafy.sdk.models.FieldDefinition;
 import com.assinafy.sdk.models.FieldType;
+import com.assinafy.sdk.models.FieldValidationResult;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
+import com.assinafy.sdk.models.Tag;
 import com.assinafy.sdk.models.TemplateListItem;
 import com.assinafy.sdk.models.WebhookEventTypeInfo;
 import com.assinafy.sdk.models.WorkspaceListItem;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.CreateSignerRequest;
+import com.assinafy.sdk.request.CreateTagRequest;
 import com.assinafy.sdk.request.ListParams;
+import com.assinafy.sdk.request.RenameTagRequest;
 import com.assinafy.sdk.request.SignerReference;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -150,13 +155,26 @@ class LiveApiSmokeIT {
     @Order(11)
     void uploadsTinyPdfAndCleansItUp() {
         byte[] pdf = minimalPdf();
+        String tagName = "sdk-it-doctag-" + UUID.randomUUID().toString().substring(0, 8);
         DocumentUploadResponse doc = client.documents().upload(pdf, "sdk-it-" + UUID.randomUUID() + ".pdf");
+        String createdTagId = null;
         try {
             assertThat(doc.getId()).isNotBlank();
             // Wait for status to advance past 'uploading' or 'metadata_processing'.
             client.documents().waitUntilReady(doc.getId(), 20_000, 1_500);
             var details = client.documents().details(doc.getId());
             assertThat(details.getId()).isEqualTo(doc.getId());
+            assertThat(details.getTags()).as("tags are always present (possibly empty)").isNotNull();
+
+            // Document tags: append, list, detach (auto-creates the workspace tag by name).
+            client.documents().appendTags(doc.getId(), List.of(tagName));
+            List<Tag> docTags = client.documents().listTags(doc.getId());
+            Tag added = docTags.stream().filter(t -> tagName.equals(t.getName())).findFirst().orElse(null);
+            assertThat(added).as("appended tag is listed on the document").isNotNull();
+            createdTagId = added.getId();
+            client.documents().detachTag(doc.getId(), added.getId());
+            assertThat(client.documents().listTags(doc.getId()))
+                    .extracting(Tag::getName).doesNotContain(tagName);
 
             // Estimate cost for a 1-signer assignment (no email is sent).
             Map<String, Object> cost = client.assignments().estimateCost(doc.getId(),
@@ -171,6 +189,13 @@ class LiveApiSmokeIT {
             } catch (Exception ignore) {
                 // Best-effort cleanup
             }
+            if (createdTagId != null) {
+                try {
+                    client.tags().delete(createdTagId, true);
+                } catch (Exception ignore) {
+                    // Best-effort cleanup of the workspace tag created by appendTags
+                }
+            }
         }
     }
 
@@ -184,6 +209,8 @@ class LiveApiSmokeIT {
                 CreateSignerRequest.builder()
                         .fullName("SDK IT " + suffix)
                         .email(email)
+                        .whatsappPhoneNumber("+5548999990000")
+                        .cpf("400.676.228-36")
                         .build()
         );
         try {
@@ -195,6 +222,77 @@ class LiveApiSmokeIT {
         } finally {
             try {
                 client.signers().delete(created.getId());
+            } catch (Exception ignore) {
+                // Best-effort cleanup
+            }
+        }
+    }
+
+    @Test
+    @Order(13)
+    void createsWhatsappOnlySignerWithoutEmail() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        Signer created = client.signers().create(
+                CreateSignerRequest.builder()
+                        .fullName("SDK WA " + suffix)
+                        .whatsappPhoneNumber("+5548999990000")
+                        .build()
+        );
+        try {
+            assertThat(created.getId()).isNotBlank();
+        } finally {
+            try {
+                client.signers().delete(created.getId());
+            } catch (Exception ignore) {
+                // Best-effort cleanup
+            }
+        }
+    }
+
+    @Test
+    @Order(14)
+    void getsMaskedApiKey() {
+        ApiKey key = client.apiKeys().get();
+        // A key exists for the configured credentials; only the tail is visible.
+        assertThat(key).isNotNull();
+        assertThat(key.getApiKey()).isNotBlank();
+    }
+
+    @Test
+    @Order(15)
+    void validatesFieldValueReturningTypedResult() {
+        // Use the predefined "E-mail" field definition from the account.
+        PaginatedResult<FieldDefinition> fields =
+                client.fields().list(ListParams.builder().perPage(50).build());
+        FieldDefinition emailField = fields.getData().stream()
+                .filter(f -> "email".equalsIgnoreCase(f.getType()))
+                .findFirst()
+                .orElse(null);
+        Assumptions.assumeTrue(emailField != null, "No email field definition available");
+
+        FieldValidationResult ok = client.fields().validate(emailField.getId(), "john@example.com", null);
+        assertThat(ok.getSuccess()).isTrue();
+
+        FieldValidationResult bad = client.fields().validate(emailField.getId(), "not-an-email", null);
+        assertThat(bad.getSuccess()).isFalse();
+        assertThat(bad.getErrorMessage()).isNotBlank();
+    }
+
+    @Test
+    @Order(16)
+    void tagLifecycleCreateRenameDelete() {
+        String name = "sdk-it-tag-" + UUID.randomUUID().toString().substring(0, 8);
+        Tag created = client.tags().create(CreateTagRequest.builder().name(name).color("FF0000").build());
+        try {
+            assertThat(created.getId()).isNotBlank();
+            assertThat(created.getName()).isEqualTo(name);
+
+            Tag renamed = client.tags().rename(created.getId(),
+                    RenameTagRequest.builder().name(name + "-renamed").build());
+            assertThat(renamed.getName()).isEqualTo(name + "-renamed");
+        } finally {
+            try {
+                client.tags().delete(created.getId(), true);
             } catch (Exception ignore) {
                 // Best-effort cleanup
             }

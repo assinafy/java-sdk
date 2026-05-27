@@ -12,6 +12,17 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Map;
 
+/**
+ * Verifies and parses incoming Assinafy webhook deliveries.
+ *
+ * <p>The webhook delivery contract (see the API docs "Payload Reference") specifies the JSON
+ * envelope but does not publish a signature scheme. {@link #verify(String, String)} therefore
+ * implements the conventional pattern — HMAC-SHA256 of the raw request body, hex-encoded,
+ * compared in constant time against the signature your endpoint received — which is what the
+ * platform uses when a {@code webhookSecret} is configured. Pass the signature header value
+ * verbatim (strip any {@code algo=} prefix yourself if one is present). If no secret is
+ * configured, {@code verify} returns {@code false}.
+ */
 public class WebhookVerifier {
 
     private static final String HMAC_SHA256 = "HmacSHA256";
@@ -60,16 +71,19 @@ public class WebhookVerifier {
         }
     }
 
+    /** The event type (e.g. {@code document_ready}), or {@code null} if absent. */
     public String getEventType(WebhookPayload event) {
-        if (event == null) return null;
-        if (event.getEvent() != null) return event.getEvent();
-        return event.getType();
+        return event != null ? event.getEvent() : null;
     }
 
+    /**
+     * The entity the event is about (the {@code object} envelope field, e.g. the document),
+     * falling back to {@code payload}. Returns an empty map when neither is present.
+     */
     public Map<String, Object> getEventData(WebhookPayload event) {
         if (event == null) return Map.of();
-        if (event.getData() != null) return event.getData();
         if (event.getObject() != null) return event.getObject();
+        if (event.getPayload() != null) return event.getPayload();
         return Map.of();
     }
 

@@ -11,11 +11,13 @@ import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
+import com.assinafy.sdk.resources.ApiKeyResource;
 import com.assinafy.sdk.resources.AssignmentResource;
 import com.assinafy.sdk.resources.DocumentResource;
 import com.assinafy.sdk.resources.FieldResource;
 import com.assinafy.sdk.resources.PublicDocumentResource;
 import com.assinafy.sdk.resources.SignerResource;
+import com.assinafy.sdk.resources.TagResource;
 import com.assinafy.sdk.resources.TemplateResource;
 import com.assinafy.sdk.resources.WebhookResource;
 import com.assinafy.sdk.resources.WorkspaceResource;
@@ -34,39 +36,24 @@ public class AssinafyClient {
     private final WebhookResource webhooks;
     private final TemplateResource templates;
     private final FieldResource fields;
+    private final TagResource tags;
     private final PublicDocumentResource publicDocuments;
+    private final ApiKeyResource apiKeys;
     private final WebhookVerifier webhookVerifier;
     private final Logger logger;
     private final String defaultAccountId;
 
+    /**
+     * Build a client from {@code options}, constructing the default OkHttp-backed transport.
+     */
     public AssinafyClient(AssinafyClientOptions options) {
-        if ((options.getApiKey() == null || options.getApiKey().isBlank())
-                && (options.getToken() == null || options.getToken().isBlank())) {
-            throw new ValidationException(
-                    "An API key (options.apiKey) or legacy access token (options.token) is required."
-            );
-        }
-
-        this.defaultAccountId = options.getAccountId();
-        this.logger = options.getLogger() != null ? options.getLogger() : NoOpLogger.INSTANCE;
-
-        String baseUrl = normaliseBaseUrl(
-                options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL
-        );
-
-        ApiHttpClient http = new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
-
-        this.documents = new DocumentResource(http, defaultAccountId, this.logger);
-        this.signers = new SignerResource(http, defaultAccountId, this.logger);
-        this.workspaces = new WorkspaceResource(http, null, this.logger);
-        this.assignments = new AssignmentResource(http, defaultAccountId, this.logger);
-        this.webhooks = new WebhookResource(http, defaultAccountId, this.logger);
-        this.templates = new TemplateResource(http, defaultAccountId, this.logger);
-        this.fields = new FieldResource(http, defaultAccountId, this.logger);
-        this.publicDocuments = new PublicDocumentResource(http, this.logger);
-        this.webhookVerifier = new WebhookVerifier(options.getWebhookSecret());
+        this(buildHttp(options), options);
     }
 
+    /**
+     * Build a client over a caller-supplied transport. Used for testing with a stub
+     * {@link ApiHttpClient}.
+     */
     AssinafyClient(ApiHttpClient http, AssinafyClientOptions options) {
         if ((options.getApiKey() == null || options.getApiKey().isBlank())
                 && (options.getToken() == null || options.getToken().isBlank())) {
@@ -74,16 +61,21 @@ public class AssinafyClient {
                     "An API key (options.apiKey) or legacy access token (options.token) is required."
             );
         }
+
         this.defaultAccountId = options.getAccountId();
         this.logger = options.getLogger() != null ? options.getLogger() : NoOpLogger.INSTANCE;
+
         this.documents = new DocumentResource(http, defaultAccountId, this.logger);
         this.signers = new SignerResource(http, defaultAccountId, this.logger);
+        // Workspace operations take an explicit account ID, so no default is bound.
         this.workspaces = new WorkspaceResource(http, null, this.logger);
         this.assignments = new AssignmentResource(http, defaultAccountId, this.logger);
         this.webhooks = new WebhookResource(http, defaultAccountId, this.logger);
         this.templates = new TemplateResource(http, defaultAccountId, this.logger);
         this.fields = new FieldResource(http, defaultAccountId, this.logger);
+        this.tags = new TagResource(http, defaultAccountId, this.logger);
         this.publicDocuments = new PublicDocumentResource(http, this.logger);
+        this.apiKeys = new ApiKeyResource(http, this.logger);
         this.webhookVerifier = new WebhookVerifier(options.getWebhookSecret());
     }
 
@@ -98,12 +90,20 @@ public class AssinafyClient {
         AssinafyClientOptions opts = AssinafyClientOptions.builder()
                 .apiKey(apiKey)
                 .accountId(accountId)
+                .token(extras.getToken())
                 .baseUrl(extras.getBaseUrl())
                 .webhookSecret(extras.getWebhookSecret())
                 .timeoutMs(extras.getTimeoutMs())
                 .logger(extras.getLogger())
                 .build();
         return new AssinafyClient(opts);
+    }
+
+    private static ApiHttpClient buildHttp(AssinafyClientOptions options) {
+        String baseUrl = normaliseBaseUrl(
+                options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL
+        );
+        return new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
     }
 
     public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request) {
@@ -163,7 +163,9 @@ public class AssinafyClient {
     public WebhookResource webhooks() { return webhooks; }
     public TemplateResource templates() { return templates; }
     public FieldResource fields() { return fields; }
+    public TagResource tags() { return tags; }
     public PublicDocumentResource publicDocuments() { return publicDocuments; }
+    public ApiKeyResource apiKeys() { return apiKeys; }
     public WebhookVerifier webhookVerifier() { return webhookVerifier; }
 
     private static String normaliseBaseUrl(String url) {

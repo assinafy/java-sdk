@@ -18,6 +18,12 @@ public class Template {
     @JsonProperty("name")
     private String name;
 
+    @JsonProperty("document_name")
+    private String documentName;
+
+    @JsonProperty("message")
+    private String message;
+
     @JsonProperty("status")
     private String status;
 
@@ -26,6 +32,16 @@ public class Template {
 
     @JsonProperty("roles")
     private List<TemplateRole> roles;
+
+    @JsonProperty("pages")
+    private List<TemplatePage> pages;
+
+    @JsonProperty("tags")
+    private List<Tag> tags;
+
+    /** Tags automatically attached to documents created from this template. */
+    @JsonProperty("default_document_tags")
+    private List<Tag> defaultDocumentTags;
 
     @JsonProperty("created_at")
     private String createdAt;
@@ -49,6 +65,12 @@ public class Template {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
+    public String getDocumentName() { return documentName; }
+    public void setDocumentName(String documentName) { this.documentName = documentName; }
+
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
@@ -57,6 +79,15 @@ public class Template {
 
     public List<TemplateRole> getRoles() { return roles; }
     public void setRoles(List<TemplateRole> roles) { this.roles = roles; }
+
+    public List<TemplatePage> getPages() { return pages; }
+    public void setPages(List<TemplatePage> pages) { this.pages = pages; }
+
+    public List<Tag> getTags() { return tags; }
+    public void setTags(List<Tag> tags) { this.tags = tags; }
+
+    public List<Tag> getDefaultDocumentTags() { return defaultDocumentTags; }
+    public void setDefaultDocumentTags(List<Tag> defaultDocumentTags) { this.defaultDocumentTags = defaultDocumentTags; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }

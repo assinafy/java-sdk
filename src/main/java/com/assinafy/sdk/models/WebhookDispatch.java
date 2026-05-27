@@ -34,10 +34,10 @@ public class WebhookDispatch {
     private String error;
 
     @JsonProperty("created_at")
-    private Long createdAt;
+    private String createdAt;
 
     @JsonProperty("updated_at")
-    private Long updatedAt;
+    private String updatedAt;
 
     public WebhookDispatch() {}
 
@@ -68,9 +68,9 @@ public class WebhookDispatch {
     public String getError() { return error; }
     public void setError(String error) { this.error = error; }
 
-    public Long getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }
+    public String getCreatedAt() { return createdAt; }
+    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 
-    public Long getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Long updatedAt) { this.updatedAt = updatedAt; }
+    public String getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
 }

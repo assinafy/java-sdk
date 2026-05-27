@@ -17,6 +17,14 @@ public class SignerReference {
     @JsonProperty("notification_methods")
     private List<String> notificationMethods;
 
+    /**
+     * Positive integer controlling signing order. Signers sharing the same step sign in
+     * parallel; a step activates only after every signer in the previous step has signed.
+     * When supplied for one signer it must be supplied for all.
+     */
+    @JsonProperty("step")
+    private Integer step;
+
     public SignerReference() {}
 
     public static SignerReference ofId(String id) {
@@ -38,12 +46,16 @@ public class SignerReference {
     public List<String> getNotificationMethods() { return notificationMethods; }
     public void setNotificationMethods(List<String> notificationMethods) { this.notificationMethods = notificationMethods; }
 
+    public Integer getStep() { return step; }
+    public void setStep(Integer step) { this.step = step; }
+
     public static final class Builder {
         private final SignerReference ref = new SignerReference();
 
         public Builder id(String id) { ref.setId(id); return this; }
         public Builder verificationMethod(String method) { ref.setVerificationMethod(method); return this; }
         public Builder notificationMethods(List<String> methods) { ref.setNotificationMethods(methods); return this; }
+        public Builder step(Integer step) { ref.setStep(step); return this; }
         public SignerReference build() { return ref; }
     }
 }

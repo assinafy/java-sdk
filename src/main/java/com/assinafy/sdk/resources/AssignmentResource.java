@@ -4,7 +4,8 @@ import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
-import com.assinafy.sdk.models.ResendEmailResponse;
+import com.assinafy.sdk.models.PaginatedResult;
+import com.assinafy.sdk.models.ResendNotificationResponse;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.SignerReference;
 
@@ -41,22 +42,28 @@ public class AssignmentResource extends BaseResource {
         return callMap("Failed to estimate assignment cost", () -> http.post("/documents/" + docId + "/assignments/estimate-cost", json));
     }
 
+    /**
+     * Update an assignment's expiration. Pass {@code expiresAt = null} to remove the
+     * expiration entirely (the assignment will no longer expire).
+     */
     public Assignment resetExpiration(String documentId, String assignmentId, String expiresAt) {
         String docId = requireId(documentId, "Document ID");
         String asgId = requireId(assignmentId, "Assignment ID");
-        String json = serialise(Map.of("expires_at", expiresAt));
+        Map<String, Object> body = new HashMap<>();
+        body.put("expires_at", expiresAt);
+        String json = serialise(body);
         return call("Failed to update assignment expiration",
                 () -> http.put("/documents/" + docId + "/assignments/" + asgId + "/reset-expiration", json),
                 Assignment.class);
     }
 
-    public ResendEmailResponse resendNotification(String documentId, String assignmentId, String signerId) {
+    public ResendNotificationResponse resendNotification(String documentId, String assignmentId, String signerId) {
         String docId = requireId(documentId, "Document ID");
         String asgId = requireId(assignmentId, "Assignment ID");
         String sid = requireId(signerId, "Signer ID");
         return call("Failed to resend signer notification",
                 () -> http.put("/documents/" + docId + "/assignments/" + asgId + "/signers/" + sid + "/resend", null),
-                ResendEmailResponse.class);
+                ResendNotificationResponse.class);
     }
 
     public Map<String, Object> estimateResendCost(String documentId, String assignmentId, String signerId) {
@@ -69,7 +76,7 @@ public class AssignmentResource extends BaseResource {
 
     /**
      * Signer-side decline of an assignment. Requires the signer-access-code that was issued
-     * to the signer in the invitation flow.
+     * to the signer in the invitation flow. A non-blank {@code declineReason} is required.
      *
      * <p>Maps to {@code PUT /documents/{documentId}/assignments/{assignmentId}/reject}.
      */
@@ -77,11 +84,8 @@ public class AssignmentResource extends BaseResource {
         String docId = requireId(documentId, "Document ID");
         String asgId = requireId(assignmentId, "Assignment ID");
         requireId(signerAccessCode, "Signer access code");
-        Map<String, Object> body = new HashMap<>();
-        if (declineReason != null && !declineReason.isBlank()) {
-            body.put("decline_reason", declineReason);
-        }
-        String json = serialise(body);
+        requireId(declineReason, "Decline reason");
+        String json = serialise(Map.of("decline_reason", declineReason));
         return callMap("Failed to decline assignment",
                 () -> http.put(
                         "/documents/" + docId + "/assignments/" + asgId + "/reject?signer-access-code=" + encode(signerAccessCode),
@@ -89,15 +93,49 @@ public class AssignmentResource extends BaseResource {
     }
 
     /**
-     * Inspect WhatsApp notification delivery status for an assignment.
+     * Inspect WhatsApp notification delivery status for an assignment. Returns one entry per
+     * tracked notification.
      *
      * <p>Maps to {@code GET /documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications}.
      */
-    public Map<String, Object> getWhatsappNotifications(String documentId, String assignmentId) {
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getWhatsappNotifications(String documentId, String assignmentId) {
         String docId = requireId(documentId, "Document ID");
         String asgId = requireId(assignmentId, "Assignment ID");
-        return callMap("Failed to fetch WhatsApp notifications",
-                () -> http.get("/documents/" + docId + "/assignments/" + asgId + "/whatsapp-notifications"));
+        PaginatedResult<?> result = callList("Failed to fetch WhatsApp notifications",
+                () -> http.get("/documents/" + docId + "/assignments/" + asgId + "/whatsapp-notifications"),
+                Map.class);
+        return (List<Map<String, Object>>) (List<?>) result.getData();
+    }
+
+    /**
+     * Signer-facing fetch of the document + assignment to be signed.
+     *
+     * <p>Maps to {@code GET /sign?signer-access-code={code}}.
+     */
+    public Map<String, Object> getForSigner(String signerAccessCode) {
+        requireId(signerAccessCode, "Signer access code");
+        return callMap("Failed to fetch signer assignment",
+                () -> http.get("/sign?signer-access-code=" + encode(signerAccessCode)));
+    }
+
+    /**
+     * Signer-facing submission of completed assignment items.
+     *
+     * <p>Maps to {@code POST /documents/{documentId}/assignments/{assignmentId}?signer-access-code={code}}.
+     *
+     * @param items the completed items, each typically {@code {itemId, fieldId, pageId, value}}
+     */
+    public Map<String, Object> sign(String documentId, String assignmentId, String signerAccessCode,
+                                    List<Map<String, Object>> items) {
+        String docId = requireId(documentId, "Document ID");
+        String asgId = requireId(assignmentId, "Assignment ID");
+        requireId(signerAccessCode, "Signer access code");
+        String json = serialise(items != null ? items : List.of());
+        return callMap("Failed to submit signature",
+                () -> http.post(
+                        "/documents/" + docId + "/assignments/" + asgId + "?signer-access-code=" + encode(signerAccessCode),
+                        json));
     }
 
     static Map<String, Object> buildAssignmentPayload(CreateAssignmentRequest request, boolean allowSignersWithoutId) {
@@ -129,6 +167,7 @@ public class AssignmentResource extends BaseResource {
         }
         if (ref.getVerificationMethod() != null) map.put("verification_method", ref.getVerificationMethod());
         if (ref.getNotificationMethods() != null) map.put("notification_methods", ref.getNotificationMethods());
+        if (ref.getStep() != null) map.put("step", ref.getStep());
         return map;
     }
 }
