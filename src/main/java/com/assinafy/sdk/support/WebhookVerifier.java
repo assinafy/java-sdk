@@ -15,13 +15,21 @@ import java.util.Map;
 /**
  * Verifies and parses incoming Assinafy webhook deliveries.
  *
- * <p>The webhook delivery contract (see the API docs "Payload Reference") specifies the JSON
- * envelope but does not publish a signature scheme. {@link #verify(String, String)} therefore
- * implements the conventional pattern — HMAC-SHA256 of the raw request body, hex-encoded,
- * compared in constant time against the signature your endpoint received — which is what the
- * platform uses when a {@code webhookSecret} is configured. Pass the signature header value
- * verbatim (strip any {@code algo=} prefix yourself if one is present). If no secret is
- * configured, {@code verify} returns {@code false}.
+ * <p><strong>Important:</strong> the Assinafy webhook delivery contract (see the API docs
+ * "Payload Reference") publishes the JSON envelope but does <em>not</em> document a signature
+ * header or a signing scheme, and the subscription has no place to register a shared secret.
+ * {@link #verify(String, String)} therefore implements the <em>conventional</em> pattern —
+ * HMAC-SHA256 of the raw request body, hex-encoded, compared in constant time against a
+ * signature your endpoint received — for tenants that have an out-of-band signing arrangement.
+ * It is <em>not</em> a documented platform guarantee.
+ *
+ * <p>Consequently, {@code verify} returning {@code false} does <em>not</em> by itself mean a
+ * request is forged: it also returns {@code false} when no {@code webhookSecret} is configured,
+ * when no signature is supplied, or when the platform simply sends no signature header. Do not
+ * reject deliveries on {@code verify() == false} unless you have confirmed your tenant signs
+ * webhooks with this exact scheme; otherwise authenticate deliveries another way (e.g. a secret
+ * path/query token) and use {@link #extractEvent(String)} to parse the body. Pass the signature
+ * header value verbatim (strip any {@code algo=} prefix yourself if one is present).
  */
 public class WebhookVerifier {
 
@@ -35,7 +43,8 @@ public class WebhookVerifier {
     }
 
     public boolean verify(String payload, String signature) {
-        if (webhookSecret == null || webhookSecret.isBlank() || signature == null || signature.isBlank()) {
+        if (payload == null || webhookSecret == null || webhookSecret.isBlank()
+                || signature == null || signature.isBlank()) {
             return false;
         }
         return verify(payload.getBytes(StandardCharsets.UTF_8), signature);

@@ -36,6 +36,12 @@ public class FieldResource extends BaseResource {
 
     public FieldDefinition create(CreateFieldRequest request, String accountId) {
         String id = accountId(accountId);
+        if (request == null || request.getType() == null || request.getType().isBlank()) {
+            throw new com.assinafy.sdk.exceptions.ValidationException("Field type is required");
+        }
+        if (request.getName() == null || request.getName().isBlank()) {
+            throw new com.assinafy.sdk.exceptions.ValidationException("Field name is required");
+        }
         String body = serialise(request);
         return call("Failed to create field definition",
                 () -> http.post("/accounts/" + id + "/fields", body),

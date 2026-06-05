@@ -52,15 +52,23 @@ public abstract class BaseResource {
         return value;
     }
 
-    protected <T> T call(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> type) {
+    /**
+     * Run {@code op} and translate any failure into the SDK exception hierarchy: existing
+     * {@link AssinafyException}s pass through unchanged; anything else is mapped by
+     * {@link ResponseHandler#toSdkException}. All the {@code call*} wrappers share this policy.
+     */
+    private <R> R execute(String label, ThrowingSupplier<R> op) {
         try {
-            HttpRawResponse response = request.get();
-            return ResponseHandler.handle(response, type);
+            return op.get();
         } catch (AssinafyException e) {
             throw e;
         } catch (Exception e) {
             throw ResponseHandler.toSdkException(e, label);
         }
+    }
+
+    protected <T> T call(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> type) {
+        return execute(label, () -> ResponseHandler.handle(request.get(), type));
     }
 
     protected <T> T callOptional(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> type) {
@@ -73,57 +81,49 @@ public abstract class BaseResource {
     }
 
     protected void callVoid(String label, ThrowingSupplier<HttpRawResponse> request) {
-        try {
-            HttpRawResponse response = request.get();
-            ResponseHandler.handleVoid(response);
-        } catch (AssinafyException e) {
-            throw e;
-        } catch (Exception e) {
-            throw ResponseHandler.toSdkException(e, label);
-        }
+        execute(label, () -> {
+            ResponseHandler.handleVoid(request.get());
+            return null;
+        });
     }
 
     protected byte[] callBinary(String label, ThrowingSupplier<byte[]> request) {
-        try {
-            return request.get();
-        } catch (AssinafyException e) {
-            throw e;
-        } catch (Exception e) {
-            throw ResponseHandler.toSdkException(e, label);
-        }
+        return execute(label, request);
     }
 
     protected <T> PaginatedResult<T> callList(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> elementType) {
-        try {
-            HttpRawResponse response = request.get();
-            return ResponseHandler.handleList(response, elementType);
-        } catch (AssinafyException e) {
-            throw e;
-        } catch (Exception e) {
-            throw ResponseHandler.toSdkException(e, label);
-        }
+        return execute(label, () -> ResponseHandler.handleList(request.get(), elementType));
     }
 
     protected Map<String, Object> callMap(String label, ThrowingSupplier<HttpRawResponse> request) {
-        try {
-            HttpRawResponse response = request.get();
-            return ResponseHandler.handleMap(response);
-        } catch (AssinafyException e) {
-            throw e;
-        } catch (Exception e) {
-            throw ResponseHandler.toSdkException(e, label);
-        }
+        return execute(label, () -> ResponseHandler.handleMap(request.get()));
     }
 
     protected String serialise(Object obj) {
         try {
             return ResponseHandler.MAPPER.writeValueAsString(obj);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to serialise request", e);
+            throw new AssinafyException("Failed to serialise request: " + e.getMessage(), Map.of(), e);
         }
+    }
+
+    /**
+     * Convert a request DTO into a mutable wire map using the DTO's own Jackson annotations
+     * ({@code @JsonProperty} names and {@code @JsonInclude(NON_NULL)}), so callers can apply a
+     * small post-transform without restating the field names. Returns an empty map for {@code null}.
+     */
+    protected Map<String, Object> toMap(Object dto) {
+        if (dto == null) return new java.util.HashMap<>();
+        return ResponseHandler.MAPPER.convertValue(dto, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
     }
 
     protected static String encode(String value) {
         return URLEncoder.encode(value != null ? value : "", StandardCharsets.UTF_8);
+    }
+
+    /** Append a URL-encoded {@code signer-access-code} query parameter, choosing {@code ?} or {@code &}. */
+    protected static String withAccessCode(String path, String signerAccessCode) {
+        String sep = path.indexOf('?') >= 0 ? "&" : "?";
+        return path + sep + "signer-access-code=" + encode(signerAccessCode);
     }
 }

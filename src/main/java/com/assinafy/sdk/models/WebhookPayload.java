@@ -2,6 +2,7 @@ package com.assinafy.sdk.models;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -29,9 +30,14 @@ public class WebhookPayload {
     @JsonProperty("message")
     private String message;
 
-    /** Event-specific extra data, or {@code null}. */
+    /**
+     * Event-specific extra data. Stored untyped because, while it is usually an object or
+     * {@code null}, some event types deliver an empty array ({@code []}) — binding that to a
+     * {@code Map} would fail the whole parse. {@link #getPayload()} exposes the common
+     * object-shaped case as a map (returning {@code null} for the array case).
+     */
     @JsonProperty("payload")
-    private Map<String, Object> payload;
+    private Object payloadRaw;
 
     /** Originating IP / user agent of the request that triggered the event. */
     @JsonProperty("origin")
@@ -75,8 +81,19 @@ public class WebhookPayload {
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
 
-    public Map<String, Object> getPayload() { return payload; }
-    public void setPayload(Map<String, Object> payload) { this.payload = payload; }
+    /** The {@code payload} when it is object-shaped, otherwise {@code null} (e.g. an empty array). */
+    @JsonIgnore
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getPayload() {
+        return payloadRaw instanceof Map ? (Map<String, Object>) payloadRaw : null;
+    }
+
+    @JsonIgnore
+    public void setPayload(Map<String, Object> payload) { this.payloadRaw = payload; }
+
+    /** The raw {@code payload} exactly as delivered: an object, an array, or {@code null}. */
+    @JsonIgnore
+    public Object getPayloadRaw() { return payloadRaw; }
 
     public Map<String, Object> getOrigin() { return origin; }
     public void setOrigin(Map<String, Object> origin) { this.origin = origin; }

@@ -19,7 +19,10 @@ import java.util.Map;
 public final class ResponseHandler {
 
     public static final ObjectMapper MAPPER = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            // The API occasionally emits "" for a typed-object field (e.g. an activity's
+            // origin) instead of null; coerce that to null rather than failing the whole parse.
+            .configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
 
     private ResponseHandler() {}
 
@@ -41,9 +44,11 @@ public final class ResponseHandler {
     }
 
     public static void handleVoid(HttpRawResponse response) {
-        if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
-            throw ApiException.fromResponse(response.getStatusCode(), response.getBody());
-        }
+        validateHttpStatus(response);
+        // Mirror the typed handlers: a 2xx HTTP response can still carry an in-body
+        // {status,...} error envelope. parseEnvelope throws on an error envelope and
+        // returns null for any success body, so the result is simply discarded.
+        parseEnvelope(response.getBody(), Void.class);
     }
 
     public static AssinafyException toSdkException(Exception e, String label) {

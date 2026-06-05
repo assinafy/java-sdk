@@ -1,5 +1,8 @@
 package com.assinafy.sdk.http;
 
+import com.assinafy.sdk.exceptions.ApiException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 
 import java.io.IOException;
@@ -15,7 +18,10 @@ public class OkHttpApiClient implements ApiHttpClient {
     private static final MediaType JPEG = MediaType.parse("image/jpeg");
     private static final byte[] JPEG_MAGIC = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
 
-    private static final String SDK_VERSION = "1.4.0";
+    /** Lenient mapper used only to extract an error message from a failed binary download. */
+    private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
+
+    private static final String SDK_VERSION = "1.4.1";
 
     private final OkHttpClient client;
     private final String baseUrl;
@@ -120,10 +126,28 @@ public class OkHttpApiClient implements ApiHttpClient {
                 .build();
         try (Response response = client.newCall(request).execute()) {
             ResponseBody responseBody = response.body();
+            // A non-2xx download returns the JSON error envelope as the body. Fail loudly
+            // instead of handing those bytes back as if they were the requested artifact.
+            if (!response.isSuccessful()) {
+                String body = responseBody != null ? responseBody.string() : null;
+                throw ApiException.fromResponse(response.code(), parseErrorBody(body));
+            }
             if (responseBody == null) {
                 return new byte[0];
             }
             return responseBody.bytes();
+        }
+    }
+
+    /** Parse a binary-endpoint error body into a Map (for a useful message), falling back to the raw text. */
+    private static Object parseErrorBody(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            return ERROR_MAPPER.readValue(body, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return body;
         }
     }
 

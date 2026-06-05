@@ -101,6 +101,12 @@ public class WebhookResource extends BaseResource {
         return callList("Failed to list webhook event types", () -> http.get("/webhooks/event-types"), WebhookEventTypeInfo.class).getData();
     }
 
+    /**
+     * List webhook delivery history ({@code GET /accounts/{id}/webhooks}). Besides paging, the
+     * endpoint supports the {@code event}, {@code delivered}, {@code from} and {@code to} filters;
+     * pass them via {@link ListParams.Builder#extra(String, Object)} using those exact keys, e.g.
+     * {@code ListParams.builder().extra("delivered", false).extra("event", "document_ready").build()}.
+     */
     public PaginatedResult<WebhookDispatch> listDispatches() {
         return listDispatches(new ListParams(), null);
     }

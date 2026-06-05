@@ -5,6 +5,78 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-06-05
+
+Third full audit pass, verified file-by-file against the documentation at
+`https://api.assinafy.com.br/v1/docs` **and** the live sandbox API. This is a
+non-breaking release focused on correctness, robustness and test coverage. The
+unit suite grew from 111 to **175 tests** (now including wire-level
+`OkHttpApiClient` tests backed by MockWebServer); the opt-in `LiveApiSmokeIT`
+still runs 16 flows and now also exercises binary downloads.
+
+### Fixed
+
+- **Binary downloads no longer return the error body as file bytes.**
+  `OkHttpApiClient.getBinary` ignored the HTTP status, so a 4xx/5xx (e.g.
+  downloading the `certificated` artifact of an unsigned document, or a missing
+  document) handed the JSON error envelope back as if it were the PDF/JPEG. It now
+  throws `ApiException` (with the server message) on any non-2xx, so
+  `documents().download/thumbnail/downloadPage` and
+  `signers().downloadSignature/downloadDocument` fail loudly instead of producing a
+  corrupt file. Verified against the live sandbox.
+- **`ResponseHandler.handleVoid`** now also honors an in-body error envelope
+  (`{status,…}`) on an HTTP 200, consistent with the typed/list/map handlers.
+- **`WebhookVerifier.verify(String, String)`** returns `false` (fail-closed) on a
+  `null` payload instead of throwing a `NullPointerException`.
+- **`BaseResource.serialise`** failures now throw `AssinafyException` instead of a
+  raw `RuntimeException`, so every SDK error is catchable as `AssinafyException`.
+
+### Added
+
+- **`AuthenticationException`** (401/403) and **`RateLimitException`** (429),
+  subtypes of `ApiException` — `ApiException.fromResponse` returns the most specific
+  type so callers can react to auth/rate-limit without switching on the status code.
+  Existing `catch (ApiException)` handlers are unaffected.
+- **`DocumentArtifacts.thumbnail`** — the inline thumbnail URL the API returns on
+  every document (previously silently dropped); reachable via
+  `getArtifacts().getThumbnail()` with no extra round-trip.
+- **`RenameTagRequest.builder().clearColor()`** — sends an explicit `"color": null`
+  so a tag's colour can be cleared (the documented tri-state); a plain builder still
+  leaves the colour unchanged.
+- **`WebhookPayload.getPayloadRaw()`** — the raw payload exactly as delivered
+  (object, array, or null).
+- `WebhookDispatch.resource` field.
+
+### Changed / hardened
+
+- The response `ObjectMapper` now enables `ACCEPT_EMPTY_STRING_AS_NULL_OBJECT`, so a
+  typed-object field returned as `""` (e.g. an activity `origin`) coerces to `null`
+  rather than failing the whole parse.
+- **`WebhookPayload.payload`** is now stored untyped internally so an empty-array
+  payload (`[]`, delivered by some event types) no longer breaks `extractEvent`.
+  `getPayload()` still returns `Map<String,Object>` (object-shaped, else `null`) —
+  no source change for callers.
+- `WebhookVerifier` Javadoc and the README webhook section now state plainly that the
+  platform does not document a signature scheme, and that `verify() == false` does
+  not by itself indicate forgery.
+- `FieldResource.create` validates the documented-required `type`/`name` client-side
+  (consistent with `TagResource`/`WebhookResource`/`SignerResource`).
+- Internal DRY/KISS cleanups with no behavioural change: a shared
+  `withAccessCode`/`execute`/`toMap` helper in `BaseResource`, single-source base-URL
+  normalisation, and the `certificated` literal sourced from the existing enums.
+
+### Documentation
+
+- Fixed two non-compiling README examples (`ResendEmailResponse` →
+  `ResendNotificationResponse`; `new CreateDocumentFromTemplateRequest(...)` → the
+  builder form) and documented previously-undocumented methods (`activities`,
+  `verify`, `isFullySigned`, `getSigningProgress`, `waitUntilReady`, `downloadPage`,
+  `estimateCostFromTemplate`, `estimateResendCost`).
+- Added Javadoc to the public `DocumentResource` methods; deprecated the
+  never-populated `DocumentDetails.download_url`/`download_final_url` (use
+  `getArtifacts()`); documented that signer `cpf`/`metadata` are sent for sibling-SDK
+  parity but not persisted/returned by the current API.
+
 ## [1.4.0] - 2026-05-27
 
 Second full audit pass, verified file-by-file against the documentation at

@@ -6,6 +6,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WebhookDispatch {
 
+    /** Resource type discriminator; always {@code activity_dispatching_history} when present. */
+    @JsonProperty("resource")
+    private String resource;
+
     @JsonProperty("id")
     private String id;
 
@@ -40,6 +44,9 @@ public class WebhookDispatch {
     private String updatedAt;
 
     public WebhookDispatch() {}
+
+    public String getResource() { return resource; }
+    public void setResource(String resource) { this.resource = resource; }
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }

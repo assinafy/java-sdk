@@ -17,9 +17,18 @@ public class CreateSignerRequest {
     @JsonProperty("whatsapp_phone_number")
     private String whatsappPhoneNumber;
 
+    /**
+     * Brazilian CPF (non-digits are stripped before sending). Sent for parity with the PHP/TS
+     * SDKs; note the documented signer contract is {@code full_name}/{@code email}/
+     * {@code whatsapp_phone_number} only, and the current API does not persist or return CPF.
+     */
     @JsonProperty("cpf")
     private String cpf;
 
+    /**
+     * Arbitrary metadata. Sent as-is; note the current signer API does not persist or return
+     * metadata (it is silently ignored), so do not rely on reading it back from a {@code Signer}.
+     */
     @JsonProperty("metadata")
     private Map<String, Object> metadata;
 

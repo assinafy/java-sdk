@@ -1,5 +1,6 @@
 package com.assinafy.sdk.helper;
 
+import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.http.HttpRawResponse;
 
@@ -86,6 +87,10 @@ public class MockApiHttpClient implements ApiHttpClient {
     public byte[] getBinary(String path) throws IOException {
         captured.add(new CapturedRequest("GET_BINARY", path, null, null, null));
         HttpRawResponse response = next();
+        // Mirror OkHttpApiClient: a non-2xx download is an error, not file bytes.
+        if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
+            throw ApiException.fromResponse(response.getStatusCode(), response.getBody());
+        }
         return response.getBody() != null ? response.getBody().getBytes() : new byte[0];
     }
 

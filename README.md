@@ -15,7 +15,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.4.0</version>
+    <version>1.4.1</version>
 </dependency>
 ```
 
@@ -129,12 +129,32 @@ client.documents().delete(documentId);
 // Create from template
 DocumentDetails doc = client.documents().createFromTemplate(
     templateId,
-    new CreateDocumentFromTemplateRequest(...),
+    CreateDocumentFromTemplateRequest.builder()
+        .name("contract.pdf")
+        .signers(List.of(
+            TemplateSigner.builder().roleId("role-id").id(signerId).build()
+        ))
+        .build(),
     accountId
 );
 
+// Estimate the credit cost before creating
+Map<String, Object> cost = client.documents().estimateCostFromTemplate(templateId, request, accountId);
+
 // Get document statuses
 List<DocumentStatusInfo> statuses = client.documents().getStatuses();
+
+// Wait for processing to finish, then download artifacts (PDF/JPEG bytes).
+// Download throws ApiException if the artifact is unavailable (e.g. not yet signed).
+client.documents().waitUntilReady(documentId);
+byte[] page = client.documents().downloadPage(documentId, pageId);
+String thumbUrl = details.getArtifacts().getThumbnail(); // inline URL, no extra round-trip
+
+// Activity log, verification and signing-progress helpers
+List<DocumentActivity> activity = client.documents().activities(documentId);
+Map<String, Object> verification = client.documents().verify(signatureHash); // { is_valid, ... }
+boolean done = client.documents().isFullySigned(documentId);
+SigningProgress progress = client.documents().getSigningProgress(documentId); // signed/total/pending/%
 ```
 
 ### Signers
@@ -206,8 +226,9 @@ Map<String, Object> cost = client.assignments().estimateCost(documentId, request
 // Reset expiration
 Assignment updated = client.assignments().resetExpiration(documentId, assignmentId, "2025-06-30T00:00:00Z");
 
-// Resend notification
-ResendEmailResponse res = client.assignments().resendNotification(documentId, assignmentId, signerId);
+// Resend notification (and estimate its cost first)
+Map<String, Object> resendCost = client.assignments().estimateResendCost(documentId, assignmentId, signerId);
+ResendNotificationResponse res = client.assignments().resendNotification(documentId, assignmentId, signerId);
 
 // Signer-side decline (requires signer-access-code and a non-blank reason)
 Map<String, Object> declined = client.assignments().decline(
@@ -315,6 +336,7 @@ Workspace tags can be created, renamed, and deleted, and attached to documents.
 Tag tag = client.tags().create(CreateTagRequest.builder().name("Contracts").color("FF0000").build());
 PaginatedResult<Tag> tags = client.tags().list();
 client.tags().rename(tag.getId(), RenameTagRequest.builder().name("2026 Contracts").build());
+client.tags().rename(tag.getId(), RenameTagRequest.builder().clearColor().build()); // sends color:null to clear
 client.tags().delete(tag.getId());          // 409 if the tag is still attached…
 client.tags().delete(tag.getId(), true);    // …pass force=true to detach + delete
 
@@ -434,18 +456,26 @@ result.getSignerIds();     // List<String>
 
 ## Webhook Verification
 
+> **Caution:** the Assinafy webhook contract does **not** currently publish a signature header or a
+> signing scheme, and the subscription has no place to register a shared secret. `verify(...)`
+> implements the conventional `HMAC-SHA256(raw body)` pattern for tenants that have an out-of-band
+> signing arrangement — it is not a documented platform guarantee. A `verify() == false` result does
+> **not** by itself mean a request is forged (it is also `false` when no secret/signature is present).
+> Do **not** reject deliveries on `verify() == false` unless you have confirmed your tenant signs with
+> this exact scheme; otherwise authenticate webhooks another way and just parse the body.
+
 ```java
 WebhookVerifier verifier = client.webhookVerifier();
 
-// In your webhook handler:
-if (!verifier.verify(payload, signatureHeader)) {
-    // Invalid signature
-    return Response.status(401).build();
-}
-
+// Parse the event (always safe):
 WebhookPayload event = verifier.extractEvent(payload);
 String eventType = verifier.getEventType(event);
 Map<String, Object> eventData = verifier.getEventData(event);
+
+// Only gate on verify() if your tenant uses the HMAC-SHA256(raw-body) scheme:
+if (!verifier.verify(payload, signatureHeader)) {
+    return Response.status(401).build();
+}
 ```
 
 ## Error Handling
@@ -459,8 +489,14 @@ try {
     // Invalid input (e.g., file too large, invalid format)
     System.err.println("Validation failed: " + e.getMessage());
     System.err.println("Errors: " + e.getErrors());
+} catch (AuthenticationException e) {
+    // 401/403 — missing, invalid, or insufficiently-privileged credential (subtype of ApiException)
+    System.err.println("Auth error " + e.getStatusCode() + ": " + e.getMessage());
+} catch (RateLimitException e) {
+    // 429 — back off and retry (subtype of ApiException)
+    System.err.println("Rate limited: " + e.getMessage());
 } catch (ApiException e) {
-    // API returned an error
+    // Any other API error
     System.err.println("API error " + e.getStatusCode() + ": " + e.getMessage());
     System.err.println("Response data: " + e.getResponseData());
 } catch (NetworkException e) {
@@ -510,13 +546,25 @@ ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
 mvn package
 ```
 
+The default `mvn test` run executes 175 offline unit tests (including wire-level
+`OkHttpApiClient` tests backed by MockWebServer).
+
+```bash
+# Run the live smoke test against the sandbox
+ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
+    ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1  \
+    mvn test -Dtest=LiveApiSmokeIT
+```
+
 The live smoke test (`src/test/java/com/assinafy/sdk/it/LiveApiSmokeIT.java`)
 is excluded from the default `mvn test` run (Surefire skips classes whose names
-end in `IT`). When enabled, it runs 16 read/write flows: it exercises the read
-endpoints, uploads a tiny PDF, estimates an assignment cost, appends/lists/detaches
-a document tag, validates a field value, reads the masked API key, and creates +
-deletes ephemeral signers and a workspace tag. No emails are sent at any point and
-every created resource is cleaned up.
+end in `IT`) and honors the optional `ASSINAFY_BASE_URL` (defaults to production).
+When enabled, it runs 16 read/write flows: it exercises the read endpoints, uploads
+a tiny PDF, downloads its artifacts (and asserts an unavailable artifact throws),
+estimates an assignment cost, appends/lists/detaches a document tag, validates a
+field value, reads the masked API key, and creates + deletes ephemeral signers and
+a workspace tag. No emails are sent at any point and every created resource is
+cleaned up.
 
 ## License
 

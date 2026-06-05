@@ -65,7 +65,18 @@ public class TagResource extends BaseResource {
     public Tag rename(String tagId, RenameTagRequest request, String accountId) {
         String id = accountId(accountId);
         String tid = requireId(tagId, "Tag ID");
-        String body = serialise(request);
+        // Build the body explicitly so the documented tri-state for `color` is honoured:
+        // omit = leave unchanged, value = set, explicit null (clearColor) = clear.
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        if (request != null) {
+            if (request.getName() != null) payload.put("name", request.getName());
+            if (request.getColor() != null) {
+                payload.put("color", request.getColor());
+            } else if (request.isClearColor()) {
+                payload.put("color", null);
+            }
+        }
+        String body = serialise(payload);
         return call("Failed to rename tag",
                 () -> http.put("/accounts/" + id + "/tags/" + tid, body),
                 Tag.class);

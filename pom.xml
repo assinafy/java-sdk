@@ -6,7 +6,7 @@
 
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.4.0</version>
+    <version>1.4.1</version>
     <packaging>jar</packaging>
 
     <name>Assinafy Java SDK</name>

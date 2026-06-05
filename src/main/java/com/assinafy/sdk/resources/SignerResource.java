@@ -7,6 +7,7 @@ import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
+import com.assinafy.sdk.models.enums.DocumentArtifactName;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.UpdateSignerRequest;
@@ -19,6 +20,7 @@ import java.util.regex.Pattern;
 public class SignerResource extends BaseResource {
 
     private static final Pattern EMAIL_RE = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    private static final String DEFAULT_ARTIFACT = DocumentArtifactName.CERTIFICATED.getValue();
 
     public SignerResource(ApiHttpClient http, String defaultAccountId, Logger logger) {
         super(http, defaultAccountId, logger);
@@ -58,7 +60,7 @@ public class SignerResource extends BaseResource {
 
         logger.info("Creating signer", Map.of("hasEmail", hasEmail));
         try {
-            String body = serialise(normaliseSignerRequest(request));
+            String body = serialise(signerBody(request));
             return call("Failed to create signer", () -> http.post("/accounts/" + id + "/signers", body), Signer.class);
         } catch (ApiException e) {
             if (e.getStatusCode() == 409 && hasEmail) {
@@ -103,7 +105,7 @@ public class SignerResource extends BaseResource {
     public Signer update(String signerId, UpdateSignerRequest request, String accountId) {
         String id = accountId(accountId);
         String sid = requireId(signerId, "Signer ID");
-        String body = serialise(normaliseUpdateRequest(request));
+        String body = serialise(signerBody(request));
         return call("Failed to update signer", () -> http.put("/accounts/" + id + "/signers/" + sid, body), Signer.class);
     }
 
@@ -143,30 +145,23 @@ public class SignerResource extends BaseResource {
         }
     }
 
-    private Map<String, Object> normaliseSignerRequest(CreateSignerRequest req) {
-        Map<String, Object> map = new HashMap<>();
-        if (req.getFullName() != null) map.put("full_name", req.getFullName());
-        if (req.getEmail() != null) map.put("email", req.getEmail());
-        String phone = req.getWhatsappPhoneNumber();
-        if (phone != null) map.put("whatsapp_phone_number", phone);
-        if (req.getCpf() != null) map.put("cpf", req.getCpf().replaceAll("\\D", ""));
-        if (req.getMetadata() != null) map.put("metadata", req.getMetadata());
-        return map;
-    }
-
-    private Map<String, Object> normaliseUpdateRequest(UpdateSignerRequest req) {
-        Map<String, Object> map = new HashMap<>();
-        if (req.getFullName() != null) map.put("full_name", req.getFullName());
-        if (req.getEmail() != null) map.put("email", req.getEmail());
-        if (req.getWhatsappPhoneNumber() != null) map.put("whatsapp_phone_number", req.getWhatsappPhoneNumber());
-        if (req.getCpf() != null) map.put("cpf", req.getCpf().replaceAll("\\D", ""));
-        return map;
+    /**
+     * Serialise a signer create/update DTO to a wire map using the DTO's own {@code @JsonProperty}
+     * names (single source of truth), then digit-strip {@code cpf} to mirror the PHP/TS SDKs.
+     */
+    private Map<String, Object> signerBody(Object dto) {
+        Map<String, Object> body = toMap(dto);
+        Object cpf = body.get("cpf");
+        if (cpf instanceof String s) {
+            body.put("cpf", s.replaceAll("\\D", ""));
+        }
+        return body;
     }
 
     public Signer getSelf(String signerAccessCode) {
         requireId(signerAccessCode, "Signer access code");
         return call("Failed to fetch signer self info",
-                () -> http.get("/signers/self?signer-access-code=" + encode(signerAccessCode)),
+                () -> http.get(withAccessCode("/signers/self", signerAccessCode)),
                 Signer.class);
     }
 
@@ -191,7 +186,7 @@ public class SignerResource extends BaseResource {
         Map<String, Object> body = data != null ? new HashMap<>(data) : new HashMap<>();
         String json = serialise(body);
         callVoid("Failed to confirm signer data",
-                () -> http.put("/documents/" + docId + "/signers/confirm-data?signer-access-code=" + encode(signerAccessCode), json));
+                () -> http.put(withAccessCode("/documents/" + docId + "/signers/confirm-data", signerAccessCode), json));
     }
 
     public Map<String, Object> verifyEmail(String signerAccessCode, String verificationCode) {
@@ -211,7 +206,7 @@ public class SignerResource extends BaseResource {
         logger.info("Uploading signature", Map.of("signerAccessCode", signerAccessCode, "type", type));
         callVoid("Failed to upload signature",
                 () -> http.postSignature(
-                        "/signature?signer-access-code=" + encode(signerAccessCode) + "&type=" + encode(type),
+                        withAccessCode("/signature", signerAccessCode) + "&type=" + encode(type),
                         imageData));
     }
 
@@ -219,14 +214,14 @@ public class SignerResource extends BaseResource {
         requireId(signerAccessCode, "Signer access code");
         requireId(type, "Signature type");
         return callBinary("Failed to download signature",
-                () -> http.getBinary("/signature/" + encode(type) + "?signer-access-code=" + encode(signerAccessCode)));
+                () -> http.getBinary(withAccessCode("/signature/" + encode(type), signerAccessCode)));
     }
 
     public Map<String, Object> getCurrentDocument(String signerId, String signerAccessCode) {
         String sid = requireId(signerId, "Signer ID");
         requireId(signerAccessCode, "Signer access code");
         return callMap("Failed to fetch signer's current document",
-                () -> http.get("/signers/" + sid + "/document?signer-access-code=" + encode(signerAccessCode)));
+                () -> http.get(withAccessCode("/signers/" + sid + "/document", signerAccessCode)));
     }
 
     public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode) {
@@ -250,12 +245,12 @@ public class SignerResource extends BaseResource {
     public byte[] downloadDocument(String signerId, String documentId, String artifactName, String signerAccessCode) {
         String sid = requireId(signerId, "Signer ID");
         String docId = requireId(documentId, "Document ID");
-        String artifact = artifactName != null ? artifactName : "certificated";
+        String artifact = artifactName != null ? artifactName : DEFAULT_ARTIFACT;
         requireId(signerAccessCode, "Signer access code");
         return callBinary("Failed to download signer document",
-                () -> http.getBinary(
-                        "/signers/" + sid + "/documents/" + docId + "/download/" + encode(artifact)
-                                + "?signer-access-code=" + encode(signerAccessCode)));
+                () -> http.getBinary(withAccessCode(
+                        "/signers/" + sid + "/documents/" + docId + "/download/" + encode(artifact),
+                        signerAccessCode)));
     }
 
     public Map<String, Object> signMultiple(String signerAccessCode, List<String> documentIds) {
@@ -265,7 +260,7 @@ public class SignerResource extends BaseResource {
         }
         String json = serialise(Map.of("document_ids", documentIds));
         return callMap("Failed to sign multiple documents",
-                () -> http.put("/signers/documents/sign-multiple?signer-access-code=" + encode(signerAccessCode), json));
+                () -> http.put(withAccessCode("/signers/documents/sign-multiple", signerAccessCode), json));
     }
 
     public Map<String, Object> declineMultiple(String signerAccessCode, List<String> documentIds, String declineReason) {
@@ -279,6 +274,6 @@ public class SignerResource extends BaseResource {
         body.put("decline_reason", declineReason);
         String json = serialise(body);
         return callMap("Failed to decline multiple documents",
-                () -> http.put("/signers/documents/decline-multiple?signer-access-code=" + encode(signerAccessCode), json));
+                () -> http.put(withAccessCode("/signers/documents/decline-multiple", signerAccessCode), json));
     }
 }

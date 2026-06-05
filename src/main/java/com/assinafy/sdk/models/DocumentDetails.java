@@ -26,6 +26,7 @@ public class DocumentDetails {
     @JsonProperty("assignment")
     private Assignment assignment;
 
+    // Legacy fields the current API does not populate (always null); use artifacts for links.
     @JsonProperty("download_url")
     private String downloadUrl;
 
@@ -83,9 +84,19 @@ public class DocumentDetails {
     public Assignment getAssignment() { return assignment; }
     public void setAssignment(Assignment assignment) { this.assignment = assignment; }
 
+    /**
+     * @deprecated The current API does not populate this (always {@code null}). Download links live
+     * under {@link #getArtifacts()} ({@code original}/{@code thumbnail}/{@code certificated}/…).
+     */
+    @Deprecated
     public String getDownloadUrl() { return downloadUrl; }
     public void setDownloadUrl(String downloadUrl) { this.downloadUrl = downloadUrl; }
 
+    /**
+     * @deprecated The current API does not populate this (always {@code null}). Use
+     * {@link #getArtifacts()} for download links.
+     */
+    @Deprecated
     public String getDownloadFinalUrl() { return downloadFinalUrl; }
     public void setDownloadFinalUrl(String downloadFinalUrl) { this.downloadFinalUrl = downloadFinalUrl; }
 

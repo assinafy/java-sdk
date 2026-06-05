@@ -1,6 +1,7 @@
 package com.assinafy.sdk.it;
 
 import com.assinafy.sdk.AssinafyClient;
+import com.assinafy.sdk.AssinafyClientOptions;
 import com.assinafy.sdk.models.ApiKey;
 import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.DocumentStatusInfo;
@@ -63,7 +64,13 @@ class LiveApiSmokeIT {
                 apiKey != null && !apiKey.isBlank() && accountId != null && !accountId.isBlank(),
                 "Set ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID to run live API tests"
         );
-        client = AssinafyClient.create(apiKey, accountId);
+        // Optional: point at the sandbox (or any base URL) via ASSINAFY_BASE_URL; defaults to production.
+        String baseUrl = System.getenv("ASSINAFY_BASE_URL");
+        AssinafyClientOptions.Builder opts = AssinafyClientOptions.builder().apiKey(apiKey).accountId(accountId);
+        if (baseUrl != null && !baseUrl.isBlank()) {
+            opts.baseUrl(baseUrl);
+        }
+        client = new AssinafyClient(opts.build());
     }
 
     @Test
@@ -120,13 +127,15 @@ class LiveApiSmokeIT {
     @Test
     @Order(7)
     void getsWebhookSubscriptionWithoutErrors() {
-        // Returns null when no subscription exists, otherwise a subscription object.
-        var sub = client.webhooks().get();
-        // No assertion on value — just no exception.
-        assertThat(true).isTrue();
-        if (sub != null) {
-            assertThat(sub).isNotNull();
-        }
+        // get() maps a 404 to null (callOptional); otherwise it returns a well-formed subscription.
+        assertThatCode(() -> {
+            var sub = client.webhooks().get();
+            if (sub != null) {
+                // When present, the documented fields are populated (events is always returned).
+                assertThat(sub.getEvents()).isNotNull();
+                assertThat(sub.getIsActive()).isNotNull();
+            }
+        }).doesNotThrowAnyException();
     }
 
     @Test
@@ -165,6 +174,20 @@ class LiveApiSmokeIT {
             var details = client.documents().details(doc.getId());
             assertThat(details.getId()).isEqualTo(doc.getId());
             assertThat(details.getTags()).as("tags are always present (possibly empty)").isNotNull();
+            assertThat(details.getArtifacts()).isNotNull();
+            assertThat(details.getArtifacts().getThumbnail())
+                    .as("the inline thumbnail artifact URL is exposed").isNotBlank();
+
+            // Binary downloads: the available 'original' artifact returns real PDF bytes...
+            byte[] original = client.documents().download(doc.getId(), "original");
+            assertThat(original).isNotEmpty();
+            assertThat(new String(original, 0, Math.min(5, original.length))).startsWith("%PDF");
+            assertThat(client.documents().thumbnail(doc.getId())).isNotEmpty();
+
+            // ...while an unavailable artifact (no certificate yet) now throws instead of
+            // silently returning the JSON error body as bytes (the getBinary status-check fix).
+            assertThatThrownBy(() -> client.documents().download(doc.getId(), "certificated"))
+                    .isInstanceOf(com.assinafy.sdk.exceptions.ApiException.class);
 
             // Document tags: append, list, detach (auto-creates the workspace tag by name).
             client.documents().appendTags(doc.getId(), List.of(tagName));

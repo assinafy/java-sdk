@@ -9,6 +9,10 @@ public class DocumentArtifacts {
     @JsonProperty("original")
     private String original;
 
+    /** Thumbnail image URL. Returned inline on document objects (alongside {@code original}). */
+    @JsonProperty("thumbnail")
+    private String thumbnail;
+
     @JsonProperty("certificated")
     private String certificated;
 
@@ -22,6 +26,9 @@ public class DocumentArtifacts {
 
     public String getOriginal() { return original; }
     public void setOriginal(String original) { this.original = original; }
+
+    public String getThumbnail() { return thumbnail; }
+    public void setThumbnail(String thumbnail) { this.thumbnail = thumbnail; }
 
     public String getCertificated() { return certificated; }
     public void setCertificated(String certificated) { this.certificated = certificated; }

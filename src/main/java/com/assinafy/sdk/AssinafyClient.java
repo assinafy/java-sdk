@@ -100,9 +100,8 @@ public class AssinafyClient {
     }
 
     private static ApiHttpClient buildHttp(AssinafyClientOptions options) {
-        String baseUrl = normaliseBaseUrl(
-                options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL
-        );
+        // OkHttpApiClient normalises the base URL in its constructor (single source of truth).
+        String baseUrl = options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL;
         return new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
     }
 
@@ -167,8 +166,4 @@ public class AssinafyClient {
     public PublicDocumentResource publicDocuments() { return publicDocuments; }
     public ApiKeyResource apiKeys() { return apiKeys; }
     public WebhookVerifier webhookVerifier() { return webhookVerifier; }
-
-    private static String normaliseBaseUrl(String url) {
-        return url != null && url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-    }
 }
