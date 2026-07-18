@@ -30,6 +30,11 @@ public class FieldResource extends BaseResource {
         super(http, defaultAccountId);
     }
 
+    /**
+     * Create a field definition ({@code POST /accounts/{accountId}/fields}). {@code type} and
+     * {@code name} are required; {@code regex} and {@code is_required} are optional. Returns the
+     * created {@link FieldDefinition}.
+     */
     public FieldDefinition create(CreateFieldRequest request) {
         return create(request, null);
     }
@@ -48,6 +53,7 @@ public class FieldResource extends BaseResource {
                 FieldDefinition.class);
     }
 
+    /** List field definitions ({@code GET /accounts/{accountId}/fields}), paginated. */
     public PaginatedResult<FieldDefinition> list() {
         return list(new ListParams(), null);
     }
@@ -64,6 +70,7 @@ public class FieldResource extends BaseResource {
                 FieldDefinition.class);
     }
 
+    /** Fetch a field definition by ID ({@code GET /accounts/{accountId}/fields/{fieldId}}). */
     public FieldDefinition get(String fieldId) {
         return get(fieldId, null);
     }
@@ -76,6 +83,10 @@ public class FieldResource extends BaseResource {
                 FieldDefinition.class);
     }
 
+    /**
+     * Update a field definition ({@code PUT /accounts/{accountId}/fields/{fieldId}}) and return the
+     * updated {@link FieldDefinition}.
+     */
     public FieldDefinition update(String fieldId, UpdateFieldRequest request) {
         return update(fieldId, request, null);
     }
@@ -89,6 +100,7 @@ public class FieldResource extends BaseResource {
                 FieldDefinition.class);
     }
 
+    /** Delete a field definition ({@code DELETE /accounts/{accountId}/fields/{fieldId}}). */
     public void delete(String fieldId) {
         delete(fieldId, null);
     }
@@ -116,7 +128,7 @@ public class FieldResource extends BaseResource {
         String body = serialise(payload);
         String path = "/accounts/" + id + "/fields/" + fid + "/validate";
         if (signerAccessCode != null && !signerAccessCode.isBlank()) {
-            path = path + "?signer-access-code=" + encode(signerAccessCode);
+            path = withAccessCode(path, signerAccessCode);
         }
         String finalPath = path;
         return call("Failed to validate field",
@@ -137,7 +149,7 @@ public class FieldResource extends BaseResource {
         String body = serialise(entries != null ? entries : List.of());
         String path = "/accounts/" + id + "/fields/validate-multiple";
         if (signerAccessCode != null && !signerAccessCode.isBlank()) {
-            path = path + "?signer-access-code=" + encode(signerAccessCode);
+            path = withAccessCode(path, signerAccessCode);
         }
         String finalPath = path;
         return callList("Failed to validate fields",

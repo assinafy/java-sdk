@@ -65,6 +65,17 @@ class AssignmentResourceExtraTest {
     }
 
     @Test
+    void listHitsAssignmentsPathWithPaging() {
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"a1\",\"method\":\"virtual\"}]}");
+        var result = assignments.list(com.assinafy.sdk.request.ListParams.builder().page(2).perPage(10).build());
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/assignments");
+        assertThat(http.lastCaptured().getQueryParams()).containsEntry("page", 2).containsEntry("per-page", 10);
+        assertThat(result.getData()).hasSize(1);
+        assertThat(result.getData().get(0).getId()).isEqualTo("a1");
+    }
+
+    @Test
     void resetExpirationSendsExpiresAtWhenProvided() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"a1\",\"expires_at\":\"2030-08-03T21:00:00Z\"}}");
         Assignment a = assignments.resetExpiration("d1", "a1", "2030-08-03T21:00:00Z");

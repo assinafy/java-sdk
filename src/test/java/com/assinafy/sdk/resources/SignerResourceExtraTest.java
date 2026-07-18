@@ -26,6 +26,47 @@ class SignerResourceExtraTest {
     }
 
     @Test
+    void searchDocumentsHitsSearchPathWithAccessCode() {
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"d1\"}]}");
+        PaginatedResult<DocumentListItem> res = signers.searchDocuments("s1", "code1", "invoice");
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/signers/s1/documents/search");
+        assertThat(http.lastCaptured().getQueryParams())
+                .containsEntry("signer-access-code", "code1")
+                .containsEntry("search", "invoice");
+        assertThat(res.getData()).hasSize(1);
+    }
+
+    @Test
+    void uploadSignatureOmitsTypeWhenBlankAndAppendsReuse() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}");
+        signers.uploadSignature("code1", null, new byte[]{1, 2, 3}, true);
+        // type omitted (null); reuse appended.
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/signature?signer-access-code=code1&reuse=true");
+    }
+
+    @Test
+    void confirmSignerDataReturnsSigner() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s1\",\"full_name\":\"Normalised\"}}");
+        Signer s = signers.confirmSignerData("d1", "code1", Map.of("full_name", "Normalised"));
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(http.lastCaptured().getPath())
+                .isEqualTo("/documents/d1/signers/confirm-data?signer-access-code=code1");
+        assertThat(s.getFullName()).isEqualTo("Normalised");
+    }
+
+    @Test
+    void createReturnsExistingSignerWhenApiRejectsDuplicateEmailWith400() {
+        // Live API returns 400 (not 409) for a duplicate email. Pre-check (findByEmail via search)
+        // misses here (empty), then the POST 400s; the SDK re-queries and returns the existing signer.
+        http.enqueue(200, "{\"status\":200,\"data\":[]}");                       // pre-check findByEmail -> none
+        http.enqueue(400, "{\"status\":400,\"message\":\"Um signatário com este e-mail já existe.\"}"); // POST create -> duplicate
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"Dup\",\"email\":\"dup@x.com\"}]}"); // re-query finds it
+        Signer s = signers.create(CreateSignerRequest.builder().fullName("Dup").email("dup@x.com").build());
+        assertThat(s.getId()).isEqualTo("existing");
+    }
+
+    @Test
     void uploadSignatureEncodesAccessCodeAndType() {
         http.enqueue(200, "{\"status\":200,\"data\":[]}");
         signers.uploadSignature("a b", "signature", new byte[]{1, 2, 3});
@@ -80,13 +121,15 @@ class SignerResourceExtraTest {
     }
 
     @Test
-    void verifyEmailPostsHyphenatedBodyKeys() {
+    void verifyEmailSendsAccessCodeAsQueryParamAndCodeInBody() {
+        // Auth via signer-access-code query param; the body carries only verification-code.
         http.enqueue(200, "{\"message\":\"Code verified successfully\"}");
         Map<String, Object> result = signers.verifyEmail("code1", "123456");
         assertThat(http.lastCaptured().getMethod()).isEqualTo("POST");
-        assertThat(http.lastCaptured().getPath()).isEqualTo("/verify");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/verify?signer-access-code=code1");
         String body = http.lastCaptured().getJsonBody();
-        assertThat(body).contains("\"signer-access-code\"").contains("\"verification-code\"");
+        assertThat(body).contains("\"verification-code\"").contains("123456");
+        assertThat(body).doesNotContain("signer-access-code");
         assertThat(result).containsEntry("message", "Code verified successfully");
     }
 

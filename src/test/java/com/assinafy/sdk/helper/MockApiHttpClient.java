@@ -72,14 +72,32 @@ public class MockApiHttpClient implements ApiHttpClient {
     }
 
     @Override
+    public HttpRawResponse postFile(String path, String partName, String fileName, byte[] data, String contentType) throws IOException {
+        captured.add(new CapturedRequest("POST_FILE", path, null, null, new MultipartData(fileName, data, partName, contentType)));
+        return next();
+    }
+
+    @Override
     public HttpRawResponse put(String path, String jsonBody) throws IOException {
         captured.add(new CapturedRequest("PUT", path, null, jsonBody, null));
         return next();
     }
 
     @Override
+    public HttpRawResponse patch(String path, String jsonBody) throws IOException {
+        captured.add(new CapturedRequest("PATCH", path, null, jsonBody, null));
+        return next();
+    }
+
+    @Override
     public HttpRawResponse delete(String path) throws IOException {
         captured.add(new CapturedRequest("DELETE", path, null, null, null));
+        return next();
+    }
+
+    @Override
+    public HttpRawResponse delete(String path, String jsonBody) throws IOException {
+        captured.add(new CapturedRequest("DELETE", path, null, jsonBody, null));
         return next();
     }
 

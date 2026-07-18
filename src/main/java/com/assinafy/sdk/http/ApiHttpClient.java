@@ -13,9 +13,20 @@ public interface ApiHttpClient {
 
     HttpRawResponse postMultipart(String path, String fileName, byte[] fileData, String name, String metadata) throws IOException;
 
+    /**
+     * Single-file {@code multipart/form-data} upload with a caller-chosen part name and content
+     * type (e.g. account-logo uploads use part {@code file} with an image media type).
+     */
+    HttpRawResponse postFile(String path, String partName, String fileName, byte[] data, String contentType) throws IOException;
+
     HttpRawResponse put(String path, String jsonBody) throws IOException;
 
+    HttpRawResponse patch(String path, String jsonBody) throws IOException;
+
     HttpRawResponse delete(String path) throws IOException;
+
+    /** DELETE with a JSON request body (e.g. account deletion with {@code {"force": true}}). */
+    HttpRawResponse delete(String path, String jsonBody) throws IOException;
 
     byte[] getBinary(String path) throws IOException;
 

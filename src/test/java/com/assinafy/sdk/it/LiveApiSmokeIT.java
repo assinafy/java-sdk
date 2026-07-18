@@ -184,6 +184,15 @@ class LiveApiSmokeIT {
             assertThat(new String(original, 0, Math.min(5, original.length))).startsWith("%PDF");
             assertThat(client.documents().thumbnail(doc.getId())).isNotEmpty();
 
+            // Rename (PATCH /documents/{id}) round-trips through the SDK.
+            var renamed = client.documents().rename(doc.getId(), "sdk-it-renamed.pdf");
+            assertThat(renamed.getName()).isEqualTo("sdk-it-renamed.pdf");
+
+            // Lightweight search (GET /accounts/{id}/documents/search) returns a compact page.
+            var searchResult = client.documents().search(
+                    ListParams.builder().search("sdk-it-renamed").perPage(10).build());
+            assertThat(searchResult.getData()).as("search returns a (possibly empty) page").isNotNull();
+
             // ...while an unavailable artifact (no certificate yet) now throws instead of
             // silently returning the JSON error body as bytes (the getBinary status-check fix).
             assertThatThrownBy(() -> client.documents().download(doc.getId(), "certificated"))
@@ -320,6 +329,25 @@ class LiveApiSmokeIT {
                 // Best-effort cleanup
             }
         }
+    }
+
+    @Test
+    @Order(17)
+    void getsAccountTheme() {
+        var theme = client.workspaces().getTheme(accountId);
+        assertThat(theme).isNotNull();
+        // account_name is always populated; colors/logo may be null depending on branding.
+        assertThat(theme.getAccountName()).isNotBlank();
+    }
+
+    @Test
+    @Order(18)
+    void listAssignmentsIsUnavailableToApiKeyClients() {
+        // Documented limitation: GET /v1/assignments resolves the account from an interactive
+        // session and rejects API-key auth with 400 "account context required". This guards that
+        // the SDK surfaces the endpoint but the caller gets a clear, typed error under API-key auth.
+        assertThatThrownBy(() -> client.assignments().list(ListParams.builder().perPage(1).build()))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ApiException.class);
     }
 
     /** Returns a tiny syntactically valid one-page PDF for upload testing. */

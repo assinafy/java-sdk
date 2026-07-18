@@ -105,6 +105,22 @@ public class AssinafyClient {
         return new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
     }
 
+    /**
+     * High-level convenience flow that uploads a document and requests signatures in one call.
+     *
+     * <p>Performs, in order: (1) upload the PDF ({@code documents().upload}); (2) unless
+     * {@link UploadAndRequestSignaturesRequest#isWaitForReady()} is false, block polling until the
+     * document is ready (default; may take seconds); (3) create one persistent {@code Signer}
+     * resource per {@link UploadAndRequestSignaturesRequest.SignerEntry} (existing signers are
+     * reused by email); (4) create a {@code virtual} assignment for those signers, which sends the
+     * signature-request notifications.
+     *
+     * <p>This method has externally-visible side effects (it creates signer resources and dispatches
+     * notifications) and blocks by default. At least one signer is required.
+     *
+     * @return the created document, the assignment, and the signer IDs
+     * @throws ValidationException if no signers are supplied
+     */
     public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request) {
         if (request.getSigners() == null || request.getSigners().isEmpty()) {
             throw new ValidationException("At least one signer is required");

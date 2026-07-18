@@ -36,6 +36,15 @@ public class WebhookResource extends BaseResource {
         super(http);
     }
 
+    /**
+     * Create or update the account's webhook subscription
+     * ({@code PUT /accounts/{accountId}/webhooks/subscriptions}). {@code url} and {@code email} are
+     * required. Convenience defaults are applied: when {@code events} is null/empty the SDK
+     * subscribes to {@code document_ready}, {@code document_prepared},
+     * {@code signer_signed_document}, {@code signer_rejected_document} and
+     * {@code document_processing_failed}; when {@code isActive} is null it defaults to
+     * {@code true}. Pass explicit values to override either default.
+     */
     public WebhookSubscription register(RegisterWebhookRequest request) {
         return register(request, null);
     }

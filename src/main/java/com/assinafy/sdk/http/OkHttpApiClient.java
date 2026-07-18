@@ -21,7 +21,7 @@ public class OkHttpApiClient implements ApiHttpClient {
     /** Lenient mapper used only to extract an error message from a failed binary download. */
     private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
 
-    private static final String SDK_VERSION = "1.4.1";
+    private static final String SDK_VERSION = "1.5.0";
 
     private final OkHttpClient client;
     private final String baseUrl;
@@ -100,6 +100,20 @@ public class OkHttpApiClient implements ApiHttpClient {
     }
 
     @Override
+    public HttpRawResponse postFile(String path, String partName, String fileName, byte[] data, String contentType) throws IOException {
+        MediaType mediaType = contentType != null ? MediaType.parse(contentType) : null;
+        MultipartBody body = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(partName, fileName, RequestBody.create(data, mediaType))
+                .build();
+        Request request = new Request.Builder()
+                .url(baseUrl + path)
+                .post(body)
+                .build();
+        return execute(request);
+    }
+
+    @Override
     public HttpRawResponse put(String path, String jsonBody) throws IOException {
         RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "{}", JSON);
         Request request = new Request.Builder()
@@ -110,10 +124,30 @@ public class OkHttpApiClient implements ApiHttpClient {
     }
 
     @Override
+    public HttpRawResponse patch(String path, String jsonBody) throws IOException {
+        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "{}", JSON);
+        Request request = new Request.Builder()
+                .url(baseUrl + path)
+                .patch(body)
+                .build();
+        return execute(request);
+    }
+
+    @Override
     public HttpRawResponse delete(String path) throws IOException {
         Request request = new Request.Builder()
                 .url(baseUrl + path)
                 .delete()
+                .build();
+        return execute(request);
+    }
+
+    @Override
+    public HttpRawResponse delete(String path, String jsonBody) throws IOException {
+        RequestBody body = jsonBody != null ? RequestBody.create(jsonBody, JSON) : null;
+        Request request = new Request.Builder()
+                .url(baseUrl + path)
+                .delete(body)
                 .build();
         return execute(request);
     }

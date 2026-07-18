@@ -15,7 +15,7 @@ Add the following dependency to your `pom.xml`:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.4.1</version>
+    <version>1.5.0</version>
 </dependency>
 ```
 
@@ -119,6 +119,14 @@ PaginatedResult<DocumentListItem> result = client.documents().list(
 // Get details
 DocumentDetails details = client.documents().details(documentId);
 
+// Rename (PATCH /documents/{id})
+DocumentDetails renamed = client.documents().rename(documentId, "signed-contract.pdf");
+
+// Lightweight search (compact representation; cheaper than list())
+PaginatedResult<DocumentListItem> found = client.documents().search(
+    ListParams.builder().search("contract").status("metadata_ready").build()
+);
+
 // Download
 byte[] pdf = client.documents().download(documentId);
 byte[] thumbnail = client.documents().thumbnail(documentId);
@@ -196,14 +204,15 @@ Signer waSigner = client.signers().create(
         .build()
 );
 
-// Self-service (signer-access-code based)
+// Self-service (signer-access-code based; the code is sent as the signer-access-code query param)
 Signer selfInfo = client.signers().getSelf(signerAccessCode);
-Signer accepted = client.signers().acceptTerms(signerAccessCode);   // returns the signer
+client.signers().acceptTerms(signerAccessCode);   // no body, no return payload
 Map<String, Object> verifyResult = client.signers().verifyEmail(signerAccessCode, "123456");
 
-// Confirm signer contact data + terms (signer self-service)
-client.signers().confirmSignerData(documentId, signerAccessCode,
-    Map.of("email", "maria@example.com", "has_accepted_terms", true));
+// Confirm/update signer data before signing; returns the server-normalised signer.
+// Documented body fields: full_name, email, government_id.
+Signer confirmed = client.signers().confirmSignerData(documentId, signerAccessCode,
+    Map.of("full_name", "Maria Silva", "email", "maria@example.com"));
 ```
 
 ### Assignments
@@ -222,6 +231,14 @@ Assignment assignment = client.assignments().create(
 
 // Estimate cost
 Map<String, Object> cost = client.assignments().estimateCost(documentId, request);
+
+// List the current account's assignments.
+// NOTE: GET /v1/assignments resolves the account from an interactive session and is NOT
+// available to API-key clients (it returns 400 "account context required"). Use it only with
+// a session/Bearer token; for a single document's assignment use documents().details(id).getAssignment().
+PaginatedResult<Assignment> assignments = client.assignments().list(
+    ListParams.builder().page(1).perPage(20).build()
+);
 
 // Reset expiration
 Assignment updated = client.assignments().resetExpiration(documentId, assignmentId, "2025-06-30T00:00:00Z");
@@ -261,11 +278,9 @@ WebhookSubscription sub = client.webhooks().register(
 // Get current subscription
 WebhookSubscription current = client.webhooks().get();
 
-// Inactivate
+// Stop delivery. Prefer inactivate(); delete() is deprecated (the DELETE subscription route
+// returns 404 on the live API).
 client.webhooks().inactivate();
-
-// Delete
-client.webhooks().delete();
 
 // List event types
 List<WebhookEventTypeInfo> types = client.webhooks().listEventTypes();
@@ -340,11 +355,13 @@ client.tags().rename(tag.getId(), RenameTagRequest.builder().clearColor().build(
 client.tags().delete(tag.getId());          // 409 if the tag is still attached…
 client.tags().delete(tag.getId(), true);    // …pass force=true to detach + delete
 
-// Document tags (tag names are auto-created if they don't exist)
+// Document tags. append/replace take tag NAMES (auto-created if unknown); an existing name links
+// that tag. (The API reference labels these "Tag IDs", but the live API resolves/creates by name —
+// verified against the sandbox.) detachTag takes the tag ID from the path.
 client.documents().appendTags(documentId, List.of("Urgent"));      // add without removing
 client.documents().replaceTags(documentId, List.of("Contracts"));  // replace the whole set
 List<Tag> docTags = client.documents().listTags(documentId);
-client.documents().detachTag(documentId, tagId);                   // detach one tag
+client.documents().detachTag(documentId, tagId);                   // detach one tag (by ID)
 ```
 
 ### API Key Management
@@ -368,13 +385,12 @@ client.apiKeys().delete();
 Endpoints that do not require auth (useful for embedded signer flows).
 
 ```java
-// Basic info — anyone can call
-Map<String, Object> basic = client.publicDocuments().getBasicInfo(documentId);
+// Basic info — anyone can call (returns the same typed DocumentDetails as documents().details())
+DocumentDetails basic = client.publicDocuments().getBasicInfo(documentId);
 
-// Request a new signer-access-code to be sent to the recipient
-Map<String, Object> sent = client.publicDocuments().sendToken(
-    documentId, "signer@example.com", "email"
-);
+// Send a one-time access token by email so the recipient can view/sign the document.
+// The documented body is a single `email` field.
+Map<String, Object> sent = client.publicDocuments().sendToken(documentId, "signer@example.com");
 ```
 
 ### Signer Self-Service
@@ -382,22 +398,25 @@ Map<String, Object> sent = client.publicDocuments().sendToken(
 These endpoints are used by the signer's browser/app (signer-access-code based).
 
 ```java
-// Get a signer's own info
+// Get a signer's own info (includes has_signature/has_initial/is_signature_reusable)
 Signer me = client.signers().getSelf(signerAccessCode);
 
-// Confirm/accept terms
+// Accept terms (no body, no return)
 client.signers().acceptTerms(signerAccessCode);
 
-// Email verification
+// OTP verification (body carries only verification-code)
 client.signers().verifyEmail(signerAccessCode, "123456");
 
-// Signature image (PNG or JPEG)
+// Signature image (PNG or JPEG). type and reuse are optional; reuse sets is_signature_reusable.
 client.signers().uploadSignature(signerAccessCode, "signature", pngBytes);
+client.signers().uploadSignature(signerAccessCode, "signature", pngBytes, true); // opt into reuse
 byte[] image = client.signers().downloadSignature(signerAccessCode, "signature");
 
 // Documents assigned to the signer
 Map<String, Object> current = client.signers().getCurrentDocument(signerId, signerAccessCode);
 PaginatedResult<DocumentListItem> mine = client.signers().listDocuments(signerId, signerAccessCode);
+PaginatedResult<DocumentListItem> hits =
+    client.signers().searchDocuments(signerId, signerAccessCode, "invoice"); // compact search
 byte[] pdf = client.signers().downloadDocument(signerId, docId, "certificated", signerAccessCode);
 
 // Bulk sign / decline
@@ -408,9 +427,9 @@ client.signers().declineMultiple(signerAccessCode, List.of(docId1), "Reason");
 ### Workspaces
 
 ```java
-// Create
+// Create (notification_sender_type: "User" (default) or "Account")
 Workspace workspace = client.workspaces().create(
-    CreateWorkspaceRequest.builder().name("My Workspace").build()
+    CreateWorkspaceRequest.builder().name("My Workspace").notificationSenderType("Account").build()
 );
 
 // List
@@ -424,8 +443,15 @@ Workspace updated = client.workspaces().update(accountId,
     UpdateWorkspaceRequest.builder().name("New Name").build()
 );
 
-// Delete
+// Delete (pass force=true to also cancel an active paid subscription that would block deletion)
 client.workspaces().delete(accountId);
+client.workspaces().delete(accountId, true);
+
+// Branding: theme + logo
+AccountTheme theme = client.workspaces().getTheme(accountId); // account_name, colors, logo URL
+byte[] logo = client.workspaces().downloadLogo(accountId);    // throws ApiException(404) if none set
+client.workspaces().uploadLogo(accountId, pngBytes, "logo.png"); // content type auto-detected
+client.workspaces().deleteLogo(accountId);
 ```
 
 ## High-Level Helper
@@ -529,6 +555,91 @@ PaginationMeta meta = result.getMeta();
 // meta.getPerPage()
 ```
 
+## Request / Response Payloads
+
+Every response is wrapped in a `{ "status", "message", "data" }` envelope; the SDK unwraps `data`
+and maps it to the typed model shown in each method's return type (an error `status` or non-2xx is
+raised as `ApiException`). The shapes below are captured from the live API for the core operations —
+per-method contracts are also on each method's Javadoc, and the full reference is at
+<https://api.assinafy.com.br/v1/docs>.
+
+**Upload document** — `documents().upload(...)` → `DocumentUploadResponse` (multipart `file` + `name`):
+
+```json
+{ "data": {
+  "resource": "document", "id": "103aa2…", "account_id": "102d…", "template_id": null,
+  "name": "contract.pdf", "status": "uploaded",
+  "artifacts": { "original": "https://…/download/original" },
+  "is_closed": false, "signing_url": "https://app…/sign/103aa2…",
+  "decline_reason": null, "declined_by": null, "tags": [],
+  "created_at": "2026-07-18T19:03:38Z", "updated_at": "2026-07-18T19:03:38Z", "pages": []
+}, "status": 200, "message": "" }
+```
+
+Once processing finishes (`status: "metadata_ready"`), `documents().details(id)` also returns a
+`thumbnail` artifact and a populated `pages` array (`{ id, number, height, width, download_url }`).
+
+**Create signer** — `signers().create(...)` → `Signer`:
+
+```jsonc
+// request
+{ "full_name": "John Doe", "email": "john@example.com", "whatsapp_phone_number": "+5548999990000" }
+// response data
+{ "resource": "signer", "id": "19e6…", "full_name": "John Doe", "email": "john@example.com",
+  "whatsapp_phone_number": null, "has_accepted_terms": false }
+```
+
+**Create assignment** — `assignments().create(documentId, ...)` → `Assignment`:
+
+```jsonc
+// request
+{ "method": "virtual", "message": "Please sign",
+  "signers": [ { "id": "19e6…", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 } ] }
+// response data (abridged)
+{ "resource": "assignment", "id": "103aa2…", "sender_email": "you@acme.com", "method": "virtual",
+  "expires_at": null, "message": "Please sign",
+  "signers": [ { "id": "19e6…", "full_name": "John Doe", "email": "john@example.com",
+                 "verification_method": "Email", "notification_methods": ["Email"], "step": 1,
+                 "notified": true, "completed": false, "notification_history": [] } ],
+  "items": [ { "id": "…", "page": null, "signer": { … }, "field": { … }, "value": null, "completed": false } ],
+  "summary": { "signer_count": 1, "completed_count": 0, "signers": [ … ] },
+  "signing_urls": [ { "signer_id": "19e6…", "url": "https://app…/sign/103aa2…?email=…" } ] }
+```
+
+**Estimate cost** — `assignments().estimateCost(...)` / `documents().estimateCostFromTemplate(...)` → `Map`:
+
+```json
+{ "documents": 1, "credits": 0, "needs_extra_document": false, "extra_document_cost": 0,
+  "total_credits": 0, "breakdown": [], "document_balance": 87, "credit_balance": 0,
+  "has_sufficient_resources": true, "blocking_reason": null, "message": null }
+```
+
+**Field definition** — `fields().create/get/update(...)` → `FieldDefinition`:
+
+```json
+{ "resource": "field_definition", "id": "102d…", "name": "Address", "type": "text", "regex": null,
+  "is_pre_defined": false, "is_active": true, "is_required": true, "is_standard": false,
+  "is_read_only": false, "is_visible": true }
+```
+
+**Tag** — `tags().create(...)` → `Tag` · **Account theme** — `workspaces().getTheme(...)` → `AccountTheme`:
+
+```jsonc
+// Tag
+{ "resource": "tag", "id": "103a…", "name": "Contracts", "color": "ff8800",
+  "created_at": "2026-05-14T12:00:00Z", "updated_at": "2026-05-14T12:00:00Z" }
+// AccountTheme
+{ "account_name": "Acme", "primary_color": "2072b9", "secondary_color": "ffffff", "logo": null }
+```
+
+**Webhook subscription** — `webhooks().get()` / `register(...)` → `WebhookSubscription`:
+
+```json
+{ "events": ["document_ready","signer_signed_document"], "is_active": true,
+  "url": "https://example.com/webhook", "email": "admin@example.com",
+  "updated_at": "2026-07-18T02:36:02Z" }
+```
+
 ## Development
 
 ```bash
@@ -546,7 +657,7 @@ ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
 mvn package
 ```
 
-The default `mvn test` run executes 175 offline unit tests (including wire-level
+The default `mvn test` run executes 195 offline unit tests (including wire-level
 `OkHttpApiClient` tests backed by MockWebServer).
 
 ```bash
@@ -559,12 +670,12 @@ ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
 The live smoke test (`src/test/java/com/assinafy/sdk/it/LiveApiSmokeIT.java`)
 is excluded from the default `mvn test` run (Surefire skips classes whose names
 end in `IT`) and honors the optional `ASSINAFY_BASE_URL` (defaults to production).
-When enabled, it runs 16 read/write flows: it exercises the read endpoints, uploads
-a tiny PDF, downloads its artifacts (and asserts an unavailable artifact throws),
-estimates an assignment cost, appends/lists/detaches a document tag, validates a
-field value, reads the masked API key, and creates + deletes ephemeral signers and
-a workspace tag. No emails are sent at any point and every created resource is
-cleaned up.
+When enabled, it runs 18 read/write flows: it exercises the read endpoints, uploads
+a tiny PDF, renames it, runs a lightweight search, downloads its artifacts (and asserts
+an unavailable artifact throws), estimates an assignment cost, appends/lists/detaches a
+document tag, validates a field value, reads the account theme and masked API key, and
+creates + deletes ephemeral signers and a workspace tag. No emails are sent at any point
+and every created resource is cleaned up.
 
 ## License
 

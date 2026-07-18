@@ -15,6 +15,13 @@ public class CreateWorkspaceRequest {
     @JsonProperty("secondary_color")
     private String secondaryColor;
 
+    /**
+     * Who signers see as the notification sender: {@code User} (default) shows the document
+     * owner's name; {@code Account} shows this account's name.
+     */
+    @JsonProperty("notification_sender_type")
+    private String notificationSenderType;
+
     public CreateWorkspaceRequest() {}
 
     public CreateWorkspaceRequest(String name) {
@@ -34,12 +41,17 @@ public class CreateWorkspaceRequest {
     public String getSecondaryColor() { return secondaryColor; }
     public void setSecondaryColor(String secondaryColor) { this.secondaryColor = secondaryColor; }
 
+    public String getNotificationSenderType() { return notificationSenderType; }
+    public void setNotificationSenderType(String notificationSenderType) { this.notificationSenderType = notificationSenderType; }
+
     public static final class Builder {
         private final CreateWorkspaceRequest req = new CreateWorkspaceRequest();
 
         public Builder name(String name) { req.setName(name); return this; }
         public Builder primaryColor(String color) { req.setPrimaryColor(color); return this; }
         public Builder secondaryColor(String color) { req.setSecondaryColor(color); return this; }
+        /** {@code User} (default) or {@code Account} — who signers see as the notification sender. */
+        public Builder notificationSenderType(String type) { req.setNotificationSenderType(type); return this; }
         public CreateWorkspaceRequest build() { return req; }
     }
 }

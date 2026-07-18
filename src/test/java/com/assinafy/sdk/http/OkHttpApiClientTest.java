@@ -139,6 +139,43 @@ class OkHttpApiClientTest {
     }
 
     @Test
+    void patchSendsPatchMethodAndJsonBody() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
+        withApiKey().patch("/documents/d1", "{\"name\":\"New.pdf\"}");
+
+        RecordedRequest req = server.takeRequest();
+        assertThat(req.getMethod()).isEqualTo("PATCH");
+        assertThat(req.getPath()).isEqualTo("/v1/documents/d1");
+        assertThat(req.getHeader("Content-Type")).startsWith("application/json");
+        assertThat(req.getBody().readUtf8()).isEqualTo("{\"name\":\"New.pdf\"}");
+    }
+
+    @Test
+    void deleteWithBodySendsDeleteMethodAndJsonBody() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
+        withApiKey().delete("/accounts/acc", "{\"force\":true}");
+
+        RecordedRequest req = server.takeRequest();
+        assertThat(req.getMethod()).isEqualTo("DELETE");
+        assertThat(req.getPath()).isEqualTo("/v1/accounts/acc");
+        assertThat(req.getBody().readUtf8()).isEqualTo("{\"force\":true}");
+    }
+
+    @Test
+    void postFileSendsMultipartWithGivenPartNameAndContentType() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
+        withApiKey().postFile("/accounts/acc/logo", "file", "logo.png", new byte[]{(byte) 0x89, 'P', 'N', 'G'}, "image/png");
+
+        RecordedRequest req = server.takeRequest();
+        assertThat(req.getMethod()).isEqualTo("POST");
+        assertThat(req.getHeader("Content-Type")).startsWith("multipart/form-data");
+        String body = req.getBody().readUtf8();
+        assertThat(body).contains("name=\"file\"");
+        assertThat(body).contains("filename=\"logo.png\"");
+        assertThat(body).contains("Content-Type: image/png");
+    }
+
+    @Test
     void trailingSlashInBaseUrlIsNormalised() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
         new OkHttpApiClient(server.url("/v1/").toString(), "k", null, 5_000).get("/accounts");

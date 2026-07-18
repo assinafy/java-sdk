@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.models.AccountTheme;
 import com.assinafy.sdk.models.Workspace;
 import com.assinafy.sdk.request.CreateWorkspaceRequest;
 import com.assinafy.sdk.request.UpdateWorkspaceRequest;
@@ -68,11 +69,78 @@ class WorkspaceResourceTest {
     }
 
     @Test
-    void deleteCallsDeleteOnAccountsWithIdPath() {
-        mock.enqueue(200, "{}");
+    void deleteDefaultIssuesBodylessDelete() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
         resource.delete("acc-123");
 
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123");
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
+        assertThat(mock.lastCaptured().getJsonBody()).as("default delete carries no body").isNull();
+    }
+
+    @Test
+    void deleteWithForceSendsForceTrueBody() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        resource.delete("acc-123", true);
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
+        assertThat(mock.lastCaptured().getJsonBody()).isEqualTo("{\"force\":true}");
+    }
+
+    @Test
+    void createSerialisesNotificationSenderType() {
+        mock.enqueue(200, WORKSPACE_RESPONSE);
+        resource.create(CreateWorkspaceRequest.builder().name("Acme").notificationSenderType("Account").build());
+
+        assertThat(mock.lastCaptured().getJsonBody()).contains("\"notification_sender_type\":\"Account\"");
+    }
+
+    @Test
+    void getThemeHitsThemePathAndParses() {
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"account_name\":\"MT\",\"primary_color\":\"2072b9\",\"secondary_color\":\"ffffff\",\"logo\":null}}");
+        AccountTheme theme = resource.getTheme("acc-123");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/theme");
+        assertThat(theme.getAccountName()).isEqualTo("MT");
+        assertThat(theme.getPrimaryColor()).isEqualTo("2072b9");
+        assertThat(theme.getLogo()).isNull();
+    }
+
+    @Test
+    void downloadLogoGetsBinaryFromLogoPath() {
+        mock.enqueue(200, "PNGDATA");
+        byte[] logo = resource.downloadLogo("acc-123");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET_BINARY");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/logo");
+        assertThat(new String(logo)).isEqualTo("PNGDATA");
+    }
+
+    @Test
+    void uploadLogoPostsMultipartFilePart() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        byte[] png = new byte[]{(byte) 0x89, 'P', 'N', 'G'};
+        resource.uploadLogo("acc-123", png, "logo.png");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST_FILE");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/logo");
+        assertThat(mock.lastCaptured().getMultipartData().getName()).isEqualTo("file"); // part name
+        assertThat(mock.lastCaptured().getMultipartData().getMetadata()).isEqualTo("image/png"); // content type
+    }
+
+    @Test
+    void uploadLogoRejectsEmptyData() {
+        assertThatThrownBy(() -> resource.uploadLogo("acc-123", new byte[0], "logo.png"))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void deleteLogoCallsDeleteOnLogoPath() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        resource.deleteLogo("acc-123");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/logo");
     }
 }

@@ -110,6 +110,37 @@ public class DocumentResource extends BaseResource {
         return details(documentId);
     }
 
+    /**
+     * Rename a document ({@code PATCH /documents/{documentId}} with body {@code {"name": ...}}) and
+     * return the updated document.
+     *
+     * @throws com.assinafy.sdk.exceptions.ValidationException if {@code newName} is blank
+     */
+    public DocumentDetails rename(String documentId, String newName) {
+        String id = requireId(documentId, "Document ID");
+        requireId(newName, "Document name");
+        String json = serialise(Map.of("name", newName));
+        return call("Failed to rename document", () -> http.patch("/documents/" + id, json), DocumentDetails.class);
+    }
+
+    /**
+     * Lightweight document search ({@code GET /accounts/{accountId}/documents/search}), returning a
+     * compact representation (no expanded assignment/pages) — cheaper than {@link #list(ListParams)}
+     * when you only need to locate documents. Honors {@code search}, {@code status} and paging via
+     * {@link ListParams}.
+     */
+    public PaginatedResult<DocumentListItem> search(ListParams params) {
+        return search(params, null);
+    }
+
+    public PaginatedResult<DocumentListItem> search(ListParams params, String accountId) {
+        String id = accountId(accountId);
+        Map<String, Object> queryParams = params != null ? params.toQueryParams() : Map.of();
+        return callList("Failed to search documents",
+                () -> http.get("/accounts/" + id + "/documents/search", queryParams),
+                DocumentListItem.class);
+    }
+
     /** Poll {@link #details(String)} until the document is ready, using a 30s timeout and 2s interval. */
     public DocumentDetails waitUntilReady(String documentId) {
         return waitUntilReady(documentId, 30_000, 2_000);
@@ -164,7 +195,7 @@ public class DocumentResource extends BaseResource {
     public byte[] download(String documentId, String artifactName) {
         String id = requireId(documentId, "Document ID");
         String artifact = artifactName != null ? artifactName : DEFAULT_ARTIFACT;
-        return callBinary("Failed to download document", () -> http.getBinary("/documents/" + id + "/download/" + artifact));
+        return callBinary("Failed to download document", () -> http.getBinary("/documents/" + id + "/download/" + encode(artifact)));
     }
 
     /** Download the document thumbnail image as bytes ({@code GET /documents/{id}/thumbnail}). */
@@ -295,10 +326,14 @@ public class DocumentResource extends BaseResource {
     }
 
     /**
-     * Replace the document's tag set with the supplied tag names. Unknown names are
+     * Replace the document's tag set with the supplied tag <em>names</em>. Unknown names are
      * auto-created; an empty list detaches all tags.
      *
-     * <p>{@code PUT /accounts/{accountId}/documents/{documentId}/tags}.
+     * <p>{@code PUT /accounts/{accountId}/documents/{documentId}/tags}. Note: although the API
+     * reference labels the {@code tags} array as "Tag IDs", the live API treats each entry as a tag
+     * <em>name</em> (verified against the sandbox) — passing an existing tag's name links that tag,
+     * while an unknown name creates a new tag; passing a tag ID would create a tag literally named
+     * after the ID.
      */
     public List<Tag> replaceTags(String documentId, List<String> tagNames) {
         return replaceTags(documentId, tagNames, null);
@@ -314,10 +349,12 @@ public class DocumentResource extends BaseResource {
     }
 
     /**
-     * Attach additional tags to a document without removing existing ones. Idempotent;
-     * unknown names are auto-created.
+     * Attach additional tags to a document (by tag <em>name</em>) without removing existing ones.
+     * Idempotent; unknown names are auto-created.
      *
-     * <p>{@code POST /accounts/{accountId}/documents/{documentId}/tags}.
+     * <p>{@code POST /accounts/{accountId}/documents/{documentId}/tags}. As with
+     * {@link #replaceTags}, the {@code tags} array holds tag names (the API reference labels them
+     * "Tag IDs", but the live API resolves/creates by name — verified against the sandbox).
      */
     public List<Tag> appendTags(String documentId, List<String> tagNames) {
         return appendTags(documentId, tagNames, null);

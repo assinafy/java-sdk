@@ -63,7 +63,10 @@ public class SignerResource extends BaseResource {
             String body = serialise(signerBody(request));
             return call("Failed to create signer", () -> http.post("/accounts/" + id + "/signers", body), Signer.class);
         } catch (ApiException e) {
-            if (e.getStatusCode() == 409 && hasEmail) {
+            // The API rejects a duplicate email with 4xx (the live sandbox uses 400, not 409). If an
+            // email was supplied and a signer with that address now exists, treat create() as
+            // idempotent and return the existing signer; otherwise surface the original error.
+            if (hasEmail && e.getStatusCode() >= 400 && e.getStatusCode() < 500) {
                 Signer duplicate = findByEmail(email, id);
                 if (duplicate != null) {
                     logger.info("Signer already exists, using existing signer", Map.of("email", email));
@@ -165,49 +168,70 @@ public class SignerResource extends BaseResource {
                 Signer.class);
     }
 
-    public Signer acceptTerms(String signerAccessCode) {
+    /**
+     * Record that the signer accepted the terms of use ({@code PUT /signers/accept-terms}).
+     * Authenticated by the signer access code, passed as the {@code signer-access-code} query
+     * parameter; the endpoint takes no request body and returns no payload.
+     */
+    public void acceptTerms(String signerAccessCode) {
         requireId(signerAccessCode, "Signer access code");
-        String json = serialise(Map.of("signer-access-code", signerAccessCode));
-        return call("Failed to accept terms",
-                () -> http.put("/signers/accept-terms", json),
-                Signer.class);
+        callVoid("Failed to accept terms",
+                () -> http.put(withAccessCode("/signers/accept-terms", signerAccessCode), null));
     }
 
     /**
-     * Signer-self confirmation of contact data and terms acceptance.
+     * Signer-self confirmation/update of their data before signing, returning the server-normalised
+     * {@link Signer}.
      *
      * <p>Maps to {@code PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}}.
-     * The {@code data} map may carry {@code email}, {@code whatsapp_phone_number} and
-     * {@code has_accepted_terms}.
+     * The {@code data} map may carry the documented fields {@code full_name}, {@code email} and
+     * {@code government_id}.
      */
-    public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data) {
+    public Signer confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data) {
         String docId = requireId(documentId, "Document ID");
         requireId(signerAccessCode, "Signer access code");
         Map<String, Object> body = data != null ? new HashMap<>(data) : new HashMap<>();
         String json = serialise(body);
-        callVoid("Failed to confirm signer data",
-                () -> http.put(withAccessCode("/documents/" + docId + "/signers/confirm-data", signerAccessCode), json));
+        return call("Failed to confirm signer data",
+                () -> http.put(withAccessCode("/documents/" + docId + "/signers/confirm-data", signerAccessCode), json),
+                Signer.class);
     }
 
+    /**
+     * Submit the OTP verification code sent to the signer ({@code POST /verify}). Authenticated by
+     * the signer access code (passed as the {@code signer-access-code} query parameter); the body
+     * carries only {@code verification-code}.
+     */
     public Map<String, Object> verifyEmail(String signerAccessCode, String verificationCode) {
         requireId(signerAccessCode, "Signer access code");
         requireId(verificationCode, "Verification code");
-        String json = serialise(Map.of(
-                "signer-access-code", signerAccessCode,
-                "verification-code", verificationCode
-        ));
+        String json = serialise(Map.of("verification-code", verificationCode));
         return callMap("Failed to verify email",
-                () -> http.post("/verify", json));
+                () -> http.post(withAccessCode("/verify", signerAccessCode), json));
     }
 
+    /**
+     * Upload the signer's signature/initials image ({@code POST /signature}). Both {@code type}
+     * (e.g. {@code signature} or {@code initial}) and {@code reuse} are optional per the docs.
+     */
     public void uploadSignature(String signerAccessCode, String type, byte[] imageData) {
+        uploadSignature(signerAccessCode, type, imageData, null);
+    }
+
+    /**
+     * Upload the signer's signature/initials image with the documented {@code reuse} flag. When
+     * {@code reuse} is non-null it sets the signer's {@code is_signature_reusable} flag; when null
+     * the flag is left unchanged.
+     */
+    public void uploadSignature(String signerAccessCode, String type, byte[] imageData, Boolean reuse) {
         requireId(signerAccessCode, "Signer access code");
-        requireId(type, "Signature type");
-        logger.info("Uploading signature", Map.of("signerAccessCode", signerAccessCode, "type", type));
+        String path = withAccessCode("/signature", signerAccessCode);
+        if (type != null && !type.isBlank()) path = path + "&type=" + encode(type);
+        if (reuse != null) path = path + "&reuse=" + reuse;
+        logger.info("Uploading signature", Map.of("type", type != null ? type : ""));
+        String finalPath = path;
         callVoid("Failed to upload signature",
-                () -> http.postSignature(
-                        withAccessCode("/signature", signerAccessCode) + "&type=" + encode(type),
-                        imageData));
+                () -> http.postSignature(finalPath, imageData));
     }
 
     public byte[] downloadSignature(String signerAccessCode, String type) {
@@ -229,8 +253,9 @@ public class SignerResource extends BaseResource {
     }
 
     /**
-     * List the documents assigned to a signer, with optional {@code status}, {@code method},
-     * {@code search}, {@code sort} and paging filters supplied via {@link ListParams}.
+     * List the documents assigned to a signer ({@code GET /signers/{signerId}/documents}). The
+     * endpoint documents only {@code page}/{@code per-page} paging (supply via {@link ListParams});
+     * for server-side text search use {@link #searchDocuments(String, String, String)}.
      */
     public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode, ListParams params) {
         String sid = requireId(signerId, "Signer ID");
@@ -239,6 +264,23 @@ public class SignerResource extends BaseResource {
         query.put("signer-access-code", signerAccessCode);
         return callList("Failed to list signer's documents",
                 () -> http.get("/signers/" + sid + "/documents", query),
+                DocumentListItem.class);
+    }
+
+    /**
+     * Search the documents a signer is party to, returning a compact representation
+     * ({@code GET /signers/{signerId}/documents/search}). Authenticated by the signer access code.
+     *
+     * @param search free-text query matched against the signer's documents
+     */
+    public PaginatedResult<DocumentListItem> searchDocuments(String signerId, String signerAccessCode, String search) {
+        String sid = requireId(signerId, "Signer ID");
+        requireId(signerAccessCode, "Signer access code");
+        Map<String, Object> query = new HashMap<>();
+        query.put("signer-access-code", signerAccessCode);
+        if (search != null && !search.isBlank()) query.put("search", search);
+        return callList("Failed to search signer's documents",
+                () -> http.get("/signers/" + sid + "/documents/search", query),
                 DocumentListItem.class);
     }
 

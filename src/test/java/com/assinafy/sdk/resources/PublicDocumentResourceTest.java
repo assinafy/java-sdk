@@ -19,11 +19,13 @@ class PublicDocumentResourceTest {
     }
 
     @Test
-    void getBasicInfoGetsPublicDocumentsPath() {
-        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\",\"name\":\"x.pdf\"}}");
-        resource.getBasicInfo("doc1");
+    void getBasicInfoGetsPublicDocumentsPathAndReturnsTypedDetails() {
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\",\"name\":\"x.pdf\",\"status\":\"metadata_ready\"}}");
+        com.assinafy.sdk.models.DocumentDetails d = resource.getBasicInfo("doc1");
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1");
+        assertThat(d.getId()).isEqualTo("doc1");
+        assertThat(d.getStatus()).isEqualTo("metadata_ready");
     }
 
     @Test
@@ -33,21 +35,30 @@ class PublicDocumentResourceTest {
     }
 
     @Test
-    void sendTokenPutsToSendTokenPath() {
-        mock.enqueue(200, "{\"status\":200,\"data\":{}}");
-        resource.sendToken("doc1", "user@example.com", "email");
+    void sendTokenPutsEmailBodyToSendTokenPath() {
+        // The documented send-token body is a single `email` field.
+        mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
+        resource.sendToken("doc1", "user@example.com");
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1/send-token");
         String body = mock.lastCaptured().getJsonBody();
-        assertThat(body).contains("\"recipient\":\"user@example.com\"");
-        assertThat(body).contains("\"channel\":\"email\"");
+        assertThat(body).isEqualTo("{\"email\":\"user@example.com\"}");
     }
 
     @Test
-    void sendTokenRequiresRecipientAndChannel() {
-        assertThatThrownBy(() -> resource.sendToken("doc1", "", "email"))
+    @SuppressWarnings("deprecation")
+    void deprecatedSendTokenOverloadStillSendsEmail() {
+        // The legacy (recipient, channel) overload delegates: recipient becomes the email, channel ignored.
+        mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
+        resource.sendToken("doc1", "user@example.com", "email");
+        assertThat(mock.lastCaptured().getJsonBody()).isEqualTo("{\"email\":\"user@example.com\"}");
+    }
+
+    @Test
+    void sendTokenRequiresEmail() {
+        assertThatThrownBy(() -> resource.sendToken("doc1", ""))
                 .isInstanceOf(ValidationException.class);
-        assertThatThrownBy(() -> resource.sendToken("doc1", "user@example.com", ""))
+        assertThatThrownBy(() -> resource.sendToken("", "user@example.com"))
                 .isInstanceOf(ValidationException.class);
     }
 }

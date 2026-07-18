@@ -240,14 +240,15 @@ class SignerResourceTest {
     }
 
     @Test
-    void acceptTermsReturnsSigner() {
-        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s1\",\"full_name\":\"John\",\"has_accepted_terms\":true}}");
-        Signer signer = resource.acceptTerms("code");
+    void acceptTermsSendsAccessCodeAsQueryParamWithNoBody() {
+        // The endpoint authenticates via the signer-access-code query parameter and takes no body.
+        mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
+        resource.acceptTerms("code with space");
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
-        assertThat(mock.lastCaptured().getPath()).isEqualTo("/signers/accept-terms");
-        assertThat(signer.getHasAcceptedTerms()).isTrue();
-        assertThat(signer.getId()).isEqualTo("s1");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/signers/accept-terms?signer-access-code=code+with+space");
+        assertThat(mock.lastCaptured().getJsonBody()).isNull();
     }
 
     @Test

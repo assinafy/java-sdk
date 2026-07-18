@@ -26,6 +26,39 @@ class DocumentResourceExtraTest {
     }
 
     @Test
+    void renameSendsPatchWithNameBody() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"name\":\"New.pdf\"}}");
+        DocumentDetails d = documents.rename("d1", "New.pdf");
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("PATCH");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/d1");
+        assertThat(http.lastCaptured().getJsonBody()).isEqualTo("{\"name\":\"New.pdf\"}");
+        assertThat(d.getName()).isEqualTo("New.pdf");
+    }
+
+    @Test
+    void renameRequiresName() {
+        assertThatThrownBy(() -> documents.rename("d1", ""))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void searchHitsLightweightSearchPath() {
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"d1\",\"name\":\"x.pdf\"}]}");
+        var result = documents.search(com.assinafy.sdk.request.ListParams.builder().search("contract").build());
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/accounts/acc/documents/search");
+        assertThat(http.lastCaptured().getQueryParams()).containsEntry("search", "contract");
+        assertThat(result.getData()).hasSize(1);
+    }
+
+    @Test
+    void downloadUrlEncodesArtifactName() {
+        http.enqueue(200, "PDFBYTES");
+        documents.download("d1", "certificate-page");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/d1/download/certificate-page");
+    }
+
+    @Test
     void thumbnailHitsThumbnailPath() {
         http.enqueue(200, "JPEGBYTES");
         byte[] bytes = documents.thumbnail("d1");

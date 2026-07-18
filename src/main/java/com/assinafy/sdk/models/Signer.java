@@ -32,6 +32,14 @@ public class Signer {
     @JsonProperty("has_initial")
     private Boolean hasInitial;
 
+    /**
+     * Whether the signer opted to reuse their signature across processes. Returned by the
+     * signer self-service {@code GET /signers/self} endpoint; set via the {@code reuse}
+     * parameter on {@code uploadSignature}.
+     */
+    @JsonProperty("is_signature_reusable")
+    private Boolean isSignatureReusable;
+
     @JsonProperty("metadata")
     private Map<String, Object> metadata;
 
@@ -60,6 +68,9 @@ public class Signer {
 
     public Boolean getHasInitial() { return hasInitial; }
     public void setHasInitial(Boolean hasInitial) { this.hasInitial = hasInitial; }
+
+    public Boolean getIsSignatureReusable() { return isSignatureReusable; }
+    public void setIsSignatureReusable(Boolean isSignatureReusable) { this.isSignatureReusable = isSignatureReusable; }
 
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }

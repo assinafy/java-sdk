@@ -5,6 +5,87 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-18
+
+Fourth full audit pass — every SDK file verified against the 86 official operation docs at
+`https://api.assinafy.com.br/v1/docs` **and** exercised against the live sandbox
+(`https://sandbox.assinafy.com.br/v1`). Fixes three non-functional signer/public endpoints, fills
+the remaining documented endpoint gaps, and adds request/response payload documentation. The unit
+suite grew from 175 to **195 tests**; the opt-in `LiveApiSmokeIT` now runs **18 flows** (adds
+rename, lightweight search and account theme).
+
+### Fixed (conformance — these methods were non-functional as written)
+
+- **`SignerResource.acceptTerms`** put the access code in the JSON body and PUT to a bare path, so
+  the endpoint (which authenticates via the `signer-access-code` **query** parameter) rejected the
+  call with 400 "access-code parameter missing". It now sends the code as the query parameter with
+  no body. Return type changed from `Signer` to `void` (the 200 response carries no `data`).
+- **`SignerResource.verifyEmail`** likewise put the access code in the body. It now sends
+  `signer-access-code` as the query parameter and only `verification-code` in the body.
+- **`PublicDocumentResource.sendToken`** sent `{recipient, channel}`; the documented body is a
+  single `email` field. New signature `sendToken(documentId, email)`; the old
+  `sendToken(documentId, recipient, channel)` is retained as `@Deprecated` (delegates, channel
+  ignored).
+- **`SignerResource.create`** duplicate-email recovery only caught HTTP 409, but the live API
+  returns **400** for a duplicate email. The fallback now re-queries by email on any 4xx and
+  returns the existing signer, keeping `create()` idempotent.
+- **`DocumentResource.download(id, artifact)`** now URL-encodes the artifact name (consistent with
+  the signer-scoped download).
+- `FieldResource.validate`/`validateMultiple` now reuse the shared `withAccessCode` helper.
+
+### Added (documented endpoints that were missing)
+
+- **`DocumentResource.rename(documentId, name)`** — `PATCH /documents/{id}` (rename).
+- **`DocumentResource.search(ListParams)`** — `GET /accounts/{id}/documents/search` (lightweight
+  compact search).
+- **`SignerResource.searchDocuments(signerId, accessCode, search)`** —
+  `GET /signers/{signerId}/documents/search`.
+- **`AssignmentResource.list(ListParams)`** — `GET /assignments`. Documented caveat: the endpoint
+  resolves the account from an interactive session and is **not** available to API-key clients
+  (returns 400 "account context required"); use with a session/Bearer token.
+- **`WorkspaceResource.getTheme` / `downloadLogo` / `uploadLogo` / `deleteLogo`** — the Accounts
+  `theme` and `logo` operations, plus a new **`AccountTheme`** model.
+- **`WorkspaceResource.delete(accountId, force)`** — sends the documented `{"force": true}` body to
+  cancel a blocking paid subscription and delete immediately.
+- **`SignerResource.uploadSignature(code, type, image, reuse)`** — the documented `reuse` query
+  parameter (sets `is_signature_reusable`); `type` is now optional per the docs.
+- **`notification_sender_type`** on `CreateWorkspaceRequest`/`UpdateWorkspaceRequest` and the
+  `Workspace` model (plus `roles`, `is_delete_allowed`); **`is_signature_reusable`** on `Signer`.
+- Transport: `patch`, `delete(path, body)` and `postFile` (single-file multipart) on
+  `ApiHttpClient`/`OkHttpApiClient`.
+
+### Changed
+
+- **`SignerResource.confirmSignerData`** now returns the server-normalised `Signer` (was `void`);
+  its Javadoc lists the documented body fields (`full_name`, `email`, `government_id`).
+- **`PublicDocumentResource.getBasicInfo`** now returns the typed `DocumentDetails` (was
+  `Map<String,Object>`) — the payload is the same document shape as `documents().details()`.
+- `AssinafyClient.uploadAndRequestSignatures`, `WebhookResource.register`, the `AssignmentResource`
+  and `FieldResource` CRUD methods, and the new methods above all gained Javadoc conveying their
+  route, defaults and request/response contract.
+
+### Verified against the live API (intentionally NOT changed)
+
+The audit surfaced several apparent discrepancies against the written docs that live testing proved
+were the docs being incomplete — the SDK is correct and was left as-is:
+
+- **Document tag attach/replace take tag _names_ (auto-created), not IDs.** The API reference labels
+  the `tags` array "Tag IDs", but attaching by name links the existing tag while an ID string
+  creates a tag named after the ID. `appendTags`/`replaceTags` correctly send names; Javadoc now
+  notes the discrepancy.
+- **Field create/update accept more than the docs list:** `is_active` is honored on create, and
+  `type`/`is_required` are mutable on update. The DTO fields were kept.
+- **Assignment cost estimation requires at least one signer** (server-side) even for `collect`.
+- **Deleting a tag still attached to a document returns 409** unless `force=true` — the Javadoc
+  claim is accurate.
+
+### CI / docs
+
+- Bumped `actions/checkout` to `v7` (`setup-java@v5`, `upload-artifact@v7` already current); build
+  targets Java 25 (current LTS).
+- README: corrected the changed method examples, documented the new endpoints, and added a
+  **Request / Response Payloads** section with real wire shapes for the core operations.
+
 ## [1.4.1] - 2026-06-05
 
 Third full audit pass, verified file-by-file against the documentation at
