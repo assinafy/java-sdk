@@ -12,15 +12,42 @@ payload fields, response schemas, status codes, authentication requirements, and
 
 ## Installation
 
-The project declares the coordinate below, but version `1.5.0` is not currently available from
-Maven Central. If your organization publishes or mirrors it in a Maven registry, configure that
-registry and add:
+Release tags publish to GitHub Packages. GitHub requires authentication to install public Maven
+packages, so export your GitHub username and a classic personal access token with `read:packages`:
+
+```bash
+export GITHUB_ACTOR=your-github-username
+export GITHUB_TOKEN=your-classic-personal-access-token
+```
+
+Reference those variables from `~/.m2/settings.xml`:
 
 ```xml
+<settings>
+    <servers>
+        <server>
+            <id>github</id>
+            <username>${env.GITHUB_ACTOR}</username>
+            <password>${env.GITHUB_TOKEN}</password>
+        </server>
+    </servers>
+</settings>
+```
+
+Then add the GitHub Packages repository and SDK dependency to your project:
+
+```xml
+<repositories>
+    <repository>
+        <id>github</id>
+        <url>https://maven.pkg.github.com/assinafy/java-sdk</url>
+    </repository>
+</repositories>
+
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.5.0</version>
+    <version>1.5.1</version>
 </dependency>
 ```
 

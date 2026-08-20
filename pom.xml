@@ -6,7 +6,7 @@
 
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.5.0</version>
+    <version>1.5.1</version>
     <packaging>jar</packaging>
 
     <name>Assinafy Java SDK</name>
@@ -19,6 +19,14 @@
             <url>https://opensource.org/licenses/MIT</url>
         </license>
     </licenses>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/assinafy/java-sdk</url>
+        </repository>
+    </distributionManagement>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>

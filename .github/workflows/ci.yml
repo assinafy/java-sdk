@@ -54,6 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: release
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,6 +69,7 @@ jobs:
           java-version: '25'
           check-latest: true
           cache: maven
+          server-id: github
 
       - name: Validate release tag
         run: |
@@ -76,46 +80,10 @@ jobs:
             exit 1
           fi
 
-      - name: Validate deployment configuration
+      - name: Publish to GitHub Packages
         env:
-          MAVEN_DEPLOY_URL: ${{ secrets.MAVEN_DEPLOY_URL }}
-          DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
-        run: |
-          if [ -z "${MAVEN_DEPLOY_URL}" ] || [ -z "${DEPLOY_TOKEN}" ]; then
-            echo "::error::Maven deployment secrets are not configured."
-            exit 1
-          fi
-
-      - name: Configure Maven settings
-        env:
-          DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
-        run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml <<'EOF'
-          <settings>
-            <servers>
-              <server>
-                <id>release-registry</id>
-                <configuration>
-                  <httpHeaders>
-                    <property>
-                      <name>Deploy-Token</name>
-                      <value>${env.DEPLOY_TOKEN}</value>
-                    </property>
-                  </httpHeaders>
-                </configuration>
-              </server>
-            </servers>
-          </settings>
-          EOF
-
-      - name: Deploy artifact
-        env:
-          MAVEN_DEPLOY_URL: ${{ secrets.MAVEN_DEPLOY_URL }}
-          DEPLOY_TOKEN: ${{ secrets.MAVEN_DEPLOY_TOKEN }}
-        run: |
-          mvn -B -ntp deploy \
-            "-DaltDeploymentRepository=release-registry::${MAVEN_DEPLOY_URL}"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mvn -B -ntp deploy
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
