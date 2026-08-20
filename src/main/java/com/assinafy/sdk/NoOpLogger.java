@@ -2,8 +2,10 @@ package com.assinafy.sdk;
 
 import java.util.Map;
 
+/** Logger implementation that discards every event. */
 public final class NoOpLogger implements Logger {
 
+    /** Shared stateless no-op logger. */
     public static final NoOpLogger INSTANCE = new NoOpLogger();
 
     private NoOpLogger() {}

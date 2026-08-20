@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
@@ -38,10 +39,23 @@ public class WebhookVerifier {
 
     private final String webhookSecret;
 
+    /**
+     * Create a verifier for an out-of-band webhook signing secret.
+     *
+     * @param webhookSecret HMAC secret; {@code null} or blank makes verification return
+     *                      {@code false}
+     */
     public WebhookVerifier(String webhookSecret) {
         this.webhookSecret = webhookSecret;
     }
 
+    /**
+     * Verify a UTF-8 payload against a lowercase hexadecimal HMAC-SHA256 signature.
+     *
+     * @param payload raw request body
+     * @param signature hexadecimal signature without an algorithm prefix
+     * @return {@code true} only when the configured secret produces the supplied signature
+     */
     public boolean verify(String payload, String signature) {
         if (payload == null || webhookSecret == null || webhookSecret.isBlank()
                 || signature == null || signature.isBlank()) {
@@ -50,6 +64,13 @@ public class WebhookVerifier {
         return verify(payload.getBytes(StandardCharsets.UTF_8), signature);
     }
 
+    /**
+     * Verify raw payload bytes against a lowercase hexadecimal HMAC-SHA256 signature.
+     *
+     * @param payload raw request body bytes
+     * @param signature hexadecimal signature without an algorithm prefix
+     * @return {@code true} only when the configured secret produces the supplied signature
+     */
     public boolean verify(byte[] payload, String signature) {
         if (webhookSecret == null || webhookSecret.isBlank() || signature == null || signature.isBlank()) {
             return false;
@@ -63,11 +84,23 @@ public class WebhookVerifier {
         }
     }
 
+    /**
+     * Parse a UTF-8 JSON webhook envelope.
+     *
+     * @param payload raw request body
+     * @return the parsed event, or {@code null} for blank, malformed, or non-object JSON
+     */
     public WebhookPayload extractEvent(String payload) {
         if (payload == null || payload.isBlank()) return null;
         return extractEvent(payload.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * Parse UTF-8 JSON webhook bytes.
+     *
+     * @param payload raw request body bytes
+     * @return the parsed event, or {@code null} for empty, malformed, or non-object JSON
+     */
     public WebhookPayload extractEvent(byte[] payload) {
         if (payload == null || payload.length == 0) return null;
         try {
@@ -75,12 +108,17 @@ public class WebhookVerifier {
             Object parsed = MAPPER.readValue(text, Object.class);
             if (!(parsed instanceof Map)) return null;
             return MAPPER.readValue(text, WebhookPayload.class);
-        } catch (Exception e) {
+        } catch (IOException e) {
             return null;
         }
     }
 
-    /** The event type (e.g. {@code document_ready}), or {@code null} if absent. */
+    /**
+     * Return an event's type.
+     *
+     * @param event parsed webhook event, or {@code null}
+     * @return the event type, such as {@code document_ready}, or {@code null} when absent
+     */
     public String getEventType(WebhookPayload event) {
         return event != null ? event.getEvent() : null;
     }
@@ -88,6 +126,9 @@ public class WebhookVerifier {
     /**
      * The entity the event is about (the {@code object} envelope field, e.g. the document),
      * falling back to {@code payload}. Returns an empty map when neither is present.
+     *
+     * @param event parsed webhook event, or {@code null}
+     * @return the event object, legacy payload, or an empty map
      */
     public Map<String, Object> getEventData(WebhookPayload event) {
         if (event == null) return Map.of();

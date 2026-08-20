@@ -3,6 +3,7 @@ package com.assinafy.sdk.it;
 import com.assinafy.sdk.AssinafyClient;
 import com.assinafy.sdk.AssinafyClientOptions;
 import com.assinafy.sdk.models.ApiKey;
+import com.assinafy.sdk.models.Assignment;
 import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.DocumentStatusInfo;
 import com.assinafy.sdk.models.DocumentUploadResponse;
@@ -21,6 +22,9 @@ import com.assinafy.sdk.request.CreateTagRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RenameTagRequest;
 import com.assinafy.sdk.request.SignerReference;
+import com.assinafy.sdk.request.UpdateSignerRequest;
+import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.RateLimitException;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -29,19 +33,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * End-to-end smoke test against the live Assinafy API.
+ * End-to-end smoke test against the Assinafy sandbox API.
  *
  * <p>This test is opt-in: it only runs when the environment variables
  * {@code ASSINAFY_API_KEY} and {@code ASSINAFY_ACCOUNT_ID} are set.
- * It exercises read endpoints and one safe create-and-cleanup signer
- * cycle. No emails are sent (no assignment is created).
+ * It exercises reads and isolated create/delete lifecycles. Tests that send invitations require
+ * the two optional {@code ASSINAFY_TEST_EMAIL_PRIMARY/SECONDARY} environment variables.
  *
  * <p>Run with:
  * <pre>
@@ -64,13 +73,13 @@ class LiveApiSmokeIT {
                 apiKey != null && !apiKey.isBlank() && accountId != null && !accountId.isBlank(),
                 "Set ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID to run live API tests"
         );
-        // Optional: point at the sandbox (or any base URL) via ASSINAFY_BASE_URL; defaults to production.
-        String baseUrl = System.getenv("ASSINAFY_BASE_URL");
-        AssinafyClientOptions.Builder opts = AssinafyClientOptions.builder().apiKey(apiKey).accountId(accountId);
-        if (baseUrl != null && !baseUrl.isBlank()) {
-            opts.baseUrl(baseUrl);
+        String baseUrl = System.getenv().getOrDefault(
+                "ASSINAFY_BASE_URL", AssinafyClientOptions.SANDBOX_BASE_URL);
+        if (!AssinafyClientOptions.SANDBOX_BASE_URL.equals(baseUrl)) {
+            throw new IllegalArgumentException("LiveApiSmokeIT only permits the Assinafy sandbox URL");
         }
-        client = new AssinafyClient(opts.build());
+        client = new AssinafyClient(AssinafyClientOptions.builder()
+                .apiKey(apiKey).accountId(accountId).baseUrl(baseUrl).build());
     }
 
     @Test
@@ -216,18 +225,11 @@ class LiveApiSmokeIT {
                             .build());
             assertThat(cost).isNotNull();
         } finally {
-            try {
-                client.documents().delete(doc.getId());
-            } catch (Exception ignore) {
-                // Best-effort cleanup
-            }
             if (createdTagId != null) {
-                try {
-                    client.tags().delete(createdTagId, true);
-                } catch (Exception ignore) {
-                    // Best-effort cleanup of the workspace tag created by appendTags
-                }
+                String tagId = createdTagId;
+                retryCleanup(() -> client.tags().delete(tagId, true));
             }
+            retryCleanup(() -> client.documents().delete(doc.getId()));
         }
     }
 
@@ -252,11 +254,7 @@ class LiveApiSmokeIT {
             Signer fetched = client.signers().get(created.getId());
             assertThat(fetched.getId()).isEqualTo(created.getId());
         } finally {
-            try {
-                client.signers().delete(created.getId());
-            } catch (Exception ignore) {
-                // Best-effort cleanup
-            }
+            retryCleanup(() -> client.signers().delete(created.getId()));
         }
     }
 
@@ -273,11 +271,7 @@ class LiveApiSmokeIT {
         try {
             assertThat(created.getId()).isNotBlank();
         } finally {
-            try {
-                client.signers().delete(created.getId());
-            } catch (Exception ignore) {
-                // Best-effort cleanup
-            }
+            retryCleanup(() -> client.signers().delete(created.getId()));
         }
     }
 
@@ -323,11 +317,7 @@ class LiveApiSmokeIT {
                     RenameTagRequest.builder().name(name + "-renamed").build());
             assertThat(renamed.getName()).isEqualTo(name + "-renamed");
         } finally {
-            try {
-                client.tags().delete(created.getId(), true);
-            } catch (Exception ignore) {
-                // Best-effort cleanup
-            }
+            retryCleanup(() -> client.tags().delete(created.getId(), true));
         }
     }
 
@@ -342,29 +332,184 @@ class LiveApiSmokeIT {
 
     @Test
     @Order(18)
-    void listAssignmentsIsUnavailableToApiKeyClients() {
-        // Documented limitation: GET /v1/assignments resolves the account from an interactive
-        // session and rejects API-key auth with 400 "account context required". This guards that
-        // the SDK surfaces the endpoint but the caller gets a clear, typed error under API-key auth.
-        assertThatThrownBy(() -> client.assignments().list(ListParams.builder().perPage(1).build()))
-                .isInstanceOf(com.assinafy.sdk.exceptions.ApiException.class);
+    void listsAssignmentsWithSandboxAccountContext() {
+        assertThat(client.assignments().list(ListParams.builder().perPage(1).build()).getData())
+                .isNotNull();
+    }
+
+    @Test
+    @Order(19)
+    void getsAuthenticatedUserAndProbesDocumentedSandboxRoutes() {
+        assertThat(client.users().get().getId()).isNotBlank();
+
+        probeDocumentedRoute(() -> client.workspaces().stats(accountId));
+        probeDocumentedRoute(() -> client.users().stats());
+        probeDocumentedRoute(() -> client.users().getNotificationPreferences());
+    }
+
+    @Test
+    @Order(20)
+    void assignmentEmailLifecycleWithConfiguredRecipients() {
+        String primaryEmail = System.getenv("ASSINAFY_TEST_EMAIL_PRIMARY");
+        String secondaryEmail = System.getenv("ASSINAFY_TEST_EMAIL_SECONDARY");
+        Assumptions.assumeTrue(primaryEmail != null && !primaryEmail.isBlank()
+                        && secondaryEmail != null && !secondaryEmail.isBlank(),
+                "Set both ASSINAFY_TEST_EMAIL_PRIMARY and ASSINAFY_TEST_EMAIL_SECONDARY");
+
+        Signer primary = null;
+        Signer secondary = null;
+        DocumentUploadResponse document = null;
+        boolean deletePrimary = false;
+        boolean deleteSecondary = false;
+        try {
+            Signer existingPrimary = client.signers().findByEmail(primaryEmail);
+            primary = client.signers().create(CreateSignerRequest.builder()
+                    .fullName("SDK Integration Primary").email(primaryEmail).build());
+            deletePrimary = existingPrimary == null;
+            if (deletePrimary) {
+                primary = client.signers().update(primary.getId(), UpdateSignerRequest.builder()
+                        .fullName("SDK Integration Primary")
+                        .governmentId("400.676.228-36")
+                        .build());
+            }
+
+            Signer existingSecondary = client.signers().findByEmail(secondaryEmail);
+            secondary = client.signers().create(CreateSignerRequest.builder()
+                    .fullName("SDK Integration Secondary").email(secondaryEmail).build());
+            deleteSecondary = existingSecondary == null;
+
+            document = client.documents().upload(minimalPdf(), "sdk-it-assignment-" + UUID.randomUUID() + ".pdf");
+            client.documents().waitUntilReady(document.getId(), 30_000, 1_500);
+
+            CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+                    .method("virtual")
+                    .signers(List.of(
+                            SignerReference.builder().id(primary.getId())
+                                    .verificationMethod("Email")
+                                    .notificationMethods(List.of("Email")).build(),
+                            SignerReference.builder().id(secondary.getId())
+                                    .verificationMethod("Email")
+                                    .notificationMethods(List.of("Email")).build()))
+                    .message("Assinafy SDK sandbox integration test")
+                    .expiresAt(Instant.now().plus(7, ChronoUnit.DAYS).toString())
+                    .build();
+
+            assertThat(client.assignments().estimateCost(document.getId(), request)).isNotNull();
+            Assignment assignment = client.assignments().create(document.getId(), request);
+            assertThat(assignment.getId()).isNotBlank();
+            assertThat(assignment.getSigners()).hasSize(2);
+
+            client.assignments().resetExpiration(document.getId(), assignment.getId(),
+                    Instant.now().plus(8, ChronoUnit.DAYS).toString());
+            assertThat(client.assignments().estimateResendCost(
+                    document.getId(), assignment.getId(), primary.getId())).isNotNull();
+            assertThat(client.assignments().resendNotification(
+                    document.getId(), assignment.getId(), primary.getId()).getDocumentId())
+                    .isEqualTo(document.getId());
+            assertThat(client.assignments().getWhatsappNotifications(
+                    document.getId(), assignment.getId())).isNotNull();
+            client.publicDocuments().sendToken(document.getId(), secondaryEmail);
+            assertThat(client.documents().activities(document.getId())).isNotNull();
+        } finally {
+            Throwable cleanupFailure = null;
+            if (document != null) {
+                try {
+                    DocumentUploadResponse createdDocument = document;
+                    retryCleanup(() -> client.documents().delete(createdDocument.getId()));
+                } catch (Throwable failure) {
+                    cleanupFailure = failure;
+                }
+            }
+            if (deletePrimary && primary != null) {
+                try {
+                    Signer createdPrimary = primary;
+                    retryCleanup(() -> client.signers().delete(createdPrimary.getId()));
+                } catch (Throwable failure) {
+                    if (cleanupFailure == null) cleanupFailure = failure;
+                    else cleanupFailure.addSuppressed(failure);
+                }
+            }
+            if (deleteSecondary && secondary != null) {
+                try {
+                    Signer createdSecondary = secondary;
+                    retryCleanup(() -> client.signers().delete(createdSecondary.getId()));
+                } catch (Throwable failure) {
+                    if (cleanupFailure == null) cleanupFailure = failure;
+                    else cleanupFailure.addSuppressed(failure);
+                }
+            }
+            if (cleanupFailure != null) throw new AssertionError("Sandbox cleanup failed", cleanupFailure);
+        }
+    }
+
+    @Test
+    @Order(21)
+    void requestsPasswordResetForConfiguredSandboxIdentity() {
+        String email = System.getenv("ASSINAFY_TEST_EMAIL_PRIMARY");
+        Assumptions.assumeTrue(email != null && !email.isBlank(),
+                "Set ASSINAFY_TEST_EMAIL_PRIMARY");
+        assertThatCode(() -> client.authentication().requestPasswordReset(email))
+                .doesNotThrowAnyException();
+    }
+
+    private static void probeDocumentedRoute(Runnable operation) {
+        try {
+            operation.run();
+        } catch (ApiException error) {
+            assertThat(error.getStatusCode())
+                    .as("documented route may be absent from the current sandbox deployment")
+                    .isEqualTo(404);
+        }
+    }
+
+    private static void retryCleanup(Runnable operation) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                operation.run();
+                return;
+            } catch (RateLimitException error) {
+                if (attempt == 2) throw error;
+                long seconds = 5;
+                String retryAfter = error.getResponseHeader("retry-after");
+                try {
+                    if (retryAfter != null) seconds = Math.max(1, Long.parseLong(retryAfter));
+                } catch (NumberFormatException ignored) {
+                    // Retry-After can be an HTTP date; the short sandbox fallback is sufficient.
+                }
+                try {
+                    Thread.sleep(seconds * 1_000 + 250);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError("Interrupted during sandbox cleanup", interrupted);
+                }
+            }
+        }
     }
 
     /** Returns a tiny syntactically valid one-page PDF for upload testing. */
     private static byte[] minimalPdf() {
-        // Minimal PDF 1.4 with one empty page. Reverse-engineered from a hello-world PDF.
-        String pdf = "%PDF-1.4\n"
-                + "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
-                + "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
-                + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<<>>/Contents 4 0 R>>endobj\n"
-                + "4 0 obj<</Length 44>>stream\n"
-                + "BT /F1 24 Tf 100 700 Td (SDK IT) Tj ET\n"
-                + "endstream\nendobj\n"
-                + "xref\n0 5\n0000000000 65535 f \n0000000010 00000 n \n0000000055 00000 n \n0000000103 00000 n \n0000000178 00000 n \n"
-                + "trailer<</Size 5/Root 1 0 R>>\n"
-                + "startxref\n264\n%%EOF\n";
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        for (byte b : pdf.getBytes()) out.write(b);
+        writeAscii(out, "%PDF-1.4\n");
+        List<String> objects = List.of(
+                "<</Type/Catalog/Pages 2 0 R>>",
+                "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+                "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<<>>/Contents 4 0 R>>",
+                "<</Length 0>>stream\n\nendstream"
+        );
+        List<Integer> offsets = new ArrayList<>();
+        for (int i = 0; i < objects.size(); i++) {
+            offsets.add(out.size());
+            writeAscii(out, (i + 1) + " 0 obj\n" + objects.get(i) + "\nendobj\n");
+        }
+        int xref = out.size();
+        writeAscii(out, "xref\n0 5\n0000000000 65535 f \n");
+        offsets.forEach(offset -> writeAscii(out,
+                String.format(Locale.ROOT, "%010d 00000 n \n", offset)));
+        writeAscii(out, "trailer<</Size 5/Root 1 0 R>>\nstartxref\n" + xref + "\n%%EOF\n");
         return out.toByteArray();
+    }
+
+    private static void writeAscii(ByteArrayOutputStream out, String value) {
+        out.writeBytes(value.getBytes(StandardCharsets.US_ASCII));
     }
 }

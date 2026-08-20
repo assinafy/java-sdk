@@ -7,6 +7,7 @@ import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.UpdateSignerRequest;
+import com.assinafy.sdk.util.ResponseHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -45,7 +46,7 @@ class SignerResourceTest {
         SignerResource noAccountResource = new SignerResource(mock);
         assertThatThrownBy(() -> noAccountResource.create(CreateSignerRequest.builder()
                 .fullName("Test")
-                .email("test@test.com")
+                .email("test@example.invalid")
                 .build()))
                 .isInstanceOf(ValidationException.class);
     }
@@ -60,13 +61,23 @@ class SignerResourceTest {
     }
 
     @Test
+    void rejectsBlankEmailInsteadOfSerializingIt() {
+        assertThatThrownBy(() -> resource.create(CreateSignerRequest.builder()
+                .fullName("Test")
+                .email("   ")
+                .build()))
+                .isInstanceOf(ValidationException.class);
+        assertThat(mock.getCaptured()).isEmpty();
+    }
+
+    @Test
     void usesCustomAccountIdWhenProvided() {
         mock.enqueue(200, EMPTY_LIST)
             .enqueue(200, SIGNER_123);
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("Test")
-                .email("test@test.com")
+                .email("test@example.invalid")
                 .build(), "custom-account");
 
         assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/custom-account/signers");
@@ -79,7 +90,7 @@ class SignerResourceTest {
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("Test")
-                .email("test@test.com")
+                .email("test@example.invalid")
                 .build());
 
         assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/test-account/signers");
@@ -91,7 +102,25 @@ class SignerResourceTest {
         resource.list(ListParams.builder().search("john@example.com").build());
 
         MockApiHttpClient.CapturedRequest req = mock.lastCaptured();
+        assertThat(req.getMethod()).isEqualTo("GET");
+        assertThat(req.getPath()).isEqualTo("/accounts/test-account/signers");
         assertThat(req.getQueryParams()).containsEntry("search", "john@example.com");
+    }
+
+    @Test
+    void getAndDeleteUseAccountSignerPath() {
+        mock.enqueue(200, SIGNER_123)
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        resource.get("123");
+        resource.delete("123");
+
+        assertThat(mock.capturedAt(0).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(0).getPath())
+                .isEqualTo("/accounts/test-account/signers/123");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("DELETE");
+        assertThat(mock.capturedAt(1).getPath())
+                .isEqualTo("/accounts/test-account/signers/123");
     }
 
     @Test
@@ -171,6 +200,7 @@ class SignerResourceTest {
     void getSelfUrlEncodesSignerAccessCode() {
         mock.enqueue(200, SIGNER_123);
         resource.getSelf("abc def");
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath())
                 .isEqualTo("/signers/self?signer-access-code=abc+def");
     }
@@ -195,6 +225,9 @@ class SignerResourceTest {
     void declineMultipleIncludesDeclineReason() {
         mock.enqueue(200, "{\"status\":200,\"data\":[]}");
         resource.declineMultiple("code", java.util.List.of("d1"), "no");
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/signers/documents/decline-multiple?signer-access-code=code");
         assertThat(mock.lastCaptured().getJsonBody()).contains("decline_reason").contains("no");
     }
 
@@ -211,6 +244,40 @@ class SignerResourceTest {
 
         String body = mock.capturedAt(1).getJsonBody();
         assertThat(body).contains("\"cpf\":\"12345678900\"");
+    }
+
+    @Test
+    void updateSerializesAndNormalisesGovernmentId() {
+        mock.enqueue(200, SIGNER_123);
+
+        resource.update("123", UpdateSignerRequest.builder()
+                .governmentId("390.533.447-05")
+                .build());
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/accounts/test-account/signers/123");
+        assertThat(mock.lastCaptured().getJsonBody())
+                .contains("\"government_id\":\"39053344705\"")
+                .doesNotContain("\"cpf\"");
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void deprecatedCpfUpdateAliasUsesGovernmentIdWireField() {
+        mock.enqueue(200, SIGNER_123);
+
+        UpdateSignerRequest request = UpdateSignerRequest.builder()
+                .cpf("390.533.447-05")
+                .build();
+        resource.update("123", request);
+
+        assertThat(request.getCpf()).isEqualTo("390.533.447-05");
+        assertThat(ResponseHandler.convert(Map.of("cpf", "123"), UpdateSignerRequest.class)
+                .getGovernmentId()).isEqualTo("123");
+        assertThat(mock.lastCaptured().getJsonBody())
+                .contains("\"government_id\":\"39053344705\"")
+                .doesNotContain("\"cpf\"");
     }
 
     @Test
@@ -254,11 +321,12 @@ class SignerResourceTest {
     @Test
     void confirmSignerDataEncodesAccessCode() {
         mock.enqueue(200, "{\"status\":200,\"data\":{}}");
-        resource.confirmSignerData("doc", "code with space", Map.of("has_accepted_terms", true));
+        resource.confirmSignerData("doc", "code with space", Map.of("full_name", "Example Signer"));
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath())
                 .isEqualTo("/documents/doc/signers/confirm-data?signer-access-code=code+with+space");
+        assertThat(mock.lastCaptured().getJsonBody()).contains("\"full_name\":\"Example Signer\"");
     }
 
     @Test

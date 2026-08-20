@@ -1,10 +1,12 @@
 package com.assinafy.sdk.util;
 
 import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.AuthenticationException;
 import com.assinafy.sdk.exceptions.RateLimitException;
 import com.assinafy.sdk.http.HttpRawResponse;
 import com.assinafy.sdk.models.DocumentActivity;
+import com.assinafy.sdk.models.CostEstimate;
 import com.assinafy.sdk.models.PaginatedResult;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +15,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 /** Error/edge-branch coverage for {@link ResponseHandler} beyond the original happy-path tests. */
+@SuppressWarnings({"rawtypes", "unchecked"})
 class ResponseHandlerExtraTest {
 
     private static HttpRawResponse resp(int status, String body) {
@@ -91,7 +94,47 @@ class ResponseHandlerExtraTest {
     }
 
     @Test
-    void handleReturnsNullOnBlankBody() {
-        assertThat(ResponseHandler.handle(resp(200, ""), Map.class)).isNull();
+    void typedAndListHandlersRejectMissingOrMalformedPayloads() {
+        assertThatThrownBy(() -> ResponseHandler.handle(resp(200, ""), Map.class))
+                .isInstanceOf(AssinafyException.class);
+        assertThatThrownBy(() -> ResponseHandler.handleList(resp(200, "{}"), Map.class))
+                .isInstanceOf(AssinafyException.class);
+        assertThatThrownBy(() -> ResponseHandler.handleList(
+                resp(200, "{\"status\":200,\"data\":{}}"), Map.class))
+                .isInstanceOf(AssinafyException.class);
+    }
+
+    @Test
+    void handlersRejectErrorEnvelopeWithoutData() {
+        assertThatThrownBy(() -> ResponseHandler.handle(
+                resp(200, "{\"status\":422,\"message\":\"bad\"}"), Map.class))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatusCode()).isEqualTo(422));
+        assertThatThrownBy(() -> ResponseHandler.handleList(
+                resp(200, "{\"status\":401,\"message\":\"no\"}"), Map.class))
+                .isInstanceOf(AuthenticationException.class);
+    }
+
+    @Test
+    void mapHandlerAcceptsNullDataWithoutThrowing() {
+        assertThat(ResponseHandler.handleMap(
+                resp(200, "{\"status\":200,\"data\":null}"))).isEmpty();
+        assertThat(ResponseHandler.handle(
+                resp(200, "{\"status\":200,\"data\":null}"), Map.class)).isNull();
+    }
+
+    @Test
+    void stringStatusInBareResourceIsNotTreatedAsEnvelopeStatus() {
+        Map<?, ?> document = ResponseHandler.handle(
+                resp(200, "{\"id\":\"d1\",\"status\":\"metadata_ready\"}"), Map.class);
+        assertThat(document.get("status")).isEqualTo("metadata_ready");
+    }
+
+    @Test
+    void typedConversionFailuresStayInSdkExceptionHierarchy() {
+        assertThatThrownBy(() -> ResponseHandler.convert(
+                Map.of("total_credits", "not-a-number"), CostEstimate.class))
+                .isInstanceOf(AssinafyException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -42,6 +42,20 @@ class FieldResourceTest {
     }
 
     @Test
+    void listAndGetUseAccountFieldPaths() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"f1\"}]}")
+                .enqueue(200, FIELD_RESPONSE);
+
+        resource.list();
+        resource.get("f1");
+
+        assertThat(mock.capturedAt(0).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc/fields");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/acc/fields/f1");
+    }
+
+    @Test
     void getRequiresFieldId() {
         assertThatThrownBy(() -> resource.get(""))
                 .isInstanceOf(ValidationException.class);
@@ -55,6 +69,13 @@ class FieldResourceTest {
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/fields/f1");
         assertThat(mock.lastCaptured().getJsonBody()).contains("New Name");
+    }
+
+    @Test
+    void updateRejectsNullRequestBeforeSending() {
+        assertThatThrownBy(() -> resource.update("f1", null))
+                .isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isZero();
     }
 
     @Test
@@ -92,6 +113,7 @@ class FieldResourceTest {
         List<FieldValidationResult> results =
                 resource.validateMultiple(List.of(Map.of("field_id", "f1", "value", "v")), null);
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/fields/validate-multiple");
         assertThat(mock.lastCaptured().getJsonBody()).contains("field_id").contains("f1");
         assertThat(results).hasSize(1);
@@ -104,6 +126,7 @@ class FieldResourceTest {
         mock.enqueue(200, "{\"status\":200,\"data\":[{\"type\":\"cpf\",\"name\":\"CPF\"}]}");
         List<FieldType> types = resource.listTypes();
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/field-types");
         assertThat(types).hasSize(1);
         assertThat(types.get(0).getType()).isEqualTo("cpf");

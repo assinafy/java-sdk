@@ -1,6 +1,8 @@
 package com.assinafy.sdk.http;
 
 import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.ValidationException;
+import com.assinafy.sdk.resources.WorkspaceResource;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -51,6 +53,7 @@ class OkHttpApiClientTest {
         assertThat(result).isEqualTo(pdf);
         RecordedRequest req = server.takeRequest();
         assertThat(req.getPath()).isEqualTo("/v1/documents/abc/download/original");
+        assertThat(req.getHeader("Accept")).isEqualTo("*/*");
     }
 
     @Test
@@ -67,6 +70,17 @@ class OkHttpApiClientTest {
                     assertThat(api.getStatusCode()).isEqualTo(404);
                     assertThat(api.getMessage()).isEqualTo("Documento não encontrado.");
                 });
+    }
+
+    @Test
+    void getBinaryRejectsErrorEnvelopeReturnedWithHttp200() {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"status\":404,\"message\":\"missing\",\"data\":null}"));
+
+        assertThatThrownBy(() -> withApiKey().getBinary("/documents/missing/download/original"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getStatusCode()).isEqualTo(404));
     }
 
     @Test
@@ -192,5 +206,71 @@ class OkHttpApiClientTest {
         // ResponseHandler.parsePaginationMeta looks these up in lowercase.
         assertThat(res.getHeaders()).containsKey("x-pagination-total-count");
         assertThat(res.getHeaders().get("x-pagination-total-count")).isEqualTo("42");
+    }
+
+    @Test
+    void doesNotFollowRedirectsWithCredentials() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(302)
+                .setHeader("Location", "https://example.com/collect"));
+
+        HttpRawResponse response = withApiKey().get("/accounts");
+
+        assertThat(response.getStatusCode()).isEqualTo(302);
+        assertThat(server.getRequestCount()).isEqualTo(1);
+    }
+
+    @Test
+    void resourceIdsRemainOneEncodedPathSegmentOnTheWire() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setBody("{\"status\":200,\"data\":{\"id\":\"a/b?c\"}}"));
+        WorkspaceResource workspaces = new WorkspaceResource(withApiKey());
+
+        workspaces.get("a/b?c");
+
+        assertThat(server.takeRequest().getPath()).isEqualTo("/v1/accounts/a%2Fb%3Fc");
+        assertThatThrownBy(() -> workspaces.get(".."))
+                .isInstanceOf(ValidationException.class);
+        assertThat(server.getRequestCount()).isEqualTo(1);
+    }
+
+    @Test
+    void bodylessJsonVerbsSendZeroLengthBody() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
+
+        withApiKey().put("/signers/accept-terms", null);
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getBodySize()).isZero();
+        assertThat(request.getHeader("Content-Type")).startsWith("application/json");
+    }
+
+    @Test
+    void binaryDownloadsRequestBinaryMediaAndExposeErrorHeaders() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("PDF"));
+        withApiKey().getBinary("/documents/d1/download/original", "application/pdf");
+        assertThat(server.takeRequest().getHeader("Accept"))
+                .isEqualTo("application/pdf");
+
+        server.enqueue(new MockResponse().setResponseCode(429)
+                .setHeader("Retry-After", "12")
+                .setBody("{\"message\":\"slow down\"}"));
+        assertThatThrownBy(() -> withApiKey().getBinary("/documents/d1/download/original"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getResponseHeader("Retry-After"))
+                        .isEqualTo("12"));
+    }
+
+    @Test
+    void rejectsInvalidTransportConfiguration() {
+        assertThatThrownBy(() -> new OkHttpApiClient("not-a-url", "k", null, 5_000))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new OkHttpApiClient("http://example.com/v1", "k", null, 5_000))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("HTTPS");
+        assertThatThrownBy(() -> new OkHttpApiClient("https://user:pass@example.com/v1", "k", null, 5_000))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("credentials");
+        assertThatThrownBy(() -> new OkHttpApiClient(baseUrl, "k", null, 0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

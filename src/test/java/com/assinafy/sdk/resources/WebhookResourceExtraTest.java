@@ -24,29 +24,41 @@ class WebhookResourceExtraTest {
 
     @Test
     void registerUsesPutToSubscriptionsPath() {
-        http.enqueue(200, "{\"status\":200,\"data\":{\"url\":\"https://e.com\",\"email\":\"a@e.com\"," +
+        http.enqueue(200, "{\"status\":200,\"data\":{\"url\":\"https://example.com\",\"email\":\"webhook@example.invalid\"," +
                 "\"events\":[\"document_ready\"],\"is_active\":true}}");
         webhooks.register(RegisterWebhookRequest.builder()
-                .url("https://e.com").email("a@e.com").events(List.of("document_ready")).build());
+                .url("https://example.com").email("webhook@example.invalid").events(List.of("document_ready")).build());
 
         assertThat(http.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/accounts/acc/webhooks/subscriptions");
     }
 
     @Test
+    void registerAcceptsCaseInsensitiveHttpsScheme() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"is_active\":true}}");
+        webhooks.register(RegisterWebhookRequest.builder()
+                .url("HTTPS://example.com/webhook")
+                .email("webhook@example.invalid")
+                .build());
+
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("PUT");
+    }
+
+    @Test
     void getReturnsNullOn404() {
         http.enqueue(404, "{\"status\":404,\"message\":\"no subscription\",\"data\":null}");
         assertThat(webhooks.get()).isNull();
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/accounts/acc/webhooks/subscriptions");
     }
 
     @Test
     void getParsesSubscriptionOn200() {
-        http.enqueue(200, "{\"status\":200,\"data\":{\"url\":\"https://e.com\",\"email\":\"a@e.com\"," +
+        http.enqueue(200, "{\"status\":200,\"data\":{\"url\":\"https://example.com\",\"email\":\"webhook@example.invalid\"," +
                 "\"events\":[\"document_ready\"],\"is_active\":false,\"updated_at\":\"2026-01-01T00:00:00Z\"}}");
         WebhookSubscription sub = webhooks.get();
         assertThat(sub).isNotNull();
-        assertThat(sub.getUrl()).isEqualTo("https://e.com");
+        assertThat(sub.getUrl()).isEqualTo("https://example.com");
         assertThat(sub.getIsActive()).isFalse();
     }
 }

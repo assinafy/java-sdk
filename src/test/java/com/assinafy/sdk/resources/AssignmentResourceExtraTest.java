@@ -2,7 +2,11 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
+import com.assinafy.sdk.models.CostEstimate;
+import com.assinafy.sdk.models.DocumentDetails;
 import com.assinafy.sdk.models.ResendNotificationResponse;
+import com.assinafy.sdk.models.WhatsappNotification;
+import com.assinafy.sdk.request.CreateAssignmentRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -51,6 +55,71 @@ class AssignmentResourceExtraTest {
         assertThat(http.lastCaptured().getPath())
                 .isEqualTo("/documents/d1/assignments/a1/signers/s1/estimate-resend-cost");
         assertThat(cost).containsEntry("has_sufficient_credits", true);
+    }
+
+    @Test
+    void typedCostMethodsReturnCompleteEstimateModels() {
+        String response = "{\"status\":200,\"data\":{" +
+                "\"documents\":1,\"credits\":0.9,\"needs_extra_document\":true," +
+                "\"extra_document_cost\":1,\"total_credits\":1.9," +
+                "\"breakdown\":[{\"code\":\"NotificationWhatsapp\"," +
+                "\"name\":\"Whatsapp Notification\",\"cost\":0.9,\"quantity\":2,\"unit_cost\":0.45}]," +
+                "\"document_balance\":0,\"credit_balance\":5.5," +
+                "\"has_sufficient_resources\":true,\"blocking_reason\":null,\"message\":null}}";
+        http.enqueue(200, response).enqueue(200, response);
+
+        CostEstimate assignmentCost = assignments.estimateCostTyped(
+                "d1", CreateAssignmentRequest.builder().build());
+        CostEstimate resendCost = assignments.estimateResendCostTyped("d1", "a1", "s1");
+
+        assertThat(assignmentCost.getDocuments()).isEqualTo(1);
+        assertThat(assignmentCost.getCredits()).isEqualByComparingTo("0.9");
+        assertThat(assignmentCost.getNeedsExtraDocument()).isTrue();
+        assertThat(assignmentCost.getExtraDocumentCost()).isEqualByComparingTo("1");
+        assertThat(assignmentCost.getTotalCredits()).isEqualByComparingTo("1.9");
+        assertThat(assignmentCost.getBreakdown()).singleElement().satisfies(item -> {
+            assertThat(item.getCode()).isEqualTo("NotificationWhatsapp");
+            assertThat(item.getName()).isEqualTo("Whatsapp Notification");
+            assertThat(item.getCost()).isEqualByComparingTo("0.9");
+            assertThat(item.getQuantity()).isEqualTo(2);
+            assertThat(item.getUnitCost()).isEqualByComparingTo("0.45");
+        });
+        assertThat(assignmentCost.getDocumentBalance()).isEqualByComparingTo("0");
+        assertThat(assignmentCost.getCreditBalance()).isEqualByComparingTo("5.5");
+        assertThat(assignmentCost.getHasSufficientResources()).isTrue();
+        assertThat(assignmentCost.getBlockingReason()).isNull();
+        assertThat(assignmentCost.getMessage()).isNull();
+        assertThat(resendCost.getTotalCredits()).isEqualByComparingTo("1.9");
+        assertThat(http.lastCaptured().getPath())
+                .isEqualTo("/documents/d1/assignments/a1/signers/s1/estimate-resend-cost");
+    }
+
+    @Test
+    void typedWhatsappNotificationsAndSignerDocumentUseDocumentedModels() {
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"sent_at\":1710000000," +
+                "\"header\":\"Signature requested\",\"body\":\"Open the document\"," +
+                "\"buttons\":[{\"text\":\"Open\"}],\"phone_number\":\"+15555550123\"," +
+                "\"signer_id\":\"s1\"}]}");
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"," +
+                "\"status\":\"pending_signature\",\"assignment\":{\"id\":\"a1\"}}}");
+
+        List<WhatsappNotification> notifications =
+                assignments.getWhatsappNotificationsTyped("d1", "a1");
+        DocumentDetails document = assignments.getForSignerTyped("code 1", true);
+
+        assertThat(notifications).singleElement().satisfies(notification -> {
+            assertThat(notification.getSentAt()).isEqualTo(1_710_000_000L);
+            assertThat(notification.getHeader()).isEqualTo("Signature requested");
+            assertThat(notification.getBody()).isEqualTo("Open the document");
+            assertThat(notification.getButtons()).extracting(WhatsappNotification.Button::getText)
+                    .containsExactly("Open");
+            assertThat(notification.getPhoneNumber()).isEqualTo("+15555550123");
+            assertThat(notification.getSignerId()).isEqualTo("s1");
+        });
+        assertThat(document.getId()).isEqualTo("d1");
+        assertThat(document.getAssignment().getId()).isEqualTo("a1");
+        assertThat(http.lastCaptured().getPath())
+                .isEqualTo("/sign?signer-access-code=code+1&has_accepted_terms=true");
     }
 
     @Test

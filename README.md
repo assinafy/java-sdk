@@ -2,14 +2,19 @@
 
 Java client SDK for the [Assinafy API](https://api.assinafy.com.br/v1/docs) — a Brazilian digital signature platform.
 
+See the [complete Java API reference](docs/API_REFERENCE.md) for all 89 official operations,
+payload fields, response schemas, status codes, authentication requirements, and compatibility APIs.
+
 ## Requirements
 
-- Java 25+
+- JDK 25 (LTS). The build intentionally enforces Java `>=25,<26`.
 - Maven 3.9+
 
 ## Installation
 
-Add the following dependency to your `pom.xml`:
+The project declares the coordinate below, but version `1.5.0` is not currently available from
+Maven Central. If your organization publishes or mirrors it in a Maven registry, configure that
+registry and add:
 
 ```xml
 <dependency>
@@ -19,40 +24,67 @@ Add the following dependency to your `pom.xml`:
 </dependency>
 ```
 
+For a source checkout, install the artifact into your local Maven repository first:
+
+```bash
+mvn install
+```
+
 ## Quick Start
 
 ```java
 import com.assinafy.sdk.AssinafyClient;
 import com.assinafy.sdk.AssinafyClientOptions;
+import com.assinafy.sdk.models.Assignment;
+import com.assinafy.sdk.models.DocumentUploadResponse;
+import com.assinafy.sdk.models.Signer;
+import com.assinafy.sdk.request.CreateAssignmentRequest;
+import com.assinafy.sdk.request.CreateSignerRequest;
+import com.assinafy.sdk.request.SignerReference;
 
-AssinafyClient client = new AssinafyClient(
-    AssinafyClientOptions.builder()
-        .apiKey("your-api-key")
-        .accountId("your-account-id")
-        .build()
-);
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
 
-// Upload a document and request signatures
-byte[] fileData = Files.readAllBytes(Path.of("contract.pdf"));
-DocumentUploadResponse doc = client.documents().upload(fileData, "contract.pdf");
+public final class QuickStart {
+    private QuickStart() {}
 
-// Create signers
-Signer signer = client.signers().create(
-    CreateSignerRequest.builder()
-        .fullName("John Doe")
-        .email("john@example.com")
-        .build()
-);
+    public static void main(String[] args) throws Exception {
+        String apiKey = Objects.requireNonNull(
+            System.getenv("ASSINAFY_API_KEY"), "Set ASSINAFY_API_KEY");
+        String accountId = Objects.requireNonNull(
+            System.getenv("ASSINAFY_ACCOUNT_ID"), "Set ASSINAFY_ACCOUNT_ID");
 
-// Create assignment
-Assignment assignment = client.assignments().create(
-    doc.getId(),
-    CreateAssignmentRequest.builder()
-        .method("virtual")
-        .signers(List.of(SignerReference.ofId(signer.getId())))
-        .message("Please sign this document")
-        .build()
-);
+        AssinafyClient client = new AssinafyClient(
+            AssinafyClientOptions.builder()
+                .apiKey(apiKey)
+                .accountId(accountId)
+                .build()
+        );
+
+        byte[] fileData = Files.readAllBytes(Path.of("contract.pdf"));
+        DocumentUploadResponse document = client.documents().upload(fileData, "contract.pdf");
+        client.documents().waitUntilReady(document.getId());
+
+        Signer signer = client.signers().create(
+            CreateSignerRequest.builder()
+                .fullName("Example Signer")
+                .email("signer@example.com")
+                .build()
+        );
+
+        Assignment assignment = client.assignments().create(
+            document.getId(),
+            CreateAssignmentRequest.builder()
+                .method("virtual")
+                .signers(List.of(SignerReference.ofId(signer.getId())))
+                .message("Please sign this document")
+                .build()
+        );
+        System.out.println(assignment.getId());
+    }
+}
 ```
 
 ## Authentication
@@ -61,7 +93,7 @@ The API supports two authentication methods:
 
 ```java
 // Preferred: X-Api-Key header
-AssinafyClient client = new AssinafyClient(
+AssinafyClient apiKeyClient = new AssinafyClient(
     AssinafyClientOptions.builder()
         .apiKey("your-api-key")
         .accountId("your-account-id")
@@ -69,7 +101,7 @@ AssinafyClient client = new AssinafyClient(
 );
 
 // Legacy: Authorization: Bearer token
-AssinafyClient client = new AssinafyClient(
+AssinafyClient bearerClient = new AssinafyClient(
     AssinafyClientOptions.builder()
         .token("jwt-token")
         .accountId("your-account-id")
@@ -84,8 +116,8 @@ AssinafyClient client = new AssinafyClient(
 | `apiKey`        | String   | —                                    | Preferred credential (X-Api-Key header).  |
 | `token`         | String   | —                                    | Legacy access token (Bearer header).      |
 | `accountId`     | String   | —                                    | Default workspace/account ID.             |
-| `baseUrl`       | String   | `https://api.assinafy.com.br/v1`     | API base URL. Use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
-| `webhookSecret`  | String   | —                                    | Shared secret for webhook verification.   |
+| `baseUrl`       | String   | `https://api.assinafy.com.br/v1`     | HTTPS API base URL. Plain HTTP is rejected except for loopback testing; use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
+| `webhookSecret`  | String   | —                                    | Optional secret for an out-of-band HMAC arrangement; the official API publishes no webhook-signature scheme. |
 | `timeoutMs`      | long     | 30000                                | Request timeout in milliseconds.          |
 | `logger`        | Logger   | No-op                                | Optional logger instance.                |
 
@@ -93,14 +125,14 @@ AssinafyClient client = new AssinafyClient(
 
 ```java
 // Positional factory
-AssinafyClient client = AssinafyClient.create("api-key", "account-id");
+AssinafyClient factoryClient = AssinafyClient.create("api-key", "account-id");
 
 // With additional options
 AssinafyClientOptions extras = AssinafyClientOptions.builder()
     .webhookSecret("secret")
     .timeoutMs(60000)
     .build();
-AssinafyClient client = AssinafyClient.create("api-key", "account-id", extras);
+AssinafyClient customClient = AssinafyClient.create("api-key", "account-id", extras);
 ```
 
 ## Resources
@@ -152,7 +184,7 @@ Map<String, Object> cost = client.documents().estimateCostFromTemplate(templateI
 // Get document statuses
 List<DocumentStatusInfo> statuses = client.documents().getStatuses();
 
-// Wait for processing to finish, then download artifacts (PDF/JPEG bytes).
+// Wait for processing to finish, then download raw binary artifact bytes.
 // Download throws ApiException if the artifact is unavailable (e.g. not yet signed).
 client.documents().waitUntilReady(documentId);
 byte[] page = client.documents().downloadPage(documentId, pageId);
@@ -231,11 +263,10 @@ Assignment assignment = client.assignments().create(
 
 // Estimate cost
 Map<String, Object> cost = client.assignments().estimateCost(documentId, request);
+CostEstimate typedCost = client.assignments().estimateCostTyped(documentId, request);
 
-// List the current account's assignments.
-// NOTE: GET /v1/assignments resolves the account from an interactive session and is NOT
-// available to API-key clients (it returns 400 "account context required"). Use it only with
-// a session/Bearer token; for a single document's assignment use documents().details(id).getAssignment().
+// List assignments. OpenAPI resolves the current interactive account; when this client has a
+// default account ID, the SDK also sends the deployed compatibility accountId query parameter.
 PaginatedResult<Assignment> assignments = client.assignments().list(
     ListParams.builder().page(1).perPage(20).build()
 );
@@ -254,7 +285,7 @@ Map<String, Object> declined = client.assignments().decline(
 // Inspect WhatsApp notification delivery state (one entry per tracked notification)
 List<Map<String, Object>> waState = client.assignments().getWhatsappNotifications(documentId, assignmentId);
 
-// Clear an assignment's expiration entirely
+// Deployed compatibility: clear expiration. OpenAPI does not explicitly mark expires_at nullable.
 client.assignments().resetExpiration(documentId, assignmentId, null);
 
 // Signer-side flows (signer-access-code based)
@@ -278,8 +309,8 @@ WebhookSubscription sub = client.webhooks().register(
 // Get current subscription
 WebhookSubscription current = client.webhooks().get();
 
-// Stop delivery. Prefer inactivate(); delete() is deprecated (the DELETE subscription route
-// returns 404 on the live API).
+// Stop delivery. Prefer inactivate(); delete() is deprecated because its DELETE route is not in
+// the official contract and returned 404 on the tested deployment.
 client.webhooks().inactivate();
 
 // List event types
@@ -300,7 +331,7 @@ client.webhooks().retryDispatch(dispatchId);
 // List
 PaginatedResult<TemplateListItem> templates = client.templates().list();
 
-// Get
+// Get (compatibility endpoint; absent from the official OpenAPI contract)
 Template template = client.templates().get(templateId);
 ```
 
@@ -376,9 +407,48 @@ ApiKey rotated = client.apiKeys().create("password");  // full key; invalidates 
 client.apiKeys().delete();
 ```
 
-> The wider user-account/auth surface (login, social login, password
-> change/reset) is intentionally **out of scope** for this server-side SDK —
-> those are web-app concerns. Only API-key management is provided.
+### Authentication and Users
+
+Login, social-login, password, authenticated-user, user-statistics, and notification-preference
+methods are available through `client.authentication()` and `client.users()`. Their complete
+signatures and payloads are in the [API reference](docs/API_REFERENCE.md).
+
+Notification preferences use the exact case-sensitive codes published by the API. Updates merge,
+so omitted switches keep their current values:
+
+```java
+NotificationPreferences preferences = client.users().getNotificationPreferences();
+NotificationPreferences updated = client.users().updateNotificationPreferences(Map.of(
+    "DocumentCompleted", true,
+    "SignerWhatsappFailed", false
+));
+```
+
+Request: `PUT /users/self/notification-preferences`
+
+```json
+{ "DocumentCompleted": true, "SignerWhatsappFailed": false }
+```
+
+Response `data` (the API always returns all nine switches):
+
+```json
+{
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentCancelled": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "DocumentExpirationReset": true,
+  "DocumentProcessingFailed": true,
+  "TemplateProcessingFailed": true,
+  "SignerWhatsappFailed": false
+}
+```
+
+Both notification-preference operations are published in the production OpenAPI contract, but the
+sandbox returned application-level `404` responses when checked on 2026-08-20. The SDK methods
+remain available for production and future sandbox parity.
 
 ### Public Documents
 
@@ -389,8 +459,11 @@ Endpoints that do not require auth (useful for embedded signer flows).
 DocumentDetails basic = client.publicDocuments().getBasicInfo(documentId);
 
 // Send a one-time access token by email so the recipient can view/sign the document.
-// The documented body is a single `email` field.
+// OpenAPI documents optional `email`; the SDK also sends sandbox-required recipient/channel.
 Map<String, Object> sent = client.publicDocuments().sendToken(documentId, "signer@example.com");
+
+// Explicit deployed channel form (recipient may be an email address or phone number).
+client.publicDocuments().sendToken(documentId, recipient, channel);
 ```
 
 ### Signer Self-Service
@@ -407,7 +480,8 @@ client.signers().acceptTerms(signerAccessCode);
 // OTP verification (body carries only verification-code)
 client.signers().verifyEmail(signerAccessCode, "123456");
 
-// Signature image (PNG or JPEG). type and reuse are optional; reuse sets is_signature_reusable.
+// Signature image. The official upload contract accepts image/png only.
+// type and reuse are optional documented query inputs; reuse sets is_signature_reusable.
 client.signers().uploadSignature(signerAccessCode, "signature", pngBytes);
 client.signers().uploadSignature(signerAccessCode, "signature", pngBytes, true); // opt into reuse
 byte[] image = client.signers().downloadSignature(signerAccessCode, "signature");
@@ -557,13 +631,14 @@ PaginationMeta meta = result.getMeta();
 
 ## Request / Response Payloads
 
-Every response is wrapped in a `{ "status", "message", "data" }` envelope; the SDK unwraps `data`
-and maps it to the typed model shown in each method's return type (an error `status` or non-2xx is
-raised as `ApiException`). The shapes below are captured from the live API for the core operations —
-per-method contracts are also on each method's Javadoc, and the full reference is at
-<https://api.assinafy.com.br/v1/docs>.
+JSON success responses normally use `{ "status", "message", "data" }`; the SDK returns `data` and
+also accepts compatible bare JSON where applicable. A `void` method discards a success envelope and
+accepts an empty 2xx body. Binary methods return raw `byte[]` without JSON decoding. A non-2xx HTTP
+status or non-2xx numeric envelope status raises `ApiException`. See the
+[complete Java API reference](docs/API_REFERENCE.md) for every operation and payload field.
 
-**Upload document** — `documents().upload(...)` → `DocumentUploadResponse` (multipart `file` + `name`):
+**Upload document** — `documents().upload(...)` → `DocumentUploadResponse` (multipart `file`; the
+SDK also sends compatibility `name` and optional `metadata` parts):
 
 ```json
 { "data": {
@@ -596,7 +671,7 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 { "method": "virtual", "message": "Please sign",
   "signers": [ { "id": "19e6…", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 } ] }
 // response data (abridged)
-{ "resource": "assignment", "id": "103aa2…", "sender_email": "you@acme.com", "method": "virtual",
+{ "resource": "assignment", "id": "103aa2…", "sender_email": "sender@example.invalid", "method": "virtual",
   "expires_at": null, "message": "Please sign",
   "signers": [ { "id": "19e6…", "full_name": "John Doe", "email": "john@example.com",
                  "verification_method": "Email", "notification_methods": ["Email"], "step": 1,
@@ -606,7 +681,8 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
   "signing_urls": [ { "signer_id": "19e6…", "url": "https://app…/sign/103aa2…?email=…" } ] }
 ```
 
-**Estimate cost** — `assignments().estimateCost(...)` / `documents().estimateCostFromTemplate(...)` → `Map`:
+**Estimate cost** — the compatibility methods return `Map<String,Object>`; the corresponding
+`estimateCostTyped(...)` methods return `CostEstimate`:
 
 ```json
 { "documents": 1, "credits": 0, "needs_extra_document": false, "extra_document_cost": 0,
@@ -643,39 +719,31 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 ## Development
 
 ```bash
-# Build
-mvn compile
-
-# Run unit tests
+# Offline unit tests
 mvn test
 
-# Run the live API smoke test against the real Assinafy API
-ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
-    mvn test -Dtest=LiveApiSmokeIT
-
-# Package
-mvn package
+# Full offline build, Javadocs, and package verification
+mvn clean verify
 ```
 
-The default `mvn test` run executes 195 offline unit tests (including wire-level
-`OkHttpApiClient` tests backed by MockWebServer).
+`mvn test` is offline and includes wire-level HTTP tests backed by MockWebServer. The opt-in
+`LiveApiSmokeIT` suite performs real sandbox reads and writes. Inject its credentials through your
+shell or CI secret store, then run:
 
 ```bash
-# Run the live smoke test against the sandbox
-ASSINAFY_API_KEY=...  ASSINAFY_ACCOUNT_ID=...  \
-    ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1  \
-    mvn test -Dtest=LiveApiSmokeIT
+# ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID must already be set from a secret store.
+export ASSINAFY_API_KEY
+export ASSINAFY_ACCOUNT_ID
+export ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1
+mvn -Plive-api verify
 ```
 
-The live smoke test (`src/test/java/com/assinafy/sdk/it/LiveApiSmokeIT.java`)
-is excluded from the default `mvn test` run (Surefire skips classes whose names
-end in `IT`) and honors the optional `ASSINAFY_BASE_URL` (defaults to production).
-When enabled, it runs 18 read/write flows: it exercises the read endpoints, uploads
-a tiny PDF, renames it, runs a lightweight search, downloads its artifacts (and asserts
-an unavailable artifact throws), estimates an assignment cost, appends/lists/detaches a
-document tag, validates a field value, reads the account theme and masked API key, and
-creates + deletes ephemeral signers and a workspace tag. No emails are sent at any point
-and every created resource is cleaned up.
+The test rejects any base URL other than the exact sandbox URL. The assignment-notification case
+requires both `ASSINAFY_TEST_EMAIL_PRIMARY` and `ASSINAFY_TEST_EMAIL_SECONDARY`; the password-reset
+case requires only `ASSINAFY_TEST_EMAIL_PRIMARY`. Leave them unset to skip those cases, or set them
+to controlled sandbox recipients—the cases send real messages. Writes use unique fixture names and
+`finally` cleanup, but cleanup can still fail after a network or service outage; inspect the sandbox
+account after an interrupted run.
 
 ## License
 

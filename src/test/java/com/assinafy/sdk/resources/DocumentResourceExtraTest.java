@@ -1,15 +1,20 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.NetworkException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.models.CostEstimate;
 import com.assinafy.sdk.models.DocumentDetails;
+import com.assinafy.sdk.models.DocumentVerification;
 import com.assinafy.sdk.models.SigningProgress;
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest;
+import com.assinafy.sdk.request.TemplateSigner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -56,6 +61,7 @@ class DocumentResourceExtraTest {
         http.enqueue(200, "PDFBYTES");
         documents.download("d1", "certificate-page");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/d1/download/certificate-page");
+        assertThat(http.lastCaptured().getAccept()).isEqualTo("*/*");
     }
 
     @Test
@@ -71,6 +77,7 @@ class DocumentResourceExtraTest {
     void downloadPageHitsPagePathAndValidatesIds() {
         http.enqueue(200, "PAGE");
         documents.downloadPage("d1", "p1");
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET_BINARY");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/d1/pages/p1/download");
         assertThatThrownBy(() -> documents.downloadPage("d1", " "))
                 .isInstanceOf(ValidationException.class);
@@ -86,9 +93,20 @@ class DocumentResourceExtraTest {
     }
 
     @Test
+    void downloadRejectsHttp200ErrorEnvelope() {
+        http.enqueue(200, "{\"status\":404,\"message\":\"missing\"}",
+                Map.of("Content-Type", "application/json"));
+
+        assertThatThrownBy(() -> documents.download("d1", "original"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getStatusCode()).isEqualTo(404));
+    }
+
+    @Test
     void verifyValidDocumentReturnsValidFlag() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"hash\":\"H\",\"is_valid\":true,\"status\":\"certificated\"}}");
         Map<String, Object> result = documents.verify("H");
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/H/verify");
         assertThat(result).containsEntry("is_valid", true);
     }
@@ -103,10 +121,91 @@ class DocumentResourceExtraTest {
     }
 
     @Test
+    void verifyTypedReturnsCompleteVerificationModel() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"hash\":\"H\",\"id\":\"d1\"," +
+                "\"status\":\"certificated\",\"page_count\":\"2\",\"signer_count\":\"3\"," +
+                "\"completed_count\":3,\"completed_at\":\"2026-08-20T12:00:00Z\"," +
+                "\"verified_at\":\"2026-08-20T12:01:00Z\",\"is_valid\":true,\"message\":\"\"}}");
+
+        DocumentVerification result = documents.verifyTyped("H");
+
+        assertThat(result.getHash()).isEqualTo("H");
+        assertThat(result.getId()).isEqualTo("d1");
+        assertThat(result.getStatus()).isEqualTo("certificated");
+        assertThat(result.getPageCount()).isEqualTo("2");
+        assertThat(result.getSignerCount()).isEqualTo("3");
+        assertThat(result.getCompletedCount()).isEqualTo(3);
+        assertThat(result.getCompletedAt()).isEqualTo("2026-08-20T12:00:00Z");
+        assertThat(result.getVerifiedAt()).isEqualTo("2026-08-20T12:01:00Z");
+        assertThat(result.getIsValid()).isTrue();
+        assertThat(result.getMessage()).isEmpty();
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/H/verify");
+    }
+
+    @Test
     void waitUntilReadyReturnsWhenStatusReady() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"certificated\"}}");
         DocumentDetails details = documents.waitUntilReady("d1", 5_000, 10);
         assertThat(details.getStatus()).isEqualTo("certificated");
+    }
+
+    @Test
+    void waitUntilReadyPollsImmediatelyForTinyPositiveBudget() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"certificated\"}}");
+
+        DocumentDetails details = documents.waitUntilReady("d1", 1, 1_000);
+
+        assertThat(details.getStatus()).isEqualTo("certificated");
+        assertThat(http.capturedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void waitUntilReadyRetriesNotFoundAndServerErrors() {
+        http.enqueue(404, "{\"status\":404,\"message\":\"not ready\"}");
+        http.enqueue(503, "{\"status\":503,\"message\":\"try again\"}");
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"metadata_ready\"}}");
+
+        DocumentDetails details = documents.waitUntilReady("d1", 1_000, 1);
+
+        assertThat(details.getStatus()).isEqualTo("metadata_ready");
+        assertThat(http.capturedCount()).isEqualTo(3);
+    }
+
+    @Test
+    void waitUntilReadyDoesNotRetryFatalClientErrors() {
+        http.enqueue(400, "{\"status\":400,\"message\":\"invalid document\"}");
+
+        assertThatThrownBy(() -> documents.waitUntilReady("d1", 1_000, 1))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getStatusCode()).isEqualTo(400));
+        assertThat(http.capturedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void waitUntilReadyRestoresInterruptStatus() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"uploading\"}}");
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> documents.waitUntilReady("d1", 1_000, 1_000))
+                    .isInstanceOf(NetworkException.class)
+                    .hasMessageContaining("Interrupted");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void waitUntilReadyCapsSleepAtRemainingBudget() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"uploading\"}}");
+        long start = System.nanoTime();
+
+        assertThatThrownBy(() -> documents.waitUntilReady("d1", 20, 500))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Timeout");
+
+        long elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertThat(elapsedMs).isLessThan(400);
     }
 
     @Test
@@ -161,7 +260,9 @@ class DocumentResourceExtraTest {
     void createFromTemplatePostsToTemplateDocumentsPath() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\",\"template_id\":\"tmpl\"}}");
         DocumentDetails doc = documents.createFromTemplate("tmpl",
-                CreateDocumentFromTemplateRequest.builder().name("c.pdf").build());
+                CreateDocumentFromTemplateRequest.builder().name("c.pdf")
+                        .signers(List.of(TemplateSigner.builder().roleId("r1").id("s1").build()))
+                        .build());
         assertThat(http.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/accounts/acc/templates/tmpl/documents");
         assertThat(doc.getId()).isEqualTo("doc1");
@@ -171,9 +272,42 @@ class DocumentResourceExtraTest {
     void estimateCostFromTemplatePostsToEstimateCostPath() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":0}}");
         Map<String, Object> cost = documents.estimateCostFromTemplate("tmpl",
-                CreateDocumentFromTemplateRequest.builder().build());
+                CreateDocumentFromTemplateRequest.builder()
+                        .signers(List.of(TemplateSigner.builder().roleId("r1").id("ignored").step(2).build()))
+                        .name("ignored.pdf")
+                        .build());
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(http.lastCaptured().getPath())
                 .isEqualTo("/accounts/acc/templates/tmpl/documents/estimate-cost");
         assertThat(cost).containsKey("total_credits");
+        assertThat(http.lastCaptured().getJsonBody()).contains("\"role_id\":\"r1\"")
+                .doesNotContain("\"id\"").doesNotContain("step").doesNotContain("name");
+    }
+
+    @Test
+    void estimateCostFromTemplateTypedReturnsCostEstimate() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"documents\":1," +
+                "\"total_credits\":0.45,\"has_sufficient_resources\":true}}");
+
+        CostEstimate cost = documents.estimateCostFromTemplateTyped("tmpl",
+                CreateDocumentFromTemplateRequest.builder()
+                        .signers(List.of(TemplateSigner.builder().roleId("r1").build()))
+                        .build(), "other-account");
+
+        assertThat(cost.getDocuments()).isEqualTo(1);
+        assertThat(cost.getTotalCredits()).isEqualByComparingTo("0.45");
+        assertThat(cost.getHasSufficientResources()).isTrue();
+        assertThat(http.lastCaptured().getPath())
+                .isEqualTo("/accounts/other-account/templates/tmpl/documents/estimate-cost");
+    }
+
+    @Test
+    void templateOperationsRejectMissingRequiredSignersBeforeSending() {
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl", null))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> documents.estimateCostFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().build()))
+                .isInstanceOf(ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
     }
 }

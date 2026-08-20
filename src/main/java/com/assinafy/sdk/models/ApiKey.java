@@ -14,8 +14,22 @@ public class ApiKey {
     @JsonProperty("api_key")
     private String apiKey;
 
+    /**
+     * Creates an empty API key.
+     */
     public ApiKey() {}
 
+    /**
+     * Returns the API key.
+     *
+     * @return the API key
+     */
     public String getApiKey() { return apiKey; }
+
+    /**
+     * Sets the API key.
+     *
+     * @param apiKey the API key
+     */
     public void setApiKey(String apiKey) { this.apiKey = apiKey; }
 }

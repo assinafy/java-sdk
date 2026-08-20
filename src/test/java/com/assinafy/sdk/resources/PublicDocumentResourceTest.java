@@ -36,22 +36,23 @@ class PublicDocumentResourceTest {
 
     @Test
     void sendTokenPutsEmailBodyToSendTokenPath() {
-        // The documented send-token body is a single `email` field.
         mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
         resource.sendToken("doc1", "user@example.com");
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1/send-token");
         String body = mock.lastCaptured().getJsonBody();
-        assertThat(body).isEqualTo("{\"email\":\"user@example.com\"}");
+        assertThat(body).isEqualTo("{\"email\":\"user@example.com\","
+                + "\"recipient\":\"user@example.com\",\"channel\":\"email\"}");
     }
 
     @Test
-    @SuppressWarnings("deprecation")
-    void deprecatedSendTokenOverloadStillSendsEmail() {
-        // The legacy (recipient, channel) overload delegates: recipient becomes the email, channel ignored.
+    void explicitChannelOverloadPreservesDeployedPayload() {
         mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
         resource.sendToken("doc1", "user@example.com", "email");
-        assertThat(mock.lastCaptured().getJsonBody()).isEqualTo("{\"email\":\"user@example.com\"}");
+        assertThat(mock.lastCaptured().getJsonBody()).contains(
+                "\"email\":\"user@example.com\"",
+                "\"recipient\":\"user@example.com\"",
+                "\"channel\":\"email\"");
     }
 
     @Test
@@ -60,5 +61,15 @@ class PublicDocumentResourceTest {
                 .isInstanceOf(ValidationException.class);
         assertThatThrownBy(() -> resource.sendToken("", "user@example.com"))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void sendTokenSupportsDocumentConfiguredRecipientWithoutBody() {
+        mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
+
+        resource.sendToken("doc1");
+
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1/send-token");
+        assertThat(mock.lastCaptured().getJsonBody()).isNull();
     }
 }

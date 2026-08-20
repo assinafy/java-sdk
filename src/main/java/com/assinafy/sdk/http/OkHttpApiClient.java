@@ -7,9 +7,17 @@ import okhttp3.*;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Thread-safe OkHttp transport for the Assinafy API.
+ *
+ * <p>The transport does not follow redirects. It prefers API-key authentication when both an API
+ * key and bearer token are supplied.
+ */
 public class OkHttpApiClient implements ApiHttpClient {
 
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
@@ -21,21 +29,38 @@ public class OkHttpApiClient implements ApiHttpClient {
     /** Lenient mapper used only to extract an error message from a failed binary download. */
     private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
 
-    private static final String SDK_VERSION = "1.5.0";
+    private static final String SDK_VERSION = OkHttpApiClient.class.getPackage().getImplementationVersion() != null
+            ? OkHttpApiClient.class.getPackage().getImplementationVersion()
+            : "development";
 
     private final OkHttpClient client;
     private final String baseUrl;
 
+    /**
+     * Create an OkHttp transport.
+     *
+     * @param baseUrl HTTP or HTTPS API base URL without a query or fragment
+     * @param apiKey API key sent in {@code X-Api-Key}, or {@code null}
+     * @param token bearer token used when {@code apiKey} is blank, or {@code null}
+     * @param timeoutMs positive call, connection, read, and write timeout in milliseconds
+     * @throws IllegalArgumentException if the base URL is invalid or the timeout is not positive
+     */
     public OkHttpApiClient(String baseUrl, String apiKey, String token, long timeoutMs) {
+        if (timeoutMs <= 0) throw new IllegalArgumentException("timeoutMs must be greater than zero");
         this.baseUrl = normaliseBaseUrl(baseUrl);
         this.client = new OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .writeTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .addInterceptor(chain -> {
                     Request.Builder builder = chain.request().newBuilder()
-                            .header("Accept", "application/json")
                             .header("User-Agent", "assinafy-java-sdk/" + SDK_VERSION);
+                    if (chain.request().header("Accept") == null) {
+                        builder.header("Accept", "application/json");
+                    }
                     if (apiKey != null && !apiKey.isBlank()) {
                         builder.header("X-Api-Key", apiKey);
                     } else if (token != null && !token.isBlank()) {
@@ -58,7 +83,8 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse get(String path, Map<String, Object> queryParams) throws IOException {
-        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + path).newBuilder();
+        HttpUrl.Builder urlBuilder = Objects.requireNonNull(HttpUrl.parse(baseUrl + path), "Invalid request URL")
+                .newBuilder();
         if (queryParams != null) {
             queryParams.forEach((k, v) -> {
                 if (v != null) {
@@ -75,7 +101,7 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse post(String path, String jsonBody) throws IOException {
-        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "{}", JSON);
+        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "", JSON);
         Request request = new Request.Builder()
                 .url(baseUrl + path)
                 .post(body)
@@ -115,7 +141,7 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse put(String path, String jsonBody) throws IOException {
-        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "{}", JSON);
+        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "", JSON);
         Request request = new Request.Builder()
                 .url(baseUrl + path)
                 .put(body)
@@ -125,7 +151,7 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse patch(String path, String jsonBody) throws IOException {
-        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "{}", JSON);
+        RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "", JSON);
         Request request = new Request.Builder()
                 .url(baseUrl + path)
                 .patch(body)
@@ -154,22 +180,35 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public byte[] getBinary(String path) throws IOException {
+        return getBinary(path, "*/*");
+    }
+
+    @Override
+    public byte[] getBinary(String path, String acceptMediaType) throws IOException {
         Request request = new Request.Builder()
                 .url(baseUrl + path)
+                .header("Accept", acceptMediaType)
                 .get()
                 .build();
         try (Response response = client.newCall(request).execute()) {
             ResponseBody responseBody = response.body();
+            Map<String, String> headers = responseHeaders(response);
             // A non-2xx download returns the JSON error envelope as the body. Fail loudly
             // instead of handing those bytes back as if they were the requested artifact.
             if (!response.isSuccessful()) {
-                String body = responseBody != null ? responseBody.string() : null;
-                throw ApiException.fromResponse(response.code(), parseErrorBody(body));
+                throw ApiException.fromResponse(response.code(), parseErrorBody(responseBody.string()), headers);
             }
-            if (responseBody == null) {
-                return new byte[0];
+            MediaType contentType = responseBody.contentType();
+            byte[] bytes = responseBody.bytes();
+            if (contentType != null && (contentType.subtype().equalsIgnoreCase("json")
+                    || contentType.subtype().toLowerCase(Locale.ROOT).endsWith("+json"))) {
+                Object parsed = parseErrorBody(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+                if (parsed instanceof Map<?, ?> map && map.get("status") instanceof Number status
+                        && (status.intValue() < 200 || status.intValue() >= 300)) {
+                    throw ApiException.fromResponse(status.intValue(), parsed, headers);
+                }
             }
-            return responseBody.bytes();
+            return bytes;
         }
     }
 
@@ -201,23 +240,43 @@ public class OkHttpApiClient implements ApiHttpClient {
                 && data[0] == JPEG_MAGIC[0] && data[1] == JPEG_MAGIC[1] && data[2] == JPEG_MAGIC[2]) {
             return JPEG;
         }
-        return PNG;
+        if (data != null && data.length >= 4 && (data[0] & 0xff) == 0x89
+                && data[1] == 'P' && data[2] == 'N' && data[3] == 'G') return PNG;
+        throw new IllegalArgumentException("Signature image must be PNG or JPEG");
     }
 
     private HttpRawResponse execute(Request request) throws IOException {
         try (Response response = client.newCall(request).execute()) {
-            Map<String, String> headers = new HashMap<>();
-            for (String name : response.headers().names()) {
-                headers.put(name.toLowerCase(), response.header(name));
-            }
+            Map<String, String> headers = responseHeaders(response);
             ResponseBody responseBody = response.body();
-            String body = responseBody != null ? responseBody.string() : null;
+            String body = responseBody.string();
             return new HttpRawResponse(response.code(), body, headers);
         }
     }
 
+    private static Map<String, String> responseHeaders(Response response) {
+        Map<String, String> headers = new HashMap<>();
+        for (String name : response.headers().names()) {
+            headers.put(name.toLowerCase(Locale.ROOT), response.header(name));
+        }
+        return headers;
+    }
+
     private static String normaliseBaseUrl(String url) {
-        if (url == null) return "";
-        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+        if (url == null || url.isBlank()) throw new IllegalArgumentException("baseUrl is required");
+        String value = url;
+        while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
+        HttpUrl parsed = HttpUrl.parse(value);
+        if (parsed == null || parsed.query() != null || parsed.fragment() != null
+                || !parsed.username().isEmpty() || !parsed.password().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "baseUrl must be an HTTP(S) URL without credentials, query, or fragment");
+        }
+        String host = parsed.host();
+        boolean loopback = host.equals("localhost") || host.startsWith("127.") || host.equals("::1");
+        if (!parsed.isHttps() && !loopback) {
+            throw new IllegalArgumentException("baseUrl must use HTTPS except for loopback testing");
+        }
+        return value;
     }
 }

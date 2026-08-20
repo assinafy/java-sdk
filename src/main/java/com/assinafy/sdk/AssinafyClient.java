@@ -13,12 +13,15 @@ import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
 import com.assinafy.sdk.resources.ApiKeyResource;
 import com.assinafy.sdk.resources.AssignmentResource;
+import com.assinafy.sdk.resources.AuthenticationResource;
+import com.assinafy.sdk.resources.BaseResource;
 import com.assinafy.sdk.resources.DocumentResource;
 import com.assinafy.sdk.resources.FieldResource;
 import com.assinafy.sdk.resources.PublicDocumentResource;
 import com.assinafy.sdk.resources.SignerResource;
 import com.assinafy.sdk.resources.TagResource;
 import com.assinafy.sdk.resources.TemplateResource;
+import com.assinafy.sdk.resources.UserResource;
 import com.assinafy.sdk.resources.WebhookResource;
 import com.assinafy.sdk.resources.WorkspaceResource;
 import com.assinafy.sdk.support.WebhookVerifier;
@@ -26,7 +29,16 @@ import com.assinafy.sdk.support.WebhookVerifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+/**
+ * Entry point for Assinafy API operations. Credentials are optional for login and public
+ * document endpoints; authenticated and account-scoped operations require the corresponding
+ * credential/account configuration.
+ *
+ * <p>The client is thread-safe when used with its default OkHttp transport. Resource accessors
+ * return the instances owned by this client.
+ */
 public class AssinafyClient {
 
     private final DocumentResource documents;
@@ -39,12 +51,19 @@ public class AssinafyClient {
     private final TagResource tags;
     private final PublicDocumentResource publicDocuments;
     private final ApiKeyResource apiKeys;
+    private final AuthenticationResource authentication;
+    private final UserResource users;
     private final WebhookVerifier webhookVerifier;
     private final Logger logger;
     private final String defaultAccountId;
 
     /**
      * Build a client from {@code options}, constructing the default OkHttp-backed transport.
+     *
+     * @param options authentication, endpoint, timeout, webhook, and logging options
+     * @throws NullPointerException if {@code options} is {@code null}
+     * @throws ValidationException if the configured timeout is not positive
+     * @throws IllegalArgumentException if the configured base URL is invalid
      */
     public AssinafyClient(AssinafyClientOptions options) {
         this(buildHttp(options), options);
@@ -55,12 +74,8 @@ public class AssinafyClient {
      * {@link ApiHttpClient}.
      */
     AssinafyClient(ApiHttpClient http, AssinafyClientOptions options) {
-        if ((options.getApiKey() == null || options.getApiKey().isBlank())
-                && (options.getToken() == null || options.getToken().isBlank())) {
-            throw new ValidationException(
-                    "An API key (options.apiKey) or legacy access token (options.token) is required."
-            );
-        }
+        Objects.requireNonNull(http, "http");
+        Objects.requireNonNull(options, "options");
 
         this.defaultAccountId = options.getAccountId();
         this.logger = options.getLogger() != null ? options.getLogger() : NoOpLogger.INSTANCE;
@@ -76,9 +91,18 @@ public class AssinafyClient {
         this.tags = new TagResource(http, defaultAccountId, this.logger);
         this.publicDocuments = new PublicDocumentResource(http, this.logger);
         this.apiKeys = new ApiKeyResource(http, this.logger);
+        this.authentication = new AuthenticationResource(http, this.logger);
+        this.users = new UserResource(http, this.logger);
         this.webhookVerifier = new WebhookVerifier(options.getWebhookSecret());
     }
 
+    /**
+     * Create a client using an API key, account, and all other default options.
+     *
+     * @param apiKey API key sent in the {@code X-Api-Key} header
+     * @param accountId default account for account-scoped operations
+     * @return a configured client
+     */
     public static AssinafyClient create(String apiKey, String accountId) {
         return new AssinafyClient(AssinafyClientOptions.builder()
                 .apiKey(apiKey)
@@ -86,7 +110,17 @@ public class AssinafyClient {
                 .build());
     }
 
+    /**
+     * Create a client using an API key and account while copying the remaining options.
+     *
+     * @param apiKey API key sent in the {@code X-Api-Key} header
+     * @param accountId default account for account-scoped operations
+     * @param extras optional base URL, token, webhook secret, timeout, and logger settings;
+     *               {@code null} uses defaults
+     * @return a configured client
+     */
     public static AssinafyClient create(String apiKey, String accountId, AssinafyClientOptions extras) {
+        if (extras == null) return create(apiKey, accountId);
         AssinafyClientOptions opts = AssinafyClientOptions.builder()
                 .apiKey(apiKey)
                 .accountId(accountId)
@@ -100,6 +134,10 @@ public class AssinafyClient {
     }
 
     private static ApiHttpClient buildHttp(AssinafyClientOptions options) {
+        Objects.requireNonNull(options, "options");
+        if (options.getTimeoutMs() <= 0) {
+            throw new ValidationException("Timeout must be greater than zero");
+        }
         // OkHttpApiClient normalises the base URL in its constructor (single source of truth).
         String baseUrl = options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL;
         return new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
@@ -118,12 +156,21 @@ public class AssinafyClient {
      * <p>This method has externally-visible side effects (it creates signer resources and dispatches
      * notifications) and blocks by default. At least one signer is required.
      *
+     * @param request document, assignment, signer, and polling settings
      * @return the created document, the assignment, and the signer IDs
-     * @throws ValidationException if no signers are supplied
+     * @throws ValidationException if the request is absent, contains no signers, or contains a
+     *                             signer without a name or with an invalid email
      */
     public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request) {
+        if (request == null) throw new ValidationException("Workflow request is required");
         if (request.getSigners() == null || request.getSigners().isEmpty()) {
             throw new ValidationException("At least one signer is required");
+        }
+        for (UploadAndRequestSignaturesRequest.SignerEntry signer : request.getSigners()) {
+            if (signer == null || signer.getName() == null || signer.getName().isBlank()) {
+                throw new ValidationException("Every signer requires a name");
+            }
+            if (signer.getEmail() != null) BaseResource.requireEmail(signer.getEmail());
         }
 
         logger.info("Starting upload + signature workflow", Map.of("signerCount", request.getSigners().size()));
@@ -171,15 +218,42 @@ public class AssinafyClient {
         return new UploadAndRequestSignaturesResult(document, assignment, signerIds);
     }
 
+    /** {@return document operations bound to the default account} */
     public DocumentResource documents() { return documents; }
+
+    /** {@return signer operations bound to the default account} */
     public SignerResource signers() { return signers; }
+
+    /** {@return workspace operations, whose methods take an explicit account ID where required} */
     public WorkspaceResource workspaces() { return workspaces; }
+
+    /** {@return assignment operations bound to the default account} */
     public AssignmentResource assignments() { return assignments; }
+
+    /** {@return webhook operations bound to the default account} */
     public WebhookResource webhooks() { return webhooks; }
+
+    /** {@return template operations bound to the default account} */
     public TemplateResource templates() { return templates; }
+
+    /** {@return field-definition operations bound to the default account} */
     public FieldResource fields() { return fields; }
+
+    /** {@return tag operations bound to the default account} */
     public TagResource tags() { return tags; }
+
+    /** {@return unauthenticated document and signer-code operations} */
     public PublicDocumentResource publicDocuments() { return publicDocuments; }
+
+    /** {@return API-key management operations} */
     public ApiKeyResource apiKeys() { return apiKeys; }
+
+    /** {@return login, social-login, and password-management operations} */
+    public AuthenticationResource authentication() { return authentication; }
+
+    /** {@return authenticated-user settings and notification preferences} */
+    public UserResource users() { return users; }
+
+    /** {@return the webhook signature verifier configured with this client's webhook secret} */
     public WebhookVerifier webhookVerifier() { return webhookVerifier; }
 }

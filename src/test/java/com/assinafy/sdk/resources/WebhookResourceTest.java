@@ -45,6 +45,7 @@ class WebhookResourceTest {
         WebhookResource resource = new WebhookResource(mock);
         resource.listEventTypes();
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/webhooks/event-types");
     }
 
@@ -63,6 +64,7 @@ class WebhookResourceTest {
         ListParams params = ListParams.builder().perPage(20).build();
         PaginatedResult<WebhookDispatch> result = resource.listDispatches(params);
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/webhooks");
         assertThat(result.getMeta()).isNotNull();
         assertThat(result.getMeta().getCurrentPage()).isEqualTo(1);
@@ -80,6 +82,18 @@ class WebhookResourceTest {
     }
 
     @Test
+    void retryDispatchPostsToDeliveryRetryPath() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"retry-1\"}}");
+
+        new WebhookResource(mock, "acc").retryDispatch("history-1");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/accounts/acc/webhooks/history-1/retry");
+    }
+
+    @Test
     void inactivateHitsDocumentedEndpoint() {
         MockApiHttpClient mock = new MockApiHttpClient();
         mock.enqueue(200, WEBHOOK_INACTIVE);
@@ -87,6 +101,7 @@ class WebhookResourceTest {
         WebhookResource resource = new WebhookResource(mock, "acc");
         resource.inactivate();
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/webhooks/inactivate");
     }
 

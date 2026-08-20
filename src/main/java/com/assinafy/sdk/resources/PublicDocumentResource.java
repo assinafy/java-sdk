@@ -4,6 +4,7 @@ import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.DocumentDetails;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -12,10 +13,21 @@ import java.util.Map;
  */
 public class PublicDocumentResource extends BaseResource {
 
+    /**
+     * Create public-document operations with a logger.
+     *
+     * @param http HTTP transport
+     * @param logger diagnostic logger
+     */
     public PublicDocumentResource(ApiHttpClient http, Logger logger) {
         super(http, null, logger);
     }
 
+    /**
+     * Create public-document operations with no-op logging.
+     *
+     * @param http HTTP transport
+     */
     public PublicDocumentResource(ApiHttpClient http) {
         super(http);
     }
@@ -23,9 +35,12 @@ public class PublicDocumentResource extends BaseResource {
     /**
      * {@code GET /public/documents/{documentId}} — basic info about a document, no auth required.
      * Returns the same document shape as {@link DocumentResource#details(String)}.
+     *
+     * @param documentId document ID
+     * @return public document details
      */
     public DocumentDetails getBasicInfo(String documentId) {
-        String id = requireId(documentId, "Document ID");
+        String id = pathSegment(documentId, "Document ID");
         return call("Failed to fetch public document info",
                 () -> http.get("/public/documents/" + id),
                 DocumentDetails.class);
@@ -33,27 +48,51 @@ public class PublicDocumentResource extends BaseResource {
 
     /**
      * {@code PUT /public/documents/{documentId}/send-token} — send a one-time access token by
-     * email so the recipient can view/sign a public document. The documented body carries a single
-     * {@code email} field.
+     * email so the recipient can view/sign a public document. The request includes the documented
+     * {@code email} field plus the deployed API's compatible {@code recipient}/{@code channel}
+     * fields.
      *
      * @param documentId target document ID
      * @param email      recipient email address
+     * @return the API response payload
      */
     public Map<String, Object> sendToken(String documentId, String email) {
-        String id = requireId(documentId, "Document ID");
-        requireId(email, "Email");
-        String json = serialise(Map.of("email", email));
-        return callMap("Failed to send signer token",
-                () -> http.put("/public/documents/" + id + "/send-token", json));
+        requireEmail(email);
+        return sendToken(documentId, email, "email");
     }
 
     /**
-     * @deprecated The send-token endpoint only accepts an {@code email}; the {@code channel}
-     * argument is ignored. Use {@link #sendToken(String, String)} instead. Delegates with
-     * {@code recipient} as the email address.
+     * Send a token using the document's configured recipient, omitting the request body.
+     *
+     * @param documentId target document ID
+     * @return the API response payload
      */
-    @Deprecated
+    public Map<String, Object> sendToken(String documentId) {
+        String id = pathSegment(documentId, "Document ID");
+        return callMap("Failed to send signer token",
+                () -> http.put("/public/documents/" + id + "/send-token", null));
+    }
+
+    /**
+     * Send a token through an explicitly selected delivery channel.
+     *
+     * @param documentId target document ID
+     * @param recipient  recipient email address or phone number
+     * @param channel    delivery channel, such as {@code email} or {@code whatsapp}
+     * @return the API response payload
+     */
     public Map<String, Object> sendToken(String documentId, String recipient, String channel) {
-        return sendToken(documentId, recipient);
+        String id = pathSegment(documentId, "Document ID");
+        requireId(recipient, "Recipient");
+        requireId(channel, "Channel");
+        Map<String, Object> body = new LinkedHashMap<>();
+        if ("email".equalsIgnoreCase(channel)) {
+            requireEmail(recipient);
+            body.put("email", recipient);
+        }
+        body.put("recipient", recipient);
+        body.put("channel", channel);
+        return callMap("Failed to send signer token",
+                () -> http.put("/public/documents/" + id + "/send-token", serialise(body)));
     }
 }

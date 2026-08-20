@@ -47,8 +47,20 @@ class WorkspaceResourceTest {
         mock.enqueue(200, WORKSPACE_RESPONSE);
         Workspace workspace = resource.create(new CreateWorkspaceRequest("My Workspace"));
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts");
         assertThat(workspace.getId()).isEqualTo("ws-1");
+    }
+
+    @Test
+    void listGetsAccountsEndpoint() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"acc-123\",\"name\":\"Test\"}]}");
+
+        var result = resource.list();
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts");
+        assertThat(result.getData()).extracting("id").containsExactly("acc-123");
     }
 
     @Test
@@ -56,6 +68,7 @@ class WorkspaceResourceTest {
         mock.enqueue(200, WORKSPACE_RESPONSE);
         resource.get("acc-123");
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123");
     }
 
@@ -133,6 +146,8 @@ class WorkspaceResourceTest {
     void uploadLogoRejectsEmptyData() {
         assertThatThrownBy(() -> resource.uploadLogo("acc-123", new byte[0], "logo.png"))
                 .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> resource.uploadLogo("acc-123", new byte[]{1, 2, 3}, "logo.png"))
+                .isInstanceOf(ValidationException.class);
     }
 
     @Test
@@ -142,5 +157,29 @@ class WorkspaceResourceTest {
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/logo");
+    }
+
+    @Test
+    void getsAccountStatisticsWithValidatedQuery() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{" +
+                "\"period\":\"2026-08\",\"documents_certified\":4}]}");
+
+        var rows = resource.stats("acc-123", "monthly", "2026-08");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(rows).singleElement()
+                .satisfies(row -> assertThat(row.getDocumentsCertified()).isEqualTo(4));
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/stats");
+        assertThat(mock.lastCaptured().getQueryParams())
+                .containsEntry("granularity", "monthly").containsEntry("month", "2026-08");
+    }
+
+    @Test
+    void validatesWorkspaceRequestsBeforeSending() {
+        assertThatThrownBy(() -> resource.create(null)).isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> resource.create(new CreateWorkspaceRequest("")))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> resource.update("acc", null)).isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isZero();
     }
 }

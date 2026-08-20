@@ -13,28 +13,68 @@ import com.assinafy.sdk.util.ResponseHandler;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Pattern;
 
+/** Shared validation, serialization, account resolution, and response handling for API resources. */
 public abstract class BaseResource {
 
+    private static final char[] HEX = "0123456789ABCDEF".toCharArray();
+    private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /** HTTP transport used by this resource. */
     protected final ApiHttpClient http;
+    /** Default account used when an operation does not receive an explicit account. */
     protected final String defaultAccountId;
+    /** Diagnostic logger. */
     protected final Logger logger;
 
+    /**
+     * Initialize shared resource dependencies.
+     *
+     * @param http HTTP transport
+     * @param defaultAccountId optional default account ID
+     * @param logger diagnostic logger; {@code null} selects the no-op logger
+     * @throws NullPointerException if {@code http} is {@code null}
+     */
     protected BaseResource(ApiHttpClient http, String defaultAccountId, Logger logger) {
-        this.http = http;
+        this.http = Objects.requireNonNull(http, "http");
         this.defaultAccountId = defaultAccountId;
         this.logger = logger != null ? logger : NoOpLogger.INSTANCE;
     }
 
+    /**
+     * Initialize a resource with the no-op logger.
+     *
+     * @param http HTTP transport
+     * @param defaultAccountId optional default account ID
+     * @throws NullPointerException if {@code http} is {@code null}
+     */
     protected BaseResource(ApiHttpClient http, String defaultAccountId) {
         this(http, defaultAccountId, NoOpLogger.INSTANCE);
     }
 
+    /**
+     * Initialize an account-independent resource with the no-op logger.
+     *
+     * @param http HTTP transport
+     * @throws NullPointerException if {@code http} is {@code null}
+     */
     protected BaseResource(ApiHttpClient http) {
         this(http, null, NoOpLogger.INSTANCE);
     }
 
+    /**
+     * Resolve an explicit account ID, falling back to this resource's default.
+     *
+     * @param explicit optional explicit account ID
+     * @return the resolved nonblank account ID
+     * @throws ValidationException if neither value supplies an account ID
+     */
     protected String accountId(String explicit) {
         String id = explicit != null ? explicit : defaultAccountId;
         if (id == null || id.isBlank()) {
@@ -45,11 +85,60 @@ public abstract class BaseResource {
         return id;
     }
 
+    /**
+     * Require a nonblank identifier or token.
+     *
+     * @param value value to validate
+     * @param name field name used in validation errors
+     * @return the validated value
+     * @throws ValidationException if the value is null or blank
+     */
     protected String requireId(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new ValidationException(name + " is required");
         }
         return value;
+    }
+
+    /**
+     * Require a syntactically valid email address.
+     *
+     * @param value email address to validate
+     * @return the validated address
+     * @throws ValidationException if the address is invalid
+     */
+    public static String requireEmail(String value) {
+        if (value == null || !EMAIL.matcher(value).matches()) {
+            throw new ValidationException("Invalid email address");
+        }
+        return value;
+    }
+
+    /**
+     * Validate and percent-encode one dynamic URL path segment without allowing dot traversal.
+     *
+     * @param value path segment value
+     * @param name field name used in validation errors
+     * @return the encoded path segment
+     * @throws ValidationException if the value is blank or a dot-traversal segment
+     */
+    protected String pathSegment(String value, String name) {
+        String segment = requireId(value, name);
+        if (segment.equals(".") || segment.equals("..")) {
+            throw new ValidationException(name + " is invalid");
+        }
+        byte[] bytes = segment.getBytes(StandardCharsets.UTF_8);
+        StringBuilder encoded = new StringBuilder(bytes.length);
+        for (byte item : bytes) {
+            int b = item & 0xff;
+            if ((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+                    || b == '-' || b == '_' || b == '~') {
+                encoded.append((char) b);
+            } else {
+                encoded.append('%').append(HEX[b >>> 4]).append(HEX[b & 0x0f]);
+            }
+        }
+        return encoded.toString();
     }
 
     /**
@@ -67,10 +156,30 @@ public abstract class BaseResource {
         }
     }
 
+    /**
+     * Execute and decode a typed API request.
+     *
+     * @param <T> decoded response type
+     * @param label operation label for wrapped failures
+     * @param request HTTP operation
+     * @param type target response class
+     * @return decoded response data
+     * @throws AssinafyException if the request fails or cannot be decoded
+     */
     protected <T> T call(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> type) {
         return execute(label, () -> ResponseHandler.handle(request.get(), type));
     }
 
+    /**
+     * Execute a typed request whose HTTP 404 response represents absence.
+     *
+     * @param <T> decoded response type
+     * @param label operation label for wrapped failures
+     * @param request HTTP operation
+     * @param type target response class
+     * @return decoded response data, or {@code null} for HTTP 404
+     * @throws AssinafyException if the request otherwise fails or cannot be decoded
+     */
     protected <T> T callOptional(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> type) {
         try {
             return call(label, request, type);
@@ -80,6 +189,13 @@ public abstract class BaseResource {
         }
     }
 
+    /**
+     * Execute and validate an API request that has no return value.
+     *
+     * @param label operation label for wrapped failures
+     * @param request HTTP operation
+     * @throws AssinafyException if the request or response validation fails
+     */
     protected void callVoid(String label, ThrowingSupplier<HttpRawResponse> request) {
         execute(label, () -> {
             ResponseHandler.handleVoid(request.get());
@@ -87,21 +203,54 @@ public abstract class BaseResource {
         });
     }
 
+    /**
+     * Execute a binary download.
+     *
+     * @param label operation label for wrapped failures
+     * @param request binary HTTP operation
+     * @return downloaded bytes
+     * @throws AssinafyException if the request fails
+     */
     protected byte[] callBinary(String label, ThrowingSupplier<byte[]> request) {
         return execute(label, request);
     }
 
+    /**
+     * Execute and decode a paginated list request.
+     *
+     * @param <T> list element type
+     * @param label operation label for wrapped failures
+     * @param request HTTP operation
+     * @param elementType target element class
+     * @return decoded list and pagination metadata
+     * @throws AssinafyException if the request fails or cannot be decoded
+     */
     protected <T> PaginatedResult<T> callList(String label, ThrowingSupplier<HttpRawResponse> request, Class<T> elementType) {
         return execute(label, () -> ResponseHandler.handleList(request.get(), elementType));
     }
 
+    /**
+     * Execute and decode a response as a map.
+     *
+     * @param label operation label for wrapped failures
+     * @param request HTTP operation
+     * @return decoded response map
+     * @throws AssinafyException if the request fails or cannot be decoded
+     */
     protected Map<String, Object> callMap(String label, ThrowingSupplier<HttpRawResponse> request) {
         return execute(label, () -> ResponseHandler.handleMap(request.get()));
     }
 
+    /**
+     * Serialize a request value to JSON.
+     *
+     * @param obj request value
+     * @return serialized JSON
+     * @throws AssinafyException if serialization fails
+     */
     protected String serialise(Object obj) {
         try {
-            return ResponseHandler.MAPPER.writeValueAsString(obj);
+            return ResponseHandler.serialize(obj);
         } catch (Exception e) {
             throw new AssinafyException("Failed to serialise request: " + e.getMessage(), Map.of(), e);
         }
@@ -111,19 +260,64 @@ public abstract class BaseResource {
      * Convert a request DTO into a mutable wire map using the DTO's own Jackson annotations
      * ({@code @JsonProperty} names and {@code @JsonInclude(NON_NULL)}), so callers can apply a
      * small post-transform without restating the field names. Returns an empty map for {@code null}.
+     *
+     * @param dto request DTO, or {@code null}
+     * @return a mutable wire-field map
      */
     protected Map<String, Object> toMap(Object dto) {
         if (dto == null) return new java.util.HashMap<>();
-        return ResponseHandler.MAPPER.convertValue(dto, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        return ResponseHandler.convertToMap(dto);
     }
 
+    /**
+     * URL-encode a query value as UTF-8 form data.
+     *
+     * @param value query value; {@code null} becomes empty
+     * @return encoded value
+     */
     protected static String encode(String value) {
         return URLEncoder.encode(value != null ? value : "", StandardCharsets.UTF_8);
     }
 
-    /** Append a URL-encoded {@code signer-access-code} query parameter, choosing {@code ?} or {@code &}. */
+    /**
+     * Append a URL-encoded signer access-code query parameter.
+     *
+     * @param path request path, optionally with existing query parameters
+     * @param signerAccessCode signer access code
+     * @return the path with {@code signer-access-code} appended
+     */
     protected static String withAccessCode(String path, String signerAccessCode) {
         String sep = path.indexOf('?') >= 0 ? "&" : "?";
         return path + sep + "signer-access-code=" + encode(signerAccessCode);
+    }
+
+    /**
+     * Build the query shared by account and user document-statistics endpoints.
+     *
+     * @param granularity {@code monthly}, {@code daily}, or {@code null} for monthly
+     * @param month optional month in {@code YYYY-MM} format; required for daily data
+     * @return validated query parameters
+     * @throws ValidationException if granularity or month is invalid
+     */
+    protected static Map<String, Object> statsQuery(String granularity, String month) {
+        String value = granularity != null ? granularity : "monthly";
+        if (!value.equals("monthly") && !value.equals("daily")) {
+            throw new ValidationException("Granularity must be monthly or daily");
+        }
+        if (value.equals("daily") && (month == null || month.isBlank())) {
+            throw new ValidationException("Daily statistics require a month in YYYY-MM format");
+        }
+        if (month != null) {
+            try {
+                if (!month.matches("\\d{4}-\\d{2}")) throw new DateTimeParseException("", month, 0);
+                YearMonth.parse(month);
+            } catch (DateTimeParseException e) {
+                throw new ValidationException("Month must be in YYYY-MM format");
+            }
+        }
+        Map<String, Object> query = new HashMap<>();
+        query.put("granularity", value);
+        if (month != null) query.put("month", month);
+        return query;
     }
 }

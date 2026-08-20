@@ -90,6 +90,19 @@ class AssignmentResourceTest {
     }
 
     @Test
+    void estimatePayloadAllowsEmptyAndCollectOnlyRequests() {
+        assertThat(AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().build(), true)).isEmpty();
+
+        Map<String, Object> collect = AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder()
+                        .method("collect")
+                        .entries(List.of(Map.of("page_id", "p1")))
+                        .build(), true);
+        assertThat(collect).containsOnlyKeys("method", "entries");
+    }
+
+    @Test
     void createPostsToDocumentAssignmentsWithNormalisedBody() {
         MockApiHttpClient mock = new MockApiHttpClient();
         mock.enqueue(200, ASSIGNMENT_RESPONSE);
@@ -101,6 +114,7 @@ class AssignmentResourceTest {
 
         Assignment result = resource.create("doc-1", req);
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/documents/doc-1/assignments");
         assertThat(result.getId()).isEqualTo("assignment-1");
 
@@ -234,8 +248,28 @@ class AssignmentResourceTest {
 
         resource.estimateCost("doc-1", req);
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/documents/doc-1/assignments/estimate-cost");
         String body = mock.lastCaptured().getJsonBody();
         assertThat(body).contains("\"verification_method\":\"Whatsapp\"");
         assertThat(body).doesNotContain("\"id\"");
+    }
+
+    @Test
+    void estimateCostOmitsCreateOnlySignerFields() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":0.45}}");
+        AssignmentResource resource = new AssignmentResource(mock, "acc");
+        CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+                .signers(List.of(SignerReference.builder()
+                        .id("s1").step(2).verificationMethod("Email").build()))
+                .build();
+
+        resource.estimateCost("doc-1", request);
+
+        assertThat(mock.lastCaptured().getJsonBody())
+                .contains("\"verification_method\":\"Email\"")
+                .doesNotContain("\"id\"", "\"step\"");
     }
 }

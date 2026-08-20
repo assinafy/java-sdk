@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.models.DocumentDetails;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.Signer;
@@ -40,7 +41,7 @@ class SignerResourceExtraTest {
     @Test
     void uploadSignatureOmitsTypeWhenBlankAndAppendsReuse() {
         http.enqueue(200, "{\"status\":200,\"data\":[]}");
-        signers.uploadSignature("code1", null, new byte[]{1, 2, 3}, true);
+        signers.uploadSignature("code1", null, new byte[]{(byte) 0x89, 'P', 'N', 'G'}, true);
         // type omitted (null); reuse appended.
         assertThat(http.lastCaptured().getPath()).isEqualTo("/signature?signer-access-code=code1&reuse=true");
     }
@@ -61,15 +62,15 @@ class SignerResourceExtraTest {
         // misses here (empty), then the POST 400s; the SDK re-queries and returns the existing signer.
         http.enqueue(200, "{\"status\":200,\"data\":[]}");                       // pre-check findByEmail -> none
         http.enqueue(400, "{\"status\":400,\"message\":\"Um signatário com este e-mail já existe.\"}"); // POST create -> duplicate
-        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"Dup\",\"email\":\"dup@x.com\"}]}"); // re-query finds it
-        Signer s = signers.create(CreateSignerRequest.builder().fullName("Dup").email("dup@x.com").build());
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"Dup\",\"email\":\"dup@example.invalid\"}]}"); // re-query finds it
+        Signer s = signers.create(CreateSignerRequest.builder().fullName("Dup").email("dup@example.invalid").build());
         assertThat(s.getId()).isEqualTo("existing");
     }
 
     @Test
     void uploadSignatureEncodesAccessCodeAndType() {
         http.enqueue(200, "{\"status\":200,\"data\":[]}");
-        signers.uploadSignature("a b", "signature", new byte[]{1, 2, 3});
+        signers.uploadSignature("a b", "signature", new byte[]{(byte) 0x89, 'P', 'N', 'G'});
         assertThat(http.lastCaptured().getMethod()).isEqualTo("POST_SIGNATURE");
         assertThat(http.lastCaptured().getPath())
                 .isEqualTo("/signature?signer-access-code=a+b&type=signature");
@@ -96,6 +97,7 @@ class SignerResourceExtraTest {
     void downloadDocumentDefaultsToCertificatedAndAppendsAccessCode() {
         http.enqueue(200, "PDF");
         signers.downloadDocument("s1", "d1", null, "code1");
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET_BINARY");
         assertThat(http.lastCaptured().getPath())
                 .isEqualTo("/signers/s1/documents/d1/download/certificated?signer-access-code=code1");
     }
@@ -111,10 +113,25 @@ class SignerResourceExtraTest {
     }
 
     @Test
+    void getCurrentDocumentTypedReturnsDocumentDetails() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"," +
+                "\"status\":\"pending_signature\",\"assignment\":{\"id\":\"a1\"}}}");
+
+        DocumentDetails document = signers.getCurrentDocumentTyped("s1", "code 1");
+
+        assertThat(document.getId()).isEqualTo("d1");
+        assertThat(document.getStatus()).isEqualTo("pending_signature");
+        assertThat(document.getAssignment().getId()).isEqualTo("a1");
+        assertThat(http.lastCaptured().getPath())
+                .isEqualTo("/signers/s1/document?signer-access-code=code+1");
+    }
+
+    @Test
     void listDocumentsMergesAccessCodeIntoQuery() {
         http.enqueue(200, "{\"status\":200,\"data\":[]}",
                 Map.of("x-pagination-total-count", "0"));
         PaginatedResult<DocumentListItem> result = signers.listDocuments("s1", "code1");
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/signers/s1/documents");
         assertThat(http.lastCaptured().getQueryParams()).containsEntry("signer-access-code", "code1");
         assertThat(result.getData()).isEmpty();
@@ -146,5 +163,12 @@ class SignerResourceExtraTest {
         assertThat(body).contains("\"cpf\":\"40067622836\"");
         assertThat(body).contains("\"full_name\":\"Maria\"");
         assertThat(s.getId()).isEqualTo("s9");
+    }
+
+    @Test
+    void uploadSignatureRejectsUnknownImageBytesBeforeSending() {
+        assertThatThrownBy(() -> signers.uploadSignature("code1", "signature", new byte[]{1, 2, 3}))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
     }
 }

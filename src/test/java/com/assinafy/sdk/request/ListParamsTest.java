@@ -1,5 +1,6 @@
 package com.assinafy.sdk.request;
 
+import com.assinafy.sdk.exceptions.ValidationException;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -54,5 +55,65 @@ class ListParamsTest {
     @Test
     void emptyParamsProduceEmptyMap() {
         assertThat(new ListParams().toQueryParams()).isEmpty();
+    }
+
+    @Test
+    void rejectsPagingOutsideDocumentedBounds() {
+        assertThatThrownBy(() -> ListParams.builder().page(0).build().toQueryParams())
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> ListParams.builder().perPage(0).build().toQueryParams())
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> ListParams.builder().perPage(101).build().toQueryParams())
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> ListParams.builder().extra("page", 0).build().toQueryParams())
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> ListParams.builder().extra("per-page", 101).build().toQueryParams())
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void validatesPagingAfterCustomParametersOverrideTypedValues() {
+        ListParams params = ListParams.builder()
+                .page(1)
+                .perPage(25)
+                .extra("page", 3)
+                .extra("per-page", 50)
+                .build();
+
+        assertThat(params.toQueryParams())
+                .containsEntry("page", 3)
+                .containsEntry("per-page", 50);
+
+        params.getExtra().put("page", "3");
+        assertThatThrownBy(params::toQueryParams)
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Page must be an integer");
+
+        params.getExtra().put("page", 3);
+        params.getExtra().put("per-page", null);
+        assertThatThrownBy(params::toQueryParams)
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Per-page must be an integer");
+    }
+
+    @Test
+    void rejectsBlankCustomKeysThroughBuilderAndMutableMap() {
+        assertThatThrownBy(() -> ListParams.builder().extra(null, "value"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Extra query parameter key must not be blank");
+        assertThatThrownBy(() -> ListParams.builder().extra("   ", "value"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Extra query parameter key must not be blank");
+
+        ListParams params = new ListParams();
+        params.getExtra().put("", "value");
+        assertThatThrownBy(params::toQueryParams)
+                .isInstanceOf(ValidationException.class)
+                .hasMessage("Extra query parameter key must not be blank");
+
+        params.getExtra().clear();
+        params.getExtra().put("deployment-region", "south-america-east1");
+        assertThat(params.toQueryParams())
+                .containsOnly(entry("deployment-region", "south-america-east1"));
     }
 }

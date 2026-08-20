@@ -1,5 +1,7 @@
 package com.assinafy.sdk.models;
 
+import com.assinafy.sdk.util.ResponseHandler;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -12,6 +14,9 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AssignmentSigner {
+
+    @JsonProperty("resource")
+    private String resource;
 
     @JsonProperty("id")
     private String id;
@@ -46,38 +51,201 @@ public class AssignmentSigner {
     @JsonProperty("notification_history")
     private List<Object> notificationHistory;
 
+    /**
+     * Creates an empty assignment signer.
+     */
     public AssignmentSigner() {}
 
+    /**
+     * Returns the resource type.
+     *
+     * @return the resource type
+     */
+    public String getResource() { return resource; }
+
+    /**
+     * Sets the resource type.
+     *
+     * @param resource the resource type
+     */
+    public void setResource(String resource) { this.resource = resource; }
+
+    /**
+     * Returns the ID.
+     *
+     * @return the ID
+     */
     public String getId() { return id; }
+
+    /**
+     * Sets the ID.
+     *
+     * @param id the ID
+     */
     public void setId(String id) { this.id = id; }
 
+    /**
+     * Returns the full name.
+     *
+     * @return the full name
+     */
     public String getFullName() { return fullName; }
+
+    /**
+     * Sets the full name.
+     *
+     * @param fullName the full name
+     */
     public void setFullName(String fullName) { this.fullName = fullName; }
 
+    /**
+     * Returns the email address.
+     *
+     * @return the email address
+     */
     public String getEmail() { return email; }
+
+    /**
+     * Sets the email address.
+     *
+     * @param email the email address
+     */
     public void setEmail(String email) { this.email = email; }
 
+    /**
+     * Returns the WhatsApp phone number.
+     *
+     * @return the WhatsApp phone number
+     */
     public String getWhatsappPhoneNumber() { return whatsappPhoneNumber; }
+
+    /**
+     * Sets the WhatsApp phone number.
+     *
+     * @param whatsappPhoneNumber the WhatsApp phone number
+     */
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
+    /**
+     * Returns the terms-acceptance flag.
+     *
+     * @return the terms-acceptance flag
+     */
     public Boolean getHasAcceptedTerms() { return hasAcceptedTerms; }
+
+    /**
+     * Sets the terms-acceptance flag.
+     *
+     * @param hasAcceptedTerms the terms-acceptance flag
+     */
     public void setHasAcceptedTerms(Boolean hasAcceptedTerms) { this.hasAcceptedTerms = hasAcceptedTerms; }
 
+    /**
+     * Returns the verification method.
+     *
+     * @return the verification method
+     */
     public String getVerificationMethod() { return verificationMethod; }
+
+    /**
+     * Sets the verification method.
+     *
+     * @param verificationMethod the verification method
+     */
     public void setVerificationMethod(String verificationMethod) { this.verificationMethod = verificationMethod; }
 
+    /**
+     * Returns the notification methods.
+     *
+     * @return the notification methods
+     */
     public List<String> getNotificationMethods() { return notificationMethods; }
+
+    /**
+     * Sets the notification methods.
+     *
+     * @param notificationMethods the notification methods
+     */
     public void setNotificationMethods(List<String> notificationMethods) { this.notificationMethods = notificationMethods; }
 
+    /**
+     * Returns the step.
+     *
+     * @return the step
+     */
     public Integer getStep() { return step; }
+
+    /**
+     * Sets the step.
+     *
+     * @param step the step
+     */
     public void setStep(Integer step) { this.step = step; }
 
+    /**
+     * Returns the notification flag.
+     *
+     * @return the notification flag
+     */
     public Boolean getNotified() { return notified; }
+
+    /**
+     * Sets the notification flag.
+     *
+     * @param notified the notification flag
+     */
     public void setNotified(Boolean notified) { this.notified = notified; }
 
+    /**
+     * Returns the completed.
+     *
+     * @return the completed
+     */
     public Boolean getCompleted() { return completed; }
+
+    /**
+     * Sets the completed.
+     *
+     * @param completed the completed
+     */
     public void setCompleted(Boolean completed) { this.completed = completed; }
 
+    /**
+     * Returns the notification history.
+     *
+     * @return the notification history
+     */
     public List<Object> getNotificationHistory() { return notificationHistory; }
+
+    /**
+     * Sets the notification history.
+     *
+     * @param notificationHistory the notification history
+     */
     public void setNotificationHistory(List<Object> notificationHistory) { this.notificationHistory = notificationHistory; }
+
+    /**
+     * Typed view of {@link #getNotificationHistory()} that preserves the legacy accessor.
+     *
+     * @return the typed notification history
+     */
+    @JsonIgnore
+    public List<NotificationHistoryEntry> getNotificationHistoryEntries() {
+        if (notificationHistory == null) return null;
+        return notificationHistory.stream()
+                .map(entry -> entry instanceof NotificationHistoryEntry typed
+                        ? typed
+                        : ResponseHandler.convert(entry, NotificationHistoryEntry.class))
+                .toList();
+    }
+
+    /**
+     * Sets the typed notification history.
+     *
+     * @param entries the entries
+     */
+    @JsonIgnore
+    public void setNotificationHistoryEntries(List<NotificationHistoryEntry> entries) {
+        notificationHistory = entries == null ? null : new java.util.ArrayList<Object>(entries);
+    }
 }

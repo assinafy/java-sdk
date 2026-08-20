@@ -16,10 +16,21 @@ import java.util.Map;
  */
 public class ApiKeyResource extends BaseResource {
 
+    /**
+     * Create API-key operations with diagnostic logging.
+     *
+     * @param http HTTP transport
+     * @param logger diagnostic logger
+     */
     public ApiKeyResource(ApiHttpClient http, Logger logger) {
         super(http, null, logger);
     }
 
+    /**
+     * Create API-key operations with no-op logging.
+     *
+     * @param http HTTP transport
+     */
     public ApiKeyResource(ApiHttpClient http) {
         super(http);
     }
@@ -27,6 +38,8 @@ public class ApiKeyResource extends BaseResource {
     /**
      * {@code GET /users/api-keys} — retrieve the masked current API key, or {@code null}
      * when no key has been generated yet.
+     *
+     * @return the masked current key, or {@code null} when none exists
      */
     public ApiKey get() {
         return call("Failed to fetch API key", () -> http.get("/users/api-keys"), ApiKey.class);
@@ -37,6 +50,7 @@ public class ApiKeyResource extends BaseResource {
      * full value. The previously active key (if any) is immediately invalidated.
      *
      * @param password the user's account password (required by the API)
+     * @return the newly generated full API key
      */
     public ApiKey create(String password) {
         requireId(password, "Password");

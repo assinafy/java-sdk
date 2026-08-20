@@ -1,24 +1,81 @@
 package com.assinafy.sdk.exceptions;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Indicates an HTTP or response-envelope error returned by the Assinafy API.
+ *
+ * <p>Response collections and headers are exposed as immutable snapshots. Header lookup is
+ * case-insensitive.
+ */
 public class ApiException extends AssinafyException {
 
+    /** API status code. */
     private final int statusCode;
+    /** Decoded response data. */
     private final Object responseData;
+    /** Normalized response headers. */
+    private final Map<String, String> responseHeaders;
 
+    /**
+     * Create an API exception without response headers or an underlying cause.
+     *
+     * @param message error message
+     * @param statusCode HTTP or response-envelope status code
+     * @param responseData decoded response body or envelope
+     */
     public ApiException(String message, int statusCode, Object responseData) {
-        // statusCode and responseData are the typed source of truth (getStatusCode/getResponseData);
-        // the context map only carries the HTTP status for generic AssinafyException consumers.
-        super(message, Map.of("statusCode", statusCode));
-        this.statusCode = statusCode;
-        this.responseData = responseData;
+        this(message, statusCode, responseData, Map.of(), null);
     }
 
+    /**
+     * Create an API exception with an underlying cause.
+     *
+     * @param message error message
+     * @param statusCode HTTP or response-envelope status code
+     * @param responseData decoded response body or envelope
+     * @param cause underlying failure
+     */
     public ApiException(String message, int statusCode, Object responseData, Throwable cause) {
+        this(message, statusCode, responseData, Map.of(), cause);
+    }
+
+    /**
+     * Create an API exception with response headers.
+     *
+     * @param message error message
+     * @param statusCode HTTP or response-envelope status code
+     * @param responseData decoded response body or envelope
+     * @param headers response headers; names are normalized for case-insensitive lookup
+     */
+    public ApiException(String message, int statusCode, Object responseData, Map<String, String> headers) {
+        this(message, statusCode, responseData, headers, null);
+    }
+
+    /**
+     * Create an API exception with response headers and an underlying cause.
+     *
+     * @param message error message
+     * @param statusCode HTTP or response-envelope status code
+     * @param responseData decoded response body or envelope
+     * @param headers response headers; names are normalized for case-insensitive lookup
+     * @param cause underlying failure
+     */
+    public ApiException(String message, int statusCode, Object responseData,
+                        Map<String, String> headers, Throwable cause) {
         super(message, Map.of("statusCode", statusCode), cause);
         this.statusCode = statusCode;
-        this.responseData = responseData;
+        this.responseData = snapshot(responseData);
+        Map<String, String> copy = new LinkedHashMap<>();
+        if (headers != null) {
+            headers.forEach((name, value) -> copy.put(name.toLowerCase(Locale.ROOT), value));
+        }
+        this.responseHeaders = Collections.unmodifiableMap(copy);
     }
 
     /**
@@ -26,13 +83,30 @@ public class ApiException extends AssinafyException {
      * {@link AuthenticationException} for 401/403, {@link RateLimitException} for 429,
      * otherwise a plain {@code ApiException}. The message is taken from the response
      * envelope's {@code message}/{@code error} field when present.
+     *
+     * @param statusCode HTTP or response-envelope status code
+     * @param responseData decoded response body or envelope
+     * @return the status-specific API exception
      */
     public static ApiException fromResponse(int statusCode, Object responseData) {
+        return fromResponse(statusCode, responseData, Map.of());
+    }
+
+    /**
+     * Build the most specific API exception and retain response headers.
+     *
+     * @param statusCode HTTP or response-envelope status code
+     * @param responseData decoded response body or envelope
+     * @param headers response headers
+     * @return the status-specific API exception
+     */
+    public static ApiException fromResponse(int statusCode, Object responseData,
+                                            Map<String, String> headers) {
         String message = extractMessage(responseData, statusCode);
         return switch (statusCode) {
-            case 401, 403 -> new AuthenticationException(message, statusCode, responseData);
-            case 429 -> new RateLimitException(message, statusCode, responseData);
-            default -> new ApiException(message, statusCode, responseData);
+            case 401, 403 -> new AuthenticationException(message, statusCode, responseData, headers);
+            case 429 -> new RateLimitException(message, statusCode, responseData, headers);
+            default -> new ApiException(message, statusCode, responseData, headers);
         };
     }
 
@@ -53,11 +127,38 @@ public class ApiException extends AssinafyException {
         return "API request failed with status " + statusCode;
     }
 
+    /** {@return the HTTP or response-envelope status code} */
     public int getStatusCode() {
         return statusCode;
     }
 
+    /** {@return an immutable shallow snapshot of decoded collection data, or the decoded scalar} */
     public Object getResponseData() {
         return responseData;
+    }
+
+    /** {@return immutable response headers with lowercase names} */
+    public Map<String, String> getResponseHeaders() {
+        return responseHeaders;
+    }
+
+    /**
+     * Return one response header using a case-insensitive name.
+     *
+     * @param name header name; {@code null} returns {@code null}
+     * @return the header value, or {@code null} when absent
+     */
+    public String getResponseHeader(String name) {
+        return name != null ? responseHeaders.get(name.toLowerCase(Locale.ROOT)) : null;
+    }
+
+    private static Object snapshot(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return Collections.unmodifiableMap(new LinkedHashMap<>(map));
+        }
+        if (value instanceof List<?> list) {
+            return Collections.unmodifiableList(new ArrayList<>(list));
+        }
+        return value;
     }
 }

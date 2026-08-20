@@ -1,6 +1,5 @@
 package com.assinafy.sdk;
 
-import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import org.junit.jupiter.api.Test;
 
@@ -9,10 +8,11 @@ import static org.assertj.core.api.Assertions.*;
 class AssinafyClientTest {
 
     @Test
-    void throwsWhenNoCredentialsProvided() {
-        assertThatThrownBy(() ->
-                new AssinafyClient(AssinafyClientOptions.builder().accountId("acc").build())
-        ).isInstanceOf(ValidationException.class);
+    void acceptsNoCredentialsForPublicAndAuthenticationEndpoints() {
+        AssinafyClient client = new AssinafyClient(AssinafyClientOptions.builder().build());
+
+        assertThat(client.publicDocuments()).isNotNull();
+        assertThat(client.authentication()).isNotNull();
     }
 
     @Test
@@ -27,6 +27,7 @@ class AssinafyClientTest {
         assertThat(client.assignments()).isNotNull();
         assertThat(client.webhooks()).isNotNull();
         assertThat(client.webhookVerifier()).isNotNull();
+        assertThat(client.users()).isNotNull();
     }
 
     @Test
@@ -54,11 +55,12 @@ class AssinafyClientTest {
     }
 
     @Test
-    void throwsValidationExceptionWithInjectableHttpClient() {
+    void acceptsNoCredentialsWithInjectableHttpClient() {
         MockApiHttpClient mock = new MockApiHttpClient();
-        assertThatThrownBy(() ->
-                new AssinafyClient(mock, AssinafyClientOptions.builder().accountId("acc").build())
-        ).isInstanceOf(ValidationException.class);
+        AssinafyClient client = new AssinafyClient(mock, AssinafyClientOptions.builder().build());
+
+        assertThat(client.publicDocuments()).isNotNull();
+        assertThat(client.authentication()).isNotNull();
     }
 
     @Test

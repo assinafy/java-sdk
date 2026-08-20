@@ -46,6 +46,28 @@ class DocumentResourceTest {
     }
 
     @Test
+    void listDetailsDeleteAndStatusesUseDocumentedWires() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"doc-1\"}]}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\"}}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[{\"code\":\"uploaded\",\"deletable\":true}]}");
+
+        resource.list();
+        resource.details("doc-1");
+        resource.delete("doc-1");
+        resource.getStatuses();
+
+        assertThat(mock.capturedAt(0).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc/documents");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/documents/doc-1");
+        assertThat(mock.capturedAt(2).getMethod()).isEqualTo("DELETE");
+        assertThat(mock.capturedAt(2).getPath()).isEqualTo("/documents/doc-1");
+        assertThat(mock.capturedAt(3).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(3).getPath()).isEqualTo("/documents/statuses");
+    }
+
+    @Test
     void downloadDefaultsToCertificatedArtifact() {
         mock.enqueue(200, "PDFBYTES");
         resource.download("doc-1");
@@ -64,6 +86,8 @@ class DocumentResourceTest {
 
         List<DocumentActivity> activities = resource.activities("doc-1");
 
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/documents/doc-1/activities");
         assertThat(activities).hasSize(1);
         assertThat(activities.get(0).getEvent()).isEqualTo("document_ready");
         assertThat(activities.get(0).getOrigin()).isNotNull();

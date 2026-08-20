@@ -7,18 +7,21 @@ import com.assinafy.sdk.http.HttpRawResponse;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.PaginationMeta;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/** Validates Assinafy responses and converts JSON envelopes into SDK return types. */
 public final class ResponseHandler {
 
-    public static final ObjectMapper MAPPER = new ObjectMapper()
+    private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             // The API occasionally emits "" for a typed-object field (e.g. an activity's
             // origin) instead of null; coerce that to null rather than failing the whole parse.
@@ -26,16 +29,84 @@ public final class ResponseHandler {
 
     private ResponseHandler() {}
 
+    /**
+     * Serialize an SDK request with the same mapper configuration used for responses.
+     *
+     * @param value request value
+     * @return serialized JSON
+     * @throws JsonProcessingException if the value cannot be serialized
+     */
+    public static String serialize(Object value) throws JsonProcessingException {
+        return MAPPER.writeValueAsString(value);
+    }
+
+    /**
+     * Convert a decoded JSON-compatible value to an SDK model.
+     *
+     * @param <T> model type
+     * @param value decoded value
+     * @param type target model class
+     * @return the converted model
+     * @throws AssinafyException if the value cannot be converted
+     */
+    public static <T> T convert(Object value, Class<T> type) {
+        try {
+            return MAPPER.convertValue(value, type);
+        } catch (IllegalArgumentException e) {
+            throw new AssinafyException("Failed to convert response: " + e.getMessage(), Map.of(), e);
+        }
+    }
+
+    /**
+     * Convert a request DTO to its Jackson-annotated wire field map.
+     *
+     * @param value request DTO
+     * @return serialized field names and values
+     * @throws AssinafyException if the value cannot be converted
+     */
+    public static Map<String, Object> convertToMap(Object value) {
+        try {
+            return MAPPER.convertValue(value, new TypeReference<>() {});
+        } catch (IllegalArgumentException e) {
+            throw new AssinafyException("Failed to convert request: " + e.getMessage(), Map.of(), e);
+        }
+    }
+
+    /**
+     * Validate and decode a typed response, unwrapping {@code data} when an envelope is present.
+     *
+     * @param <T> response model type
+     * @param response raw HTTP response
+     * @param type target model class
+     * @return decoded data, or {@code null} for a null envelope data field
+     * @throws AssinafyException if the response failed validation or cannot be decoded
+     */
     public static <T> T handle(HttpRawResponse response, Class<T> type) {
         validateHttpStatus(response);
         return parseEnvelope(response.getBody(), type);
     }
 
+    /**
+     * Validate and decode a response as a field map.
+     *
+     * @param response raw HTTP response
+     * @return decoded data, or an empty map for an empty or null payload
+     * @throws AssinafyException if the response failed validation or cannot be decoded
+     */
     public static Map<String, Object> handleMap(HttpRawResponse response) {
         validateHttpStatus(response);
         return parseEnvelopeAsMap(response.getBody());
     }
 
+    /**
+     * Validate and decode a list response with pagination metadata from response headers.
+     *
+     * @param <T> list element type
+     * @param response raw HTTP response
+     * @param elementType target element class
+     * @return decoded data and optional pagination metadata
+     * @throws AssinafyException if the response failed validation or does not contain a list
+     */
     public static <T> PaginatedResult<T> handleList(HttpRawResponse response, Class<T> elementType) {
         validateHttpStatus(response);
         List<T> data = parseListData(response.getBody(), elementType);
@@ -43,14 +114,33 @@ public final class ResponseHandler {
         return new PaginatedResult<>(data, meta);
     }
 
+    /**
+     * Validate a response whose successful body has no return value.
+     *
+     * @param response raw HTTP response
+     * @throws AssinafyException if the HTTP or envelope status failed, or the body is malformed
+     */
     public static void handleVoid(HttpRawResponse response) {
         validateHttpStatus(response);
-        // Mirror the typed handlers: a 2xx HTTP response can still carry an in-body
-        // {status,...} error envelope. parseEnvelope throws on an error envelope and
-        // returns null for any success body, so the result is simply discarded.
-        parseEnvelope(response.getBody(), Void.class);
+        String body = response.getBody();
+        if (body == null || body.isBlank()) return;
+        try {
+            validateEnvelopeStatus(MAPPER.readTree(body));
+        } catch (AssinafyException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AssinafyException("Failed to parse response: " + e.getMessage(), Map.of(), e);
+        }
     }
 
+    /**
+     * Normalize a caught operation failure to the SDK exception hierarchy.
+     *
+     * @param e caught failure
+     * @param label operation label prepended to newly wrapped errors
+     * @return {@code e} when it is already an SDK exception, a network exception for I/O failures,
+     *         or a general SDK exception otherwise
+     */
     public static AssinafyException toSdkException(Exception e, String label) {
         if (e instanceof AssinafyException ae) {
             return ae;
@@ -64,7 +154,7 @@ public final class ResponseHandler {
     private static void validateHttpStatus(HttpRawResponse response) {
         if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
             Object responseData = tryParseBody(response.getBody());
-            throw ApiException.fromResponse(response.getStatusCode(), responseData);
+            throw ApiException.fromResponse(response.getStatusCode(), responseData, response.getHeaders());
         }
     }
 
@@ -80,18 +170,15 @@ public final class ResponseHandler {
     @SuppressWarnings("unchecked")
     private static <T> T parseEnvelope(String body, Class<T> type) {
         if (body == null || body.isBlank()) {
-            return null;
+            throw new AssinafyException("Response body is empty");
         }
         try {
             JsonNode root = MAPPER.readTree(body);
-            if (root.isObject() && root.has("status") && root.has("data")) {
-                int envelopeStatus = root.get("status").asInt();
-                if (envelopeStatus >= 200 && envelopeStatus < 300) {
-                    JsonNode dataNode = root.get("data");
-                    return MAPPER.convertValue(dataNode, type);
-                }
-                Map<String, Object> responseMap = MAPPER.convertValue(root, new TypeReference<>() {});
-                throw ApiException.fromResponse(envelopeStatus, responseMap);
+            validateEnvelopeStatus(root);
+            if (isEnvelope(root)) {
+                JsonNode dataNode = root.get("data");
+                if (dataNode == null || dataNode.isNull()) return null;
+                return MAPPER.convertValue(dataNode, type);
             }
             return MAPPER.convertValue(root, type);
         } catch (AssinafyException e) {
@@ -107,19 +194,17 @@ public final class ResponseHandler {
         }
         try {
             JsonNode root = MAPPER.readTree(body);
-            if (root.isObject() && root.has("status") && root.has("data")) {
-                int envelopeStatus = root.get("status").asInt();
-                if (envelopeStatus >= 200 && envelopeStatus < 300) {
-                    JsonNode dataNode = root.get("data");
-                    if (dataNode.isObject()) {
-                        return MAPPER.convertValue(dataNode, new TypeReference<>() {});
-                    }
-                    return Map.of("data", MAPPER.convertValue(dataNode, Object.class));
+            validateEnvelopeStatus(root);
+            if (isEnvelope(root)) {
+                JsonNode dataNode = root.get("data");
+                if (dataNode == null || dataNode.isNull()) return Map.of();
+                if (dataNode.isObject()) {
+                    return MAPPER.convertValue(dataNode, new TypeReference<>() {});
                 }
-                Map<String, Object> responseMap = MAPPER.convertValue(root, new TypeReference<>() {});
-                throw ApiException.fromResponse(envelopeStatus, responseMap);
+                return Collections.singletonMap("data", MAPPER.convertValue(dataNode, Object.class));
             }
-            return MAPPER.convertValue(root, new TypeReference<>() {});
+            if (root.isObject()) return MAPPER.convertValue(root, new TypeReference<>() {});
+            return Collections.singletonMap("data", MAPPER.convertValue(root, Object.class));
         } catch (AssinafyException e) {
             throw e;
         } catch (Exception e) {
@@ -129,19 +214,14 @@ public final class ResponseHandler {
 
     private static <T> List<T> parseListData(String body, Class<T> elementType) {
         if (body == null || body.isBlank()) {
-            return new ArrayList<>();
+            throw new AssinafyException("List response body is empty");
         }
         try {
             JsonNode root = MAPPER.readTree(body);
+            validateEnvelopeStatus(root);
 
-            if (root.isObject() && root.has("status") && root.has("data")) {
-                int envelopeStatus = root.get("status").asInt();
-                if (envelopeStatus < 200 || envelopeStatus >= 300) {
-                    Map<String, Object> responseMap = MAPPER.convertValue(root, new TypeReference<>() {});
-                    throw ApiException.fromResponse(envelopeStatus, responseMap);
-                }
-                JsonNode dataNode = root.get("data");
-                return extractArray(dataNode, elementType);
+            if (isEnvelope(root)) {
+                return extractArray(root.get("data"), elementType);
             }
 
             if (root.isArray()) {
@@ -152,7 +232,7 @@ public final class ResponseHandler {
                 return extractArray(root.get("data"), elementType);
             }
 
-            return new ArrayList<>();
+            throw new AssinafyException("List response data is not an array");
         } catch (AssinafyException e) {
             throw e;
         } catch (Exception e) {
@@ -162,7 +242,7 @@ public final class ResponseHandler {
 
     private static <T> List<T> extractArray(JsonNode node, Class<T> elementType) throws IOException {
         if (node == null || node.isNull()) {
-            return new ArrayList<>();
+            throw new AssinafyException("List response is missing data");
         }
         if (node.isArray()) {
             List<T> result = new ArrayList<>();
@@ -174,7 +254,20 @@ public final class ResponseHandler {
         if (node.isObject() && node.has("data") && node.get("data").isArray()) {
             return extractArray(node.get("data"), elementType);
         }
-        return new ArrayList<>();
+        throw new AssinafyException("List response data is not an array");
+    }
+
+    private static void validateEnvelopeStatus(JsonNode root) {
+        if (!isEnvelope(root)) return;
+        int status = root.get("status").asInt();
+        if (status < 200 || status >= 300) {
+            Map<String, Object> response = MAPPER.convertValue(root, new TypeReference<>() {});
+            throw ApiException.fromResponse(status, response);
+        }
+    }
+
+    private static boolean isEnvelope(JsonNode root) {
+        return root.isObject() && root.has("status") && root.get("status").isIntegralNumber();
     }
 
     private static PaginationMeta parsePaginationMeta(Map<String, String> headers) {

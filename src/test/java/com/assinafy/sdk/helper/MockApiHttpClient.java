@@ -3,16 +3,22 @@ package com.assinafy.sdk.helper;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.http.HttpRawResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class MockApiHttpClient implements ApiHttpClient {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Deque<HttpRawResponse> queue = new ArrayDeque<>();
     private final List<CapturedRequest> captured = new ArrayList<>();
@@ -103,19 +109,41 @@ public class MockApiHttpClient implements ApiHttpClient {
 
     @Override
     public byte[] getBinary(String path) throws IOException {
-        captured.add(new CapturedRequest("GET_BINARY", path, null, null, null));
+        return getBinary(path, null);
+    }
+
+    @Override
+    public byte[] getBinary(String path, String accept) throws IOException {
+        captured.add(new CapturedRequest("GET_BINARY", path, null, null, null, accept));
         HttpRawResponse response = next();
         // Mirror OkHttpApiClient: a non-2xx download is an error, not file bytes.
         if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
-            throw ApiException.fromResponse(response.getStatusCode(), response.getBody());
+            throw ApiException.fromResponse(response.getStatusCode(), parseError(response.getBody()), response.getHeaders());
         }
-        return response.getBody() != null ? response.getBody().getBytes() : new byte[0];
+        String contentType = response.getHeader("Content-Type");
+        Object parsed = contentType != null && contentType.toLowerCase(java.util.Locale.ROOT).contains("json")
+                ? parseError(response.getBody()) : null;
+        if (parsed instanceof Map<?, ?> map && map.get("status") instanceof Number status
+                && (status.intValue() < 200 || status.intValue() >= 300)) {
+            throw ApiException.fromResponse(status.intValue(), parsed, response.getHeaders());
+        }
+        return response.getBody() != null ? response.getBody().getBytes(StandardCharsets.UTF_8) : new byte[0];
     }
 
     @Override
     public HttpRawResponse postSignature(String path, byte[] imageData) throws IOException {
-        captured.add(new CapturedRequest("POST_SIGNATURE", path, null, null, null));
+        captured.add(new CapturedRequest("POST_SIGNATURE", path, null, null,
+                new MultipartData(null, imageData, null, null)));
         return next();
+    }
+
+    private static Object parseError(String body) {
+        if (body == null || body.isBlank()) return null;
+        try {
+            return MAPPER.readValue(body, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception ignored) {
+            return body;
+        }
     }
 
     private HttpRawResponse next() throws IOException {
@@ -132,13 +160,22 @@ public class MockApiHttpClient implements ApiHttpClient {
         private final Map<String, Object> queryParams;
         private final String jsonBody;
         private final MultipartData multipartData;
+        private final String accept;
 
         public CapturedRequest(String method, String path, Map<String, Object> queryParams, String jsonBody, MultipartData multipartData) {
+            this(method, path, queryParams, jsonBody, multipartData, null);
+        }
+
+        public CapturedRequest(String method, String path, Map<String, Object> queryParams,
+                               String jsonBody, MultipartData multipartData, String accept) {
             this.method = method;
             this.path = path;
-            this.queryParams = queryParams;
+            this.queryParams = queryParams != null
+                    ? Collections.unmodifiableMap(new LinkedHashMap<>(queryParams))
+                    : null;
             this.jsonBody = jsonBody;
             this.multipartData = multipartData;
+            this.accept = accept;
         }
 
         public String getMethod() { return method; }
@@ -146,6 +183,7 @@ public class MockApiHttpClient implements ApiHttpClient {
         public Map<String, Object> getQueryParams() { return queryParams; }
         public String getJsonBody() { return jsonBody; }
         public MultipartData getMultipartData() { return multipartData; }
+        public String getAccept() { return accept; }
     }
 
     public static class MultipartData {
@@ -156,13 +194,13 @@ public class MockApiHttpClient implements ApiHttpClient {
 
         public MultipartData(String fileName, byte[] fileData, String name, String metadata) {
             this.fileName = fileName;
-            this.fileData = fileData;
+            this.fileData = fileData != null ? fileData.clone() : null;
             this.name = name;
             this.metadata = metadata;
         }
 
         public String getFileName() { return fileName; }
-        public byte[] getFileData() { return fileData; }
+        public byte[] getFileData() { return fileData != null ? fileData.clone() : null; }
         public String getName() { return name; }
         public String getMetadata() { return metadata; }
     }
