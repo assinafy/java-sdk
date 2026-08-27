@@ -99,7 +99,7 @@ jobs:
         run: ./mvnw deploy
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d10147475a0f6666e12ce46b3b5c0c6cff10b78 # v4.2.2
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: target/*.jar
 
