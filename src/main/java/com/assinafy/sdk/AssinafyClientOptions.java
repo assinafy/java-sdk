@@ -20,8 +20,6 @@ public class AssinafyClientOptions {
     private String accountId;
     /** API endpoint. */
     private String baseUrl = DEFAULT_BASE_URL;
-    /** Secret for an optional out-of-band webhook HMAC arrangement. */
-    private String webhookSecret;
     /** Transport timeout. */
     private long timeoutMs = DEFAULT_TIMEOUT_MS;
     /** Diagnostic logger. */
@@ -75,17 +73,6 @@ public class AssinafyClientOptions {
      *                loopback host used in local tests
      */
     public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
-
-    /** {@return the out-of-band webhook HMAC secret, or {@code null} when not configured} */
-    public String getWebhookSecret() { return webhookSecret; }
-
-    /**
-     * Set a secret for tenants with an out-of-band HMAC-SHA256 webhook arrangement. Assinafy does
-     * not publish a platform webhook-signature scheme.
-     *
-     * @param webhookSecret shared secret supplied by that separate arrangement
-     */
-    public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret; }
 
     /** {@return the transport timeout in milliseconds} */
     public long getTimeoutMs() { return timeoutMs; }
@@ -146,14 +133,6 @@ public class AssinafyClientOptions {
          * @return this builder
          */
         public Builder baseUrl(String baseUrl) { opts.setBaseUrl(baseUrl); return this; }
-
-        /**
-         * Set a secret for an out-of-band HMAC-SHA256 webhook arrangement.
-         *
-         * @param webhookSecret shared secret supplied by that separate arrangement
-         * @return this builder
-         */
-        public Builder webhookSecret(String webhookSecret) { opts.setWebhookSecret(webhookSecret); return this; }
 
         /**
          * Set the transport timeout.

@@ -86,7 +86,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.6.0</version>
+    <version>1.7.0</version>
 </dependency>
 ```
 
@@ -219,7 +219,6 @@ build a credential-free client for them.
 | `token`         | String | —                                | Bearer access token, used when no API key is set. |
 | `accountId`     | String | —                                | Default workspace for account-scoped operations. |
 | `baseUrl`       | String | `https://api.assinafy.com.br/v1` | HTTPS API base URL. Plain HTTP is rejected except for loopback testing; use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
-| `webhookSecret` | String | —                                | Secret for an out-of-band HMAC arrangement; the API publishes no webhook-signature scheme. |
 | `timeoutMs`     | long   | `30000`                          | Call, connect, read, and write timeout in milliseconds. |
 | `logger`        | Logger | No-op                            | Structured diagnostic callback. A logger that throws never affects an API call. |
 
@@ -668,30 +667,27 @@ PaginatedResult<WebhookDispatch> dispatches = client.webhooks().listDispatches(
 client.webhooks().retryDispatch(dispatchId);
 ```
 
-On the receiving side, parse the envelope and read the event:
+On the receiving side, deserialize the delivery body into `WebhookPayload` with your own Jackson
+mapper. The SDK models the envelope but does not parse it for you, because a webhook arrives at
+your HTTP endpoint rather than through the SDK's transport:
 
 ```java
-WebhookVerifier verifier = client.webhookVerifier();
+ObjectMapper mapper = new ObjectMapper()
+    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-WebhookPayload event = verifier.extractEvent(payload);
-String eventType = verifier.getEventType(event);              // e.g. "signer_signed_document"
-Map<String, Object> eventData = verifier.getEventData(event); // the affected entity
+WebhookPayload event = mapper.readValue(requestBody, WebhookPayload.class);
+String eventType = event.getEvent();          // e.g. "signer_signed_document"
+Map<String, Object> subject = event.getSubject();  // who acted
+Map<String, Object> object = event.getObject();    // the affected entity
 ```
 
-> **Caution:** the Assinafy webhook contract does **not** publish a signature header or a signing
-> scheme, and the subscription has nowhere to register a shared secret. `verify(...)` implements the
-> conventional `HMAC-SHA256(raw body)` pattern for tenants with an out-of-band signing arrangement —
-> it is not a platform guarantee. `verify() == false` is also what you get when no secret or no
-> signature is present, so it is not on its own evidence of forgery. Do **not** reject deliveries on
-> `verify() == false` unless you have confirmed your tenant signs with this exact scheme; otherwise
-> authenticate at a trusted network boundary and parse only what that boundary accepted.
-
-```java
-// Only gate on verify() if your tenant uses the HMAC-SHA256(raw-body) scheme:
-if (!verifier.verify(payload, signatureHeader)) {
-    return Response.status(401).build();
-}
-```
+> **Authenticate deliveries at a trusted network boundary.** Assinafy publishes no webhook signature
+> header, no signing scheme, and no place on the subscription to register a shared secret, so there
+> is nothing in the delivery for a client library to verify. Restrict your endpoint to the sender's
+> network, put it behind a gateway that authenticates the caller, or use an unguessable endpoint
+> path — and treat the payload as a notification to act on, not as trusted data. Re-read the
+> affected entity through the API (`documents().details(id)`) before acting on anything that
+> matters.
 
 ## Error handling
 

@@ -26,7 +26,6 @@ class AssinafyClientTest {
         assertThat(client.workspaces()).isNotNull();
         assertThat(client.assignments()).isNotNull();
         assertThat(client.webhooks()).isNotNull();
-        assertThat(client.webhookVerifier()).isNotNull();
         assertThat(client.users()).isNotNull();
         assertThat(client.fields()).isNotNull();
         assertThat(client.tags()).isNotNull();
@@ -51,10 +50,10 @@ class AssinafyClientTest {
     @Test
     void staticCreateWithOptionsBuildsConfiguredClient() {
         AssinafyClientOptions extras = AssinafyClientOptions.builder()
-                .webhookSecret("s")
+                .timeoutMs(45_000)
                 .build();
         AssinafyClient client = AssinafyClient.create("k", "acc", extras);
-        assertThat(client.webhookVerifier()).isNotNull();
+        assertThat(client.documents()).isNotNull();
     }
 
     @Test

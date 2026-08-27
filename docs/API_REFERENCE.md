@@ -2989,7 +2989,6 @@ Owner-facing document notifications, keyed by notification type. `true` means th
 - `SignerResource.uploadSignature` accepts PNG or JPEG bytes. Use PNG unless the target tenant accepts JPEG uploads.
 - `WebhookResource.get` returns `null` when no subscription exists (HTTP 404).
 - `CreateWorkspaceRequest` and `UpdateWorkspaceRequest` expose optional deployment theme fields through `primaryColor` and `secondaryColor`; use `WorkspaceResource.getTheme` and the logo methods for the remaining branding operations.
-- `WebhookVerifier` implements optional out-of-band HMAC-SHA256 verification. Assinafy does not publish a webhook signature header or shared-secret scheme; do not treat it as platform authentication unless your tenant has a separate agreement.
 
 ## SDK convenience payloads
 
@@ -3055,8 +3054,14 @@ assignment summary.
 
 ### `WebhookPayload`
 
-Parsed by `WebhookVerifier.extractEvent(...)`. Unknown top-level fields remain available from
+The delivery envelope posted to your webhook endpoint. A webhook does not arrive through the SDK's
+transport, so deserialize the raw request body into this model with your own Jackson mapper
+(configure `FAIL_ON_UNKNOWN_PROPERTIES=false`). Unknown top-level fields remain available from
 `getAdditionalProperties()`.
+
+Assinafy publishes no webhook signature header, signing scheme, or shared-secret registration, so
+there is nothing in a delivery a client library can verify. Authenticate deliveries at a trusted
+network boundary and re-read the affected entity through the API before acting on it.
 
 | JSON field | Java type | Meaning |
 |---|---|---|
@@ -3069,40 +3074,6 @@ Parsed by `WebhookVerifier.extractEvent(...)`. Unknown top-level fields remain a
 | `subject` | `Map<String,Object>` | Actor, including its `type` discriminator. |
 | `object` | `Map<String,Object>` | Entity affected by the event, including its `type` discriminator. |
 | `account_id` | `String` | Workspace account ID. |
-
-### `WebhookVerifier`
-
-Reached through `AssinafyClient: public WebhookVerifier webhookVerifier()`, configured with
-`AssinafyClientOptions.webhookSecret`. Assinafy publishes no webhook signature header or shared-secret
-scheme, so `verify` implements the conventional HMAC-SHA256-over-raw-body pattern for tenants with a
-separate signing arrangement. It returns `false` when no secret is configured, when no signature is
-supplied, and when the signature does not match, so a `false` result is not on its own evidence of
-forgery.
-
-| Java method | Returns | Behavior |
-|---|---|---|
-| `verify(String payload, String signature)` | `boolean` | Constant-time compare of lowercase hex HMAC-SHA256 over the UTF-8 body. Pass the header value with any `algo=` prefix already stripped. |
-| `verify(byte[] payload, String signature)` | `boolean` | Same check over raw bytes, for frameworks that expose the body unparsed. |
-| `extractEvent(String payload)` | `WebhookPayload` | Parses the delivery envelope; `null` for blank, malformed, or non-object JSON. |
-| `extractEvent(byte[] payload)` | `WebhookPayload` | Byte-array form of the same parse. |
-| `getEventType(WebhookPayload event)` | `String` | The envelope's `event` code, or `null`. |
-| `getEventData(WebhookPayload event)` | `Map<String,Object>` | The envelope's `object` field, falling back to `payload`, else an empty map. |
-
-A delivery body has the shape documented under [`WebhookPayload`](#webhookpayload):
-
-```json
-{
-  "id": 918273,
-  "event": "signer_signed_document",
-  "message": "Signer signed the document",
-  "created_at": 1787000000,
-  "account_id": "0a1b2c3d4e5f60718293a4b5c6d7",
-  "subject": { "type": "signer", "id": "signer_123", "full_name": "John Doe" },
-  "object": { "type": "document", "id": "doc_123", "status": "pending_signature" },
-  "origin": { "ip": "203.0.113.10", "user-agent": "Mozilla/5.0" },
-  "payload": {}
-}
-```
 
 ### `DocumentArtifacts`
 

@@ -5,6 +5,23 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-08-27
+
+### Removed
+
+- **`WebhookVerifier`**, `AssinafyClient.webhookVerifier()`, and
+  `AssinafyClientOptions.webhookSecret`. Assinafy publishes no webhook signature header, no signing
+  scheme, and nowhere on the subscription to register a shared secret, so there is nothing in a
+  delivery for a client library to verify. The class implemented a conventional
+  HMAC-SHA256-over-raw-body check against a secret the platform never issues, which invited callers
+  to treat a `false` result as evidence of forgery when it only ever meant "no secret configured".
+  Authenticate deliveries at a trusted network boundary instead, and re-read the affected entity
+  through the API before acting on it.
+
+  Migration: deserialize the delivery body into `WebhookPayload` with your own Jackson mapper
+  (`FAIL_ON_UNKNOWN_PROPERTIES=false`), then read `getEvent()`, `getSubject()`, and `getObject()`
+  directly. `WebhookPayload` is unchanged.
+
 ## [1.6.0] - 2026-08-27
 
 Supersedes the unreleased 1.5.2 source; every change below is relative to the published 1.5.1

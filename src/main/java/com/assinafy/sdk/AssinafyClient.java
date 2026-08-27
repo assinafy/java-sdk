@@ -28,7 +28,6 @@ import com.assinafy.sdk.resources.TemplateResource;
 import com.assinafy.sdk.resources.UserResource;
 import com.assinafy.sdk.resources.WebhookResource;
 import com.assinafy.sdk.resources.WorkspaceResource;
-import com.assinafy.sdk.support.WebhookVerifier;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -64,7 +63,6 @@ public class AssinafyClient {
     private final ApiKeyResource apiKeys;
     private final AuthenticationResource authentication;
     private final UserResource users;
-    private final WebhookVerifier webhookVerifier;
     private final Logger logger;
     private final String defaultAccountId;
 
@@ -104,7 +102,6 @@ public class AssinafyClient {
         this.apiKeys = new ApiKeyResource(http, this.logger);
         this.authentication = new AuthenticationResource(http, this.logger);
         this.users = new UserResource(http, this.logger);
-        this.webhookVerifier = new WebhookVerifier(options.getWebhookSecret());
     }
 
     /**
@@ -137,7 +134,6 @@ public class AssinafyClient {
                 .accountId(accountId)
                 .token(extras.getToken())
                 .baseUrl(extras.getBaseUrl())
-                .webhookSecret(extras.getWebhookSecret())
                 .timeoutMs(extras.getTimeoutMs())
                 .logger(extras.getLogger())
                 .build();
@@ -518,7 +514,4 @@ public class AssinafyClient {
 
     /** {@return authenticated-user settings and notification preferences} */
     public UserResource users() { return users; }
-
-    /** {@return the webhook signature verifier configured with this client's webhook secret} */
-    public WebhookVerifier webhookVerifier() { return webhookVerifier; }
 }
