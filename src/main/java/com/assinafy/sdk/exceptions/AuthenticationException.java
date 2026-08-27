@@ -10,6 +10,8 @@ import java.util.Map;
  */
 public class AuthenticationException extends ApiException {
 
+    private static final long serialVersionUID = 1L;
+
     /**
      * Create an authentication exception without response headers or an underlying cause.
      *

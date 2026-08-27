@@ -7,7 +7,10 @@ import java.util.Map;
 /** Indicates that caller input does not satisfy an SDK or API request contract. */
 public class ValidationException extends AssinafyException {
 
+    private static final long serialVersionUID = 1L;
+
     /** Immutable field-level errors. */
+    @SuppressWarnings("serial") // Field errors may contain non-serializable diagnostic values.
     private final Map<String, Object> errors;
 
     /**

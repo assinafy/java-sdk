@@ -96,7 +96,7 @@ public class CreateDocumentFromTemplateRequest {
     /**
      * Sets the expiration timestamp.
      *
-     * @param expiresAt the expiration timestamp
+     * @param expiresAt ISO-8601 expiration timestamp; whole-second UTC form is recommended
      */
     public void setExpiresAt(String expiresAt) { this.expiresAt = expiresAt; }
 
@@ -164,7 +164,7 @@ public class CreateDocumentFromTemplateRequest {
         /**
          * Sets the expiration timestamp for the object being built.
          *
-         * @param expiresAt the expiration timestamp
+         * @param expiresAt ISO-8601 expiration timestamp; whole-second UTC form is recommended
          * @return this builder
          */
         public Builder expiresAt(String expiresAt) { req.setExpiresAt(expiresAt); return this; }

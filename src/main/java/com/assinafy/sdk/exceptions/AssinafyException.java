@@ -7,7 +7,10 @@ import java.util.Map;
 /** Base unchecked exception for SDK validation, transport, and API failures. */
 public class AssinafyException extends RuntimeException {
 
-    /** Immutable diagnostic fields. */
+    private static final long serialVersionUID = 1L;
+
+    /** Immutable top-level snapshot of diagnostic fields. */
+    @SuppressWarnings("serial") // Diagnostic values are not required to support Java serialization.
     private final Map<String, Object> context;
 
     /**
@@ -21,7 +24,7 @@ public class AssinafyException extends RuntimeException {
     }
 
     /**
-     * Create an SDK exception with immutable structured context.
+     * Create an SDK exception with a shallow, immutable structured-context snapshot.
      *
      * @param message error message
      * @param context diagnostic fields; {@code null} is treated as empty
@@ -47,7 +50,7 @@ public class AssinafyException extends RuntimeException {
                 : Collections.emptyMap();
     }
 
-    /** {@return immutable diagnostic context} */
+    /** {@return an immutable shallow snapshot of diagnostic context} */
     public Map<String, Object> getContext() {
         return context;
     }

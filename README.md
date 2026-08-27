@@ -3,12 +3,12 @@
 Java client SDK for the [Assinafy API](https://api.assinafy.com.br/v1/docs) — a Brazilian digital signature platform.
 
 See the [complete Java API reference](docs/API_REFERENCE.md) for all 89 official operations,
-payload fields, response schemas, status codes, authentication requirements, and compatibility APIs.
+payload fields, response schemas, status codes, authentication requirements, and Java convenience APIs.
 
 ## Requirements
 
 - JDK 25 (LTS). The build intentionally enforces Java `>=25,<26`.
-- Maven 3.9+
+- Maven Wrapper pinned to Maven 3.9.16; a system Maven installation is not required.
 
 ## Installation
 
@@ -47,14 +47,14 @@ Then add the GitHub Packages repository and SDK dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.5.1</version>
+    <version>1.5.2</version>
 </dependency>
 ```
 
 For a source checkout, install the artifact into your local Maven repository first:
 
 ```bash
-mvn install
+./mvnw install
 ```
 
 ## Quick Start
@@ -94,10 +94,10 @@ public final class QuickStart {
         DocumentUploadResponse document = client.documents().upload(fileData, "contract.pdf");
         client.documents().waitUntilReady(document.getId());
 
-        Signer signer = client.signers().create(
+        Signer signer = client.signers().findOrCreate(
             CreateSignerRequest.builder()
                 .fullName("Example Signer")
-                .email("signer@example.com")
+                .email("signer@example.invalid")
                 .build()
         );
 
@@ -114,6 +114,26 @@ public final class QuickStart {
 }
 ```
 
+## Document signing lifecycle
+
+1. Upload a PDF with `documents().upload(...)`, then retain the returned document ID.
+2. Wait for initial processing with `documents().waitUntilReady(id)`. A new upload normally reaches
+   `metadata_ready` and exposes pages and its thumbnail artifact; the helper also accepts already
+   assigned or certificated documents.
+3. Resolve each signer. `signers().create(...)` always creates a new signer; use
+   `signers().findOrCreate(...)` when an existing exact case-insensitive email match should be
+   reused.
+4. Optionally call `assignments().estimateCost(...)`, then create the assignment. Assignment
+   creation starts the signing process and sends the configured notifications.
+5. Track `documents().details(id)`, `documents().getSigningProgress(id)`, and
+   `documents().activities(id)`. Signers complete the signer-code flows exposed by
+   `signers()` and `assignments()`.
+6. After the document reaches `certificated`, download the required artifact: `certificated`,
+   `certificate-page`, `bundle`, or `pades` for a digital-certificate process. The original and
+   thumbnail remain available through their dedicated helpers.
+7. Delete documents only in a deletable status. `documents().getStatuses()` returns the status
+   rules published by the API.
+
 ## Authentication
 
 The API supports two authentication methods:
@@ -127,7 +147,7 @@ AssinafyClient apiKeyClient = new AssinafyClient(
         .build()
 );
 
-// Legacy: Authorization: Bearer token
+// Authorization: Bearer access token
 AssinafyClient bearerClient = new AssinafyClient(
     AssinafyClientOptions.builder()
         .token("jwt-token")
@@ -141,7 +161,7 @@ AssinafyClient bearerClient = new AssinafyClient(
 | Option          | Type     | Default                              | Description                              |
 |-----------------|----------|--------------------------------------|------------------------------------------|
 | `apiKey`        | String   | —                                    | Preferred credential (X-Api-Key header).  |
-| `token`         | String   | —                                    | Legacy access token (Bearer header).      |
+| `token`         | String   | —                                    | Bearer access token (Authorization header). |
 | `accountId`     | String   | —                                    | Default workspace/account ID.             |
 | `baseUrl`       | String   | `https://api.assinafy.com.br/v1`     | HTTPS API base URL. Plain HTTP is rejected except for loopback testing; use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
 | `webhookSecret`  | String   | —                                    | Optional secret for an out-of-band HMAC arrangement; the official API publishes no webhook-signature scheme. |
@@ -181,7 +201,7 @@ DocumentDetails details = client.documents().details(documentId);
 // Rename (PATCH /documents/{id})
 DocumentDetails renamed = client.documents().rename(documentId, "signed-contract.pdf");
 
-// Lightweight search (compact representation; cheaper than list())
+// Lightweight search (compact representation without expanded assignment/pages)
 PaginatedResult<DocumentListItem> found = client.documents().search(
     ListParams.builder().search("contract").status("metadata_ready").build()
 );
@@ -194,7 +214,7 @@ byte[] thumbnail = client.documents().thumbnail(documentId);
 client.documents().delete(documentId);
 
 // Create from template
-DocumentDetails doc = client.documents().createFromTemplate(
+DocumentDetails templateDocument = client.documents().createFromTemplate(
     templateId,
     CreateDocumentFromTemplateRequest.builder()
         .name("contract.pdf")
@@ -226,18 +246,31 @@ SigningProgress progress = client.documents().getSigningProgress(documentId); //
 
 ### Signers
 
+`create(...)` never performs an email lookup. A supplied CPF/CNPJ is persisted after creation through
+the signer's `government_id` update. Signer metadata is deprecated and is not sent. Use
+`findOrCreate(...)` only when reusing an exact case-insensitive email match is intended; an existing
+match is returned unchanged.
+
 ```java
-// Create
+// Always create a new signer (POST /accounts/{accountId}/signers)
 Signer signer = client.signers().create(
     CreateSignerRequest.builder()
         .fullName("John Doe")
-        .email("john@example.com")
+        .email("john@example.invalid")
         .whatsappPhoneNumber("+5548999990000")
         .build()
 );
 
+// Reuse an exact case-insensitive email match, or create when none exists
+Signer reusableSigner = client.signers().findOrCreate(
+    CreateSignerRequest.builder()
+        .fullName("Jane Doe")
+        .email("jane@example.invalid")
+        .build()
+);
+
 // Get
-Signer signer = client.signers().get(signerId);
+Signer fetchedSigner = client.signers().get(signerId);
 
 // List
 PaginatedResult<Signer> signers = client.signers().list(
@@ -253,7 +286,7 @@ client.signers().update(signerId,
 client.signers().delete(signerId);
 
 // Find by email
-Signer signer = client.signers().findByEmail("john@example.com");
+Signer emailMatch = client.signers().findByEmail("john@example.invalid");
 
 // Create a WhatsApp-only signer (email is optional; full_name is required)
 Signer waSigner = client.signers().create(
@@ -271,12 +304,15 @@ Map<String, Object> verifyResult = client.signers().verifyEmail(signerAccessCode
 // Confirm/update signer data before signing; returns the server-normalised signer.
 // Documented body fields: full_name, email, government_id.
 Signer confirmed = client.signers().confirmSignerData(documentId, signerAccessCode,
-    Map.of("full_name", "Maria Silva", "email", "maria@example.com"));
+    Map.of("full_name", "Maria Silva", "email", "maria@example.invalid"));
 ```
 
 ### Assignments
 
 ```java
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 // Create
 Assignment assignment = client.assignments().create(
     documentId,
@@ -284,7 +320,8 @@ Assignment assignment = client.assignments().create(
         .method("virtual")
         .signers(List.of(SignerReference.ofId(signerId)))
         .message("Please sign")
-        .expiresAt("2025-12-31T23:59:59Z")
+        .expiresAt(Instant.now().plus(30, ChronoUnit.DAYS)
+                .truncatedTo(ChronoUnit.SECONDS).toString())
         .build()
 );
 
@@ -292,14 +329,16 @@ Assignment assignment = client.assignments().create(
 Map<String, Object> cost = client.assignments().estimateCost(documentId, request);
 CostEstimate typedCost = client.assignments().estimateCostTyped(documentId, request);
 
-// List assignments. OpenAPI resolves the current interactive account; when this client has a
-// default account ID, the SDK also sends the deployed compatibility accountId query parameter.
+// List assignments. The account-aware overload includes accountId for deployments that require
+// explicit workspace context.
 PaginatedResult<Assignment> assignments = client.assignments().list(
     ListParams.builder().page(1).perPage(20).build()
 );
 
 // Reset expiration
-Assignment updated = client.assignments().resetExpiration(documentId, assignmentId, "2025-06-30T00:00:00Z");
+Assignment updated = client.assignments().resetExpiration(
+    documentId, assignmentId, Instant.now().plus(60, ChronoUnit.DAYS)
+            .truncatedTo(ChronoUnit.SECONDS).toString());
 
 // Resend notification (and estimate its cost first)
 Map<String, Object> resendCost = client.assignments().estimateResendCost(documentId, assignmentId, signerId);
@@ -312,7 +351,7 @@ Map<String, Object> declined = client.assignments().decline(
 // Inspect WhatsApp notification delivery state (one entry per tracked notification)
 List<Map<String, Object>> waState = client.assignments().getWhatsappNotifications(documentId, assignmentId);
 
-// Deployed compatibility: clear expiration. OpenAPI does not explicitly mark expires_at nullable.
+// Optional deployment extension: clear expiration by sending expires_at:null.
 client.assignments().resetExpiration(documentId, assignmentId, null);
 
 // Signer-side flows (signer-access-code based)
@@ -327,8 +366,8 @@ client.assignments().sign(documentId, assignmentId, signerAccessCode,
 // Register
 WebhookSubscription sub = client.webhooks().register(
     RegisterWebhookRequest.builder()
-        .url("https://example.com/webhook")
-        .email("admin@example.com")
+        .url("https://example.invalid/webhook")
+        .email("admin@example.invalid")
         .events(List.of("document_ready", "signer_signed_document"))
         .build()
 );
@@ -336,8 +375,7 @@ WebhookSubscription sub = client.webhooks().register(
 // Get current subscription
 WebhookSubscription current = client.webhooks().get();
 
-// Stop delivery. Prefer inactivate(); delete() is deprecated because its DELETE route is not in
-// the official contract and returned 404 on the tested deployment.
+// Stop delivery. delete() is deprecated; use the documented inactivation operation.
 client.webhooks().inactivate();
 
 // List event types
@@ -358,7 +396,7 @@ client.webhooks().retryDispatch(dispatchId);
 // List
 PaginatedResult<TemplateListItem> templates = client.templates().list();
 
-// Get (compatibility endpoint; absent from the official OpenAPI contract)
+// Optional single-template deployment endpoint; confirm support before use
 Template template = client.templates().get(templateId);
 ```
 
@@ -413,13 +451,13 @@ client.tags().rename(tag.getId(), RenameTagRequest.builder().clearColor().build(
 client.tags().delete(tag.getId());          // 409 if the tag is still attached…
 client.tags().delete(tag.getId(), true);    // …pass force=true to detach + delete
 
-// Document tags. append/replace take tag NAMES (auto-created if unknown); an existing name links
-// that tag. (The API reference labels these "Tag IDs", but the live API resolves/creates by name —
-// verified against the sandbox.) detachTag takes the tag ID from the path.
-client.documents().appendTags(documentId, List.of("Urgent"));      // add without removing
-client.documents().replaceTags(documentId, List.of("Contracts"));  // replace the whole set
+// ID-based methods resolve the workspace IDs before changing the document.
+// appendTags/replaceTags remain available for tag-name inputs and create unknown names.
+List<Tag> attached = client.documents().appendTagIds(documentId, List.of(tag.getId()));
+client.documents().replaceTagIds(documentId, List.of(tag.getId()));
+client.documents().appendTags(documentId, List.of("2026 Contracts"));
 List<Tag> docTags = client.documents().listTags(documentId);
-client.documents().detachTag(documentId, tagId);                   // detach one tag (by ID)
+client.documents().detachTag(documentId, attached.getFirst().getId());
 ```
 
 ### API Key Management
@@ -473,10 +511,6 @@ Response `data` (the API always returns all nine switches):
 }
 ```
 
-Both notification-preference operations are published in the production OpenAPI contract, but the
-sandbox returned application-level `404` responses when checked on 2026-08-20. The SDK methods
-remain available for production and future sandbox parity.
-
 ### Public Documents
 
 Endpoints that do not require auth (useful for embedded signer flows).
@@ -486,10 +520,11 @@ Endpoints that do not require auth (useful for embedded signer flows).
 DocumentDetails basic = client.publicDocuments().getBasicInfo(documentId);
 
 // Send a one-time access token by email so the recipient can view/sign the document.
-// OpenAPI documents optional `email`; the SDK also sends sandbox-required recipient/channel.
-Map<String, Object> sent = client.publicDocuments().sendToken(documentId, "signer@example.com");
+// This overload sends exactly { "email": "..." }.
+Map<String, Object> sent = client.publicDocuments().sendToken(documentId, "signer@example.invalid");
 
-// Explicit deployed channel form (recipient may be an email address or phone number).
+// Deployment-specific channel form. Email sends { email, recipient, channel };
+// other channels send { recipient, channel }.
 client.publicDocuments().sendToken(documentId, recipient, channel);
 ```
 
@@ -537,7 +572,7 @@ Workspace workspace = client.workspaces().create(
 PaginatedResult<WorkspaceListItem> workspaces = client.workspaces().list();
 
 // Get
-Workspace workspace = client.workspaces().get(accountId);
+Workspace currentWorkspace = client.workspaces().get(accountId);
 
 // Update
 Workspace updated = client.workspaces().update(accountId,
@@ -557,7 +592,8 @@ client.workspaces().deleteLogo(accountId);
 
 ## High-Level Helper
 
-The SDK provides a convenience method that handles the full workflow:
+The SDK provides a convenience method that uploads the PDF, optionally waits for processing,
+resolves signers, and creates a virtual assignment:
 
 ```java
 UploadAndRequestSignaturesResult result = client.uploadAndRequestSignatures(
@@ -567,7 +603,7 @@ UploadAndRequestSignaturesResult result = client.uploadAndRequestSignatures(
         .signers(List.of(
             UploadAndRequestSignaturesRequest.SignerEntry.builder()
                 .name("John Doe")
-                .email("john@example.com")
+                .email("john@example.invalid")
                 .build()
         ))
         .message("Please sign this contract")
@@ -581,6 +617,24 @@ result.getAssignment();    // Assignment
 result.getSignerIds();     // List<String>
 ```
 
+Email entries reuse an existing exact case-insensitive email match; their requested name, phone, and
+CPF/CNPJ do not replace the stored profile. For a signer whose create response returns a valid ID,
+the CPF/CNPJ is persisted through a `government_id` update. A signer recovered after an
+indeterminate create response is not updated or deleted; an entry containing CPF/CNPJ fails before
+assignment creation when ownership cannot be established. Email-bearing entries must have unique addresses
+(case-insensitive), and WhatsApp-only entries must have unique phone numbers (exact match).
+WhatsApp-only entries
+automatically use `Whatsapp` verification and notification methods. Signer-entry metadata is
+deprecated and is not sent. On an ordinary post-upload failure, the helper attempts to delete the
+uploaded document and every signer it created; cleanup failures are attached to the original
+exception. If assignment creation has an indeterminate result and reconciliation cannot find the
+assignment, the helper retains the workflow resources to avoid deleting a potentially active
+request. Existing and indeterminate-ownership signers are never modified or deleted by this
+workflow.
+
+See [SDK convenience payloads](docs/API_REFERENCE.md#sdk-convenience-payloads) for every request,
+result, progress, pagination, webhook, and artifact field used by Java-only helpers.
+
 ## Webhook Verification
 
 > **Caution:** the Assinafy webhook contract does **not** currently publish a signature header or a
@@ -589,7 +643,8 @@ result.getSignerIds();     // List<String>
 > signing arrangement — it is not a documented platform guarantee. A `verify() == false` result does
 > **not** by itself mean a request is forged (it is also `false` when no secret/signature is present).
 > Do **not** reject deliveries on `verify() == false` unless you have confirmed your tenant signs with
-> this exact scheme; otherwise authenticate webhooks another way and just parse the body.
+> this exact scheme; otherwise apply authentication at a trusted network boundary and only parse
+> requests accepted by that boundary.
 
 ```java
 WebhookVerifier verifier = client.webhookVerifier();
@@ -656,6 +711,17 @@ PaginationMeta meta = result.getMeta();
 // meta.getPerPage()
 ```
 
+The SDK maps response headers to `PaginationMeta` as follows:
+
+| Response header | Getter |
+|---|---|
+| `X-Pagination-Current-Page` | `getCurrentPage()` |
+| `X-Pagination-Page-Count` | `getLastPage()` |
+| `X-Pagination-Per-Page` | `getPerPage()` |
+| `X-Pagination-Total-Count` | `getTotal()` |
+
+`getTotal()` is the total number of matching items across all pages, not the current page size.
+
 ## Request / Response Payloads
 
 JSON success responses normally use `{ "status", "message", "data" }`; the SDK returns `data` and
@@ -664,15 +730,15 @@ accepts an empty 2xx body. Binary methods return raw `byte[]` without JSON decod
 status or non-2xx numeric envelope status raises `ApiException`. See the
 [complete Java API reference](docs/API_REFERENCE.md) for every operation and payload field.
 
-**Upload document** — `documents().upload(...)` → `DocumentUploadResponse` (multipart `file`; the
-SDK also sends compatibility `name` and optional `metadata` parts):
+**Upload document** — `documents().upload(...)` → `DocumentUploadResponse` (multipart `file`,
+`name`, and optional `metadata` parts):
 
 ```json
 { "data": {
-  "resource": "document", "id": "103aa2…", "account_id": "102d…", "template_id": null,
+  "resource": "document", "id": "doc_123", "account_id": "account_123", "template_id": null,
   "name": "contract.pdf", "status": "uploaded",
-  "artifacts": { "original": "https://…/download/original" },
-  "is_closed": false, "signing_url": "https://app…/sign/103aa2…",
+  "artifacts": { "original": "https://example.invalid/download/original" },
+  "is_closed": false, "signing_url": "https://example.invalid/sign/doc_123",
   "decline_reason": null, "declined_by": null, "tags": [],
   "created_at": "2026-07-18T19:03:38Z", "updated_at": "2026-07-18T19:03:38Z", "pages": []
 }, "status": 200, "message": "" }
@@ -685,10 +751,10 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 
 ```jsonc
 // request
-{ "full_name": "John Doe", "email": "john@example.com", "whatsapp_phone_number": "+5548999990000" }
+{ "full_name": "John Doe", "email": "john@example.invalid", "whatsapp_phone_number": "+5548999990000" }
 // response data
-{ "resource": "signer", "id": "19e6…", "full_name": "John Doe", "email": "john@example.com",
-  "whatsapp_phone_number": null, "has_accepted_terms": false }
+{ "resource": "signer", "id": "signer_123", "full_name": "John Doe", "email": "john@example.invalid",
+  "whatsapp_phone_number": "+5548999990000", "has_accepted_terms": false }
 ```
 
 **Create assignment** — `assignments().create(documentId, ...)` → `Assignment`:
@@ -696,19 +762,19 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 ```jsonc
 // request
 { "method": "virtual", "message": "Please sign",
-  "signers": [ { "id": "19e6…", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 } ] }
+  "signers": [ { "id": "signer_123", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 } ] }
 // response data (abridged)
-{ "resource": "assignment", "id": "103aa2…", "sender_email": "sender@example.invalid", "method": "virtual",
+{ "resource": "assignment", "id": "assignment_123", "sender_email": "sender@example.invalid", "method": "virtual",
   "expires_at": null, "message": "Please sign",
-  "signers": [ { "id": "19e6…", "full_name": "John Doe", "email": "john@example.com",
+  "signers": [ { "id": "signer_123", "full_name": "John Doe", "email": "john@example.invalid",
                  "verification_method": "Email", "notification_methods": ["Email"], "step": 1,
                  "notified": true, "completed": false, "notification_history": [] } ],
-  "items": [ { "id": "…", "page": null, "signer": { … }, "field": { … }, "value": null, "completed": false } ],
+  "items": [ { "id": "item_123", "page": null, "signer": { … }, "field": { … }, "value": null, "completed": false } ],
   "summary": { "signer_count": 1, "completed_count": 0, "signers": [ … ] },
-  "signing_urls": [ { "signer_id": "19e6…", "url": "https://app…/sign/103aa2…?email=…" } ] }
+  "signing_urls": [ { "signer_id": "signer_123", "url": "https://example.invalid/sign/document_123" } ] }
 ```
 
-**Estimate cost** — the compatibility methods return `Map<String,Object>`; the corresponding
+**Estimate cost** — the map-returning methods return `Map<String,Object>`; the corresponding
 `estimateCostTyped(...)` methods return `CostEstimate`:
 
 ```json
@@ -720,7 +786,7 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 **Field definition** — `fields().create/get/update(...)` → `FieldDefinition`:
 
 ```json
-{ "resource": "field_definition", "id": "102d…", "name": "Address", "type": "text", "regex": null,
+{ "resource": "field_definition", "id": "field_123", "name": "Address", "type": "text", "regex": null,
   "is_pre_defined": false, "is_active": true, "is_required": true, "is_standard": false,
   "is_read_only": false, "is_visible": true }
 ```
@@ -729,7 +795,7 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 
 ```jsonc
 // Tag
-{ "resource": "tag", "id": "103a…", "name": "Contracts", "color": "ff8800",
+{ "resource": "tag", "id": "tag_123", "name": "Contracts", "color": "ff8800",
   "created_at": "2026-05-14T12:00:00Z", "updated_at": "2026-05-14T12:00:00Z" }
 // AccountTheme
 { "account_name": "Acme", "primary_color": "2072b9", "secondary_color": "ffffff", "logo": null }
@@ -739,38 +805,44 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 
 ```json
 { "events": ["document_ready","signer_signed_document"], "is_active": true,
-  "url": "https://example.com/webhook", "email": "admin@example.com",
+  "url": "https://example.invalid/webhook", "email": "admin@example.invalid",
   "updated_at": "2026-07-18T02:36:02Z" }
 ```
 
 ## Development
 
 ```bash
-# Offline unit tests
-mvn test
+# Unit tests (no live API calls)
+./mvnw test
 
-# Full offline build, Javadocs, and package verification
-mvn clean verify
+# Full build, Javadocs, and package verification
+./mvnw clean verify
+
+# The same verification after dependencies and plugins are cached
+./mvnw -o verify
 ```
 
-`mvn test` is offline and includes wire-level HTTP tests backed by MockWebServer. The opt-in
-`LiveApiSmokeIT` suite performs real sandbox reads and writes. Inject its credentials through your
-shell or CI secret store, then run:
+The unit suite makes no live Assinafy calls and includes wire-level HTTP tests backed by
+MockWebServer. The opt-in `LiveApiSmokeIT` suite performs real sandbox reads and writes. Inject its
+credentials through your shell or CI secret store, then run:
 
 ```bash
 # ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID must already be set from a secret store.
 export ASSINAFY_API_KEY
 export ASSINAFY_ACCOUNT_ID
 export ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1
-mvn -Plive-api verify
+./mvnw -Plive-api verify
 ```
 
-The test rejects any base URL other than the exact sandbox URL. The assignment-notification case
+The live profile rejects any base URL other than the exact sandbox URL. GitHub Actions runs it
+weekly and on manual dispatch through the protected `sandbox` environment. Only
+`ASSINAFY_API_KEY` and `ASSINAFY_ACCOUNT_ID` are required environment secrets. The
+assignment-notification case
 requires both `ASSINAFY_TEST_EMAIL_PRIMARY` and `ASSINAFY_TEST_EMAIL_SECONDARY`; the password-reset
 case requires only `ASSINAFY_TEST_EMAIL_PRIMARY`. Leave them unset to skip those cases, or set them
-to controlled sandbox recipients—the cases send real messages. Writes use unique fixture names and
-`finally` cleanup, but cleanup can still fail after a network or service outage; inspect the sandbox
-account after an interrupted run.
+to controlled sandbox recipients—the cases send real messages. Writes use unique fixture names,
+reverse-order cleanup, and retries for transient cleanup failures. Inspect the sandbox account after
+an interrupted run because a process termination or service outage can still prevent cleanup.
 
 ## License
 

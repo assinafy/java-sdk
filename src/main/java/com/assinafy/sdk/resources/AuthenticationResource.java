@@ -84,7 +84,8 @@ public class AuthenticationResource extends BaseResource {
      * {@code PUT /authentication/change-password} with
      * {@code {email, password, new_password}}.
      *
-     * The success envelope has no data payload.
+     * The response {@code data.email} is decoded and discarded. Use
+     * {@link #changePasswordResult(String, String, String)} when the response payload is needed.
      *
      * @param email account email address
      * @param password current password
@@ -92,6 +93,19 @@ public class AuthenticationResource extends BaseResource {
      * @throws ValidationException if any credential is invalid
      */
     public void changePassword(String email, String password, String newPassword) {
+        changePasswordResult(email, password, newPassword);
+    }
+
+    /**
+     * Change the authenticated user's password and return {@code {email}} from the response.
+     *
+     * @param email account email address
+     * @param password current password
+     * @param newPassword replacement password
+     * @return response data containing the affected {@code email}
+     * @throws ValidationException if any credential is invalid
+     */
+    public Map<String, Object> changePasswordResult(String email, String password, String newPassword) {
         requireEmail(email);
         requireId(password, "Current password");
         requireId(newPassword, "New password");
@@ -99,7 +113,7 @@ public class AuthenticationResource extends BaseResource {
         body.put("email", email);
         body.put("password", password);
         body.put("new_password", newPassword);
-        callVoid("Failed to change password",
+        return callMap("Failed to change password",
                 () -> http.put("/authentication/change-password", serialise(body)));
     }
 
@@ -107,14 +121,26 @@ public class AuthenticationResource extends BaseResource {
      * Send password-reset instructions via {@code PUT /authentication/request-password-reset}
      * with {@code {email}}. This operation is unauthenticated.
      *
-     * The success envelope has no data payload.
+     * The response {@code data.email} is decoded and discarded. Use
+     * {@link #requestPasswordResetResult(String)} when the response payload is needed.
      *
      * @param email account email address
      * @throws ValidationException if the email is invalid
      */
     public void requestPasswordReset(String email) {
+        requestPasswordResetResult(email);
+    }
+
+    /**
+     * Send password-reset instructions and return {@code {email}} from the response.
+     *
+     * @param email account email address
+     * @return response data containing the affected {@code email}
+     * @throws ValidationException if the email is invalid
+     */
+    public Map<String, Object> requestPasswordResetResult(String email) {
         requireEmail(email);
-        callVoid("Failed to request password reset",
+        return callMap("Failed to request password reset",
                 () -> http.put("/authentication/request-password-reset", serialise(Map.of("email", email))));
     }
 
@@ -123,8 +149,9 @@ public class AuthenticationResource extends BaseResource {
      * {@code {email, token, new_password}}. This operation is unauthenticated; {@code token} is the
      * value delivered by the reset email.
      *
-     * The reset token is optional in the published schema; the success envelope has no data
-     * payload.
+     * The reset token is optional in the published schema. The response {@code data.email} is
+     * decoded and discarded; use {@link #resetPasswordResult(String, String, String)} when the
+     * response payload is needed.
      *
      * @param email account email address
      * @param token optional reset token delivered by email
@@ -132,13 +159,26 @@ public class AuthenticationResource extends BaseResource {
      * @throws ValidationException if the email or new password is invalid
      */
     public void resetPassword(String email, String token, String newPassword) {
+        resetPasswordResult(email, token, newPassword);
+    }
+
+    /**
+     * Set a new password and return {@code {email}} from the response.
+     *
+     * @param email account email address
+     * @param token optional reset token delivered by email
+     * @param newPassword replacement password
+     * @return response data containing the affected {@code email}
+     * @throws ValidationException if the email or new password is invalid
+     */
+    public Map<String, Object> resetPasswordResult(String email, String token, String newPassword) {
         requireEmail(email);
         requireId(newPassword, "New password");
         Map<String, Object> body = new HashMap<>();
         body.put("email", email);
         if (token != null) body.put("token", token);
         body.put("new_password", newPassword);
-        callVoid("Failed to reset password",
+        return callMap("Failed to reset password",
                 () -> http.put("/authentication/reset-password", serialise(body)));
     }
 

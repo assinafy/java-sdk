@@ -116,6 +116,32 @@ class ApiModelConformanceTest {
                 });
     }
 
+    @Test
+    @SuppressWarnings("deprecation")
+    void preservesEveryCurrentStatisticsBreakdownAndLegacyAliases() {
+        DocumentStatsRow row = decode("""
+                {"period":"2026-08","signature_requests":28,
+                 "signature_requests_notification_email":20,
+                 "signature_requests_notification_whatsapp":9,
+                 "signature_requests_notification_bypass":1,
+                 "signature_requests_verification_email":18,
+                 "signature_requests_verification_whatsapp":5,
+                 "signature_requests_verification_bypass":3,
+                 "signature_requests_verification_digital_certificate":2}
+                """, DocumentStatsRow.class);
+
+        assertThat(row.getSignatureRequests()).isEqualTo(28);
+        assertThat(row.getSignatureRequestsNotificationEmail()).isEqualTo(20);
+        assertThat(row.getSignatureRequestsNotificationWhatsapp()).isEqualTo(9);
+        assertThat(row.getSignatureRequestsNotificationBypass()).isEqualTo(1);
+        assertThat(row.getSignatureRequestsVerificationEmail()).isEqualTo(18);
+        assertThat(row.getSignatureRequestsVerificationWhatsapp()).isEqualTo(5);
+        assertThat(row.getSignatureRequestsVerificationBypass()).isEqualTo(3);
+        assertThat(row.getSignatureRequestsVerificationDigitalCertificate()).isEqualTo(2);
+        assertThat(row.getSignatureRequestsEmail()).isEqualTo(20);
+        assertThat(row.getSignatureRequestsWhatsapp()).isEqualTo(9);
+    }
+
     private static <T> T decode(String data, Class<T> type) {
         String envelope = "{\"status\":200,\"data\":" + data + "}";
         return ResponseHandler.handle(new HttpRawResponse(200, envelope, Map.of()), type);

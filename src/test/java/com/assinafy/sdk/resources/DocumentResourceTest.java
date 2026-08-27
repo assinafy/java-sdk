@@ -46,6 +46,26 @@ class DocumentResourceTest {
     }
 
     @Test
+    void uploadIgnoresDiagnosticLoggerFailures() {
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\",\"status\":\"uploaded\"}}");
+
+        DocumentUploadResponse document = new DocumentResource(mock, "acc", throwingLogger())
+                .upload("%PDF-1.4 data".getBytes(), "contract.pdf");
+
+        assertThat(document.getId()).isEqualTo("doc-1");
+    }
+
+    @Test
+    void readinessPollingIgnoresDiagnosticLoggerFailures() {
+        mock.enqueue(404, "{\"status\":404,\"message\":\"not ready\"}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\","
+                        + "\"status\":\"metadata_ready\"}}");
+
+        assertThat(new DocumentResource(mock, "acc", throwingLogger())
+                .waitUntilReady("doc-1", 1_000, 1).getId()).isEqualTo("doc-1");
+    }
+
+    @Test
     void listDetailsDeleteAndStatusesUseDocumentedWires() {
         mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"doc-1\"}]}")
                 .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\"}}")
@@ -109,21 +129,53 @@ class DocumentResourceTest {
     @Test
     void replaceTagsPutsTagNames() {
         mock.enqueue(200, "{\"status\":200,\"data\":[]}");
-        resource.replaceTags("doc-1", List.of("Contracts", "2026-Q1"));
+        resource.replaceTags("doc-1", List.of("Contracts", "Urgent"));
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/documents/doc-1/tags");
-        assertThat(mock.lastCaptured().getJsonBody()).contains("tags").contains("Contracts").contains("2026-Q1");
+        assertThat(mock.lastCaptured().getJsonBody()).contains("tags").contains("Contracts").contains("Urgent");
     }
 
     @Test
-    void appendTagsPostsTagNames() {
-        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
-        resource.appendTags("doc-1", List.of("Urgent"));
+    void appendTagsPreservesExistingNamedTag() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"tag-1\","
+                + "\"name\":\"Contracts\"}]}");
+        List<Tag> tags = resource.appendTags("doc-1", List.of("Contracts"));
 
+        assertThat(tags).extracting(Tag::getId).containsExactly("tag-1");
+        assertThat(mock.capturedCount()).isOne();
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/documents/doc-1/tags");
-        assertThat(mock.lastCaptured().getJsonBody()).contains("Urgent");
+        assertThat(mock.lastCaptured().getJsonBody()).contains("Contracts");
+    }
+
+    @Test
+    void appendTagIdsResolvesBeforeChangingDocument() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"tag-1\","
+                        + "\"name\":\"Contracts\"}],\"meta\":{\"current_page\":1,"
+                        + "\"last_page\":1,\"per_page\":100,\"total\":1}}")
+                .enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"attached\","
+                        + "\"name\":\"Contracts\"}]}");
+
+        List<Tag> tags = resource.appendTagIds("doc-1", List.of("tag-1"));
+
+        assertThat(tags).extracting(Tag::getName).containsExactly("Contracts");
+        assertThat(mock.capturedAt(0).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc/tags");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("POST");
+        assertThat(mock.capturedAt(1).getJsonBody()).contains("Contracts").doesNotContain("tag-1");
+        assertThat(mock.getCaptured()).noneMatch(request -> "DELETE".equals(request.getMethod()));
+    }
+
+    @Test
+    void replaceTagIdsRejectsUnknownIdBeforeChangingDocument() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        assertThatThrownBy(() -> resource.replaceTagIds("doc-1", List.of("missing")))
+                .isInstanceOf(com.assinafy.sdk.exceptions.AssinafyException.class);
+
+        assertThat(mock.capturedCount()).isOne();
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
     }
 
     @Test
@@ -133,5 +185,22 @@ class DocumentResourceTest {
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/documents/doc-1/tags/t1");
+    }
+
+    private static com.assinafy.sdk.Logger throwingLogger() {
+        return new com.assinafy.sdk.Logger() {
+            @Override public void debug(String message, java.util.Map<String, Object> context) {
+                throw new IllegalStateException("logger failed");
+            }
+            @Override public void info(String message, java.util.Map<String, Object> context) {
+                throw new IllegalStateException("logger failed");
+            }
+            @Override public void warn(String message, java.util.Map<String, Object> context) {
+                throw new IllegalStateException("logger failed");
+            }
+            @Override public void error(String message, java.util.Map<String, Object> context) {
+                throw new IllegalStateException("logger failed");
+            }
+        };
     }
 }

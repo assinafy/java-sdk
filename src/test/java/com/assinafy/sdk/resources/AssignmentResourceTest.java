@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
@@ -103,6 +104,49 @@ class AssignmentResourceTest {
     }
 
     @Test
+    void buildPayloadRequiresInputsForExplicitAssignmentMethod() {
+        CreateAssignmentRequest collect = CreateAssignmentRequest.builder()
+                .method("collect")
+                .signers(List.of(SignerReference.ofId("s1")))
+                .build();
+        CreateAssignmentRequest virtualEstimate = CreateAssignmentRequest.builder()
+                .method("virtual")
+                .build();
+
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(collect, false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("entry");
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(collect, true))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("entry");
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(virtualEstimate, true))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("signer");
+    }
+
+    @Test
+    void buildPayloadRejectsUnsupportedDeliveryMethods() {
+        Map<String, Object> withNoNotifications = AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(SignerReference.builder()
+                        .id("s1").notificationMethods(List.of()).build())).build(), false);
+        assertThat(withNoNotifications.toString()).contains("notification_methods=[]");
+
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(SignerReference.builder()
+                        .id("s1").verificationMethod("Sms").build())).build(), false))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(SignerReference.builder()
+                        .id("s1").notificationMethods(List.of("Sms")).build())).build(), false))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(SignerReference.builder()
+                        .id("s1").notificationMethods(
+                                java.util.Arrays.asList((String) null)).build())).build(), false))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
     void createPostsToDocumentAssignmentsWithNormalisedBody() {
         MockApiHttpClient mock = new MockApiHttpClient();
         mock.enqueue(200, ASSIGNMENT_RESPONSE);
@@ -122,6 +166,24 @@ class AssignmentResourceTest {
         assertThat(body).contains("\"method\":\"virtual\"");
         assertThat(body).contains("\"id\":\"s1\"");
         assertThat(body).contains("\"id\":\"s2\"");
+    }
+
+    @Test
+    void createRequiresNonblankIdInSuccessfulResponse() {
+        MockApiHttpClient mock = new MockApiHttpClient()
+                .enqueue(200, "{\"status\":200,\"data\":null}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\" \"}}");
+        AssignmentResource resource = new AssignmentResource(mock, "acc");
+        CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+                .signers(List.of(SignerReference.ofId("s1")))
+                .build();
+
+        assertThatThrownBy(() -> resource.create("doc-1", request))
+                .isExactlyInstanceOf(AssinafyException.class)
+                .hasMessageContaining("no assignment ID");
+        assertThatThrownBy(() -> resource.create("doc-1", request))
+                .isExactlyInstanceOf(AssinafyException.class)
+                .hasMessageContaining("no assignment ID");
     }
 
     @Test
@@ -213,13 +275,44 @@ class AssignmentResourceTest {
     @Test
     void buildPayloadIncludesStepForSequentialSigning() {
         CreateAssignmentRequest req = CreateAssignmentRequest.builder()
-                .signers(List.of(SignerReference.builder().id("s1").step(2).build()))
+                .signers(List.of(
+                        SignerReference.builder().id("s1").step(1).build(),
+                        SignerReference.builder().id("s2").step(2)
+                                .verificationMethod("DigitalCertificate").build()))
                 .build();
         Map<String, Object> body = AssignmentResource.buildAssignmentPayload(req, false);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> signers = (List<Map<String, Object>>) body.get("signers");
-        assertThat(signers.get(0).get("step")).isEqualTo(2);
+        assertThat(signers).extracting(signer -> signer.get("step")).containsExactly(1, 2);
+    }
+
+    @Test
+    void buildPayloadRejectsInvalidSignerStepSequences() {
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(
+                        SignerReference.builder().id("s1").step(1).build(),
+                        SignerReference.ofId("s2"))).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Every signer");
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(
+                        SignerReference.builder().id("s1").step(1).build(),
+                        SignerReference.builder().id("s2").step(3).build())).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("contiguous");
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(
+                        SignerReference.builder().id("s1").step(1)
+                                .verificationMethod("DigitalCertificate").build(),
+                        SignerReference.builder().id("s2").step(1).build())).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("alone");
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(
+                        SignerReference.builder().id("s1").step(0).build())).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("positive");
     }
 
     @Test

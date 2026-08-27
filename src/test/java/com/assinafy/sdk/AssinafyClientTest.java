@@ -28,6 +28,9 @@ class AssinafyClientTest {
         assertThat(client.webhooks()).isNotNull();
         assertThat(client.webhookVerifier()).isNotNull();
         assertThat(client.users()).isNotNull();
+        assertThat(client.fields()).isNotNull();
+        assertThat(client.tags()).isNotNull();
+        assertThat(client.apiKeys()).isNotNull();
     }
 
     @Test

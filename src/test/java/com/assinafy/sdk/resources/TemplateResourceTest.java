@@ -1,6 +1,7 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.helper.MockApiHttpClient.CapturedRequest;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Template;
 import com.assinafy.sdk.models.TemplateListItem;
@@ -50,5 +51,23 @@ class TemplateResourceTest {
         assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/accounts/acc/templates/t1");
         assertThat(t.getId()).isEqualTo("t1");
+    }
+
+    @Test
+    void defaultListAndExplicitAccountOverloadsUseRequestedAccounts() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"t1\"}}");
+
+        templates.list();
+        templates.list(null, "other");
+        templates.get("t1", "other");
+
+        assertThat(http.getCaptured())
+                .extracting(CapturedRequest::getMethod, CapturedRequest::getPath)
+                .containsExactly(
+                        tuple("GET", "/accounts/acc/templates"),
+                        tuple("GET", "/accounts/other/templates"),
+                        tuple("GET", "/accounts/other/templates/t1"));
     }
 }

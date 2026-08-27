@@ -310,4 +310,97 @@ class DocumentResourceExtraTest {
                 .isInstanceOf(ValidationException.class);
         assertThat(http.capturedCount()).isZero();
     }
+
+    @Test
+    void templateOperationsRejectUnsupportedDeliveryMethods() {
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1")
+                                .verificationMethod("Sms").build())).build()))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1")
+                                .notificationMethods(List.of("Sms")).build())).build()))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1")
+                                .notificationMethods(java.util.Arrays.asList((String) null)).build())).build()))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1")
+                                .notificationMethods(List.of("Email", "Whatsapp")).build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("only one");
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
+    void templateEstimatePassesEmptyNotificationMethods() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":0}}");
+
+        documents.estimateCostFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1")
+                                .notificationMethods(List.of()).build())).build());
+
+        assertThat(http.lastCaptured().getJsonBody()).contains("\"notification_methods\":[]");
+    }
+
+    @Test
+    void templateEstimateAllowsMultipleDocumentedNotificationMethods() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":0.45}}");
+
+        documents.estimateCostFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1")
+                                .notificationMethods(List.of("Email", "Whatsapp")).build())).build());
+
+        assertThat(http.lastCaptured().getJsonBody())
+                .contains("\"notification_methods\":[\"Email\",\"Whatsapp\"]");
+    }
+
+    @Test
+    void templateCreationValidatesSequentialSignerSteps() {
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
+                        TemplateSigner.builder().roleId("r2").id("s2").build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Every template signer");
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
+                        TemplateSigner.builder().roleId("r2").id("s2").step(3).build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("contiguous");
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1").step(1)
+                                .verificationMethod("DigitalCertificate").build(),
+                        TemplateSigner.builder().roleId("r2").id("s2").step(1).build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("alone");
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1").step(0).build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("positive");
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
+    void templateCreationAllowsDigitalCertificateInAnIsolatedStep() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\"}}");
+
+        DocumentDetails document = documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
+                        TemplateSigner.builder().roleId("r2").id("s2").step(2)
+                                .verificationMethod("DigitalCertificate").build())).build());
+
+        assertThat(document.getId()).isEqualTo("doc1");
+    }
 }

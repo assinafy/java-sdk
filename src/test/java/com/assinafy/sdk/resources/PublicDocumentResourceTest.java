@@ -41,8 +41,7 @@ class PublicDocumentResourceTest {
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1/send-token");
         String body = mock.lastCaptured().getJsonBody();
-        assertThat(body).isEqualTo("{\"email\":\"user@example.com\","
-                + "\"recipient\":\"user@example.com\",\"channel\":\"email\"}");
+        assertThat(body).isEqualTo("{\"email\":\"user@example.com\"}");
     }
 
     @Test

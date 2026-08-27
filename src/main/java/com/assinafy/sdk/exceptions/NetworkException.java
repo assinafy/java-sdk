@@ -5,6 +5,8 @@ import java.util.Collections;
 /** Indicates that an SDK operation could not complete because of a transport failure. */
 public class NetworkException extends AssinafyException {
 
+    private static final long serialVersionUID = 1L;
+
     /**
      * Create a network exception without an underlying cause.
      *

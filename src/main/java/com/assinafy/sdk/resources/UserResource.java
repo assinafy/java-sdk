@@ -1,6 +1,7 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.AuthUser;
@@ -42,16 +43,19 @@ public class UserResource extends BaseResource {
      * {@code {id, name, email, telephone, government_id, is_email_verified,
      * has_accepted_terms, created_at, to_be_deleted_at}}.
      *
-     * <p>The published schema places those fields directly in {@code data}; the current sandbox
-     * returns {@code data: {user, accounts}}. Both wire shapes are normalized to {@link AuthUser}.
+     * <p>Both {@code data: {user, accounts}} and direct user-data response shapes are normalized to
+     * {@link AuthUser}.
      *
      * @return the authenticated user profile
      */
     public AuthUser get() {
         Map<String, Object> data = callMap("Failed to fetch authenticated user",
                 () -> http.get("/users/self"));
-        Object user = data.get("user");
-        return ResponseHandler.convert(user instanceof Map<?, ?> ? user : data, AuthUser.class);
+        Object user = data != null && data.containsKey("user") ? data.get("user") : data;
+        if (!(user instanceof Map<?, ?> map) || map.isEmpty()) {
+            throw new AssinafyException("Authenticated user response is empty");
+        }
+        return ResponseHandler.convert(user, AuthUser.class);
     }
 
     /**
@@ -66,7 +70,10 @@ public class UserResource extends BaseResource {
     /**
      * {@code GET /users/self/stats} — return cross-account document KPIs. Each row is
      * {@code {period, documents_uploaded, documents_sent, signature_requests,
-     * signature_requests_email, signature_requests_whatsapp, signature_requests_viewed,
+     * signature_requests_notification_email, signature_requests_notification_whatsapp,
+     * signature_requests_notification_bypass, signature_requests_verification_email,
+     * signature_requests_verification_whatsapp, signature_requests_verification_bypass,
+     * signature_requests_verification_digital_certificate, signature_requests_viewed,
      * signature_requests_completed, documents_certified}}.
      *
      * @param granularity {@code monthly} or {@code daily}

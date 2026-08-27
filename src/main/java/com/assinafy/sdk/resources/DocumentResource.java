@@ -25,6 +25,7 @@ import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,6 +40,9 @@ public class DocumentResource extends BaseResource {
     /** Default artifact for {@link #download(String)} — the signed/certificated PDF. */
     private static final String DEFAULT_ARTIFACT = DocumentArtifactName.CERTIFICATED.getValue();
     private static final String CERTIFICATED = DocumentStatus.CERTIFICATED.getValue();
+    private static final Set<String> VERIFICATION_METHODS =
+            Set.of("Email", "Whatsapp", "DigitalCertificate");
+    private static final Set<String> NOTIFICATION_METHODS = Set.of("Email", "Whatsapp");
 
     private static final Set<String> READY_STATUSES = Set.of(
             "metadata_ready", "pending_signature", CERTIFICATED
@@ -71,7 +75,8 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Upload a PDF and create a document ({@code POST /accounts/{accountId}/documents}). The file
-     * must be a PDF (validated by extension), non-empty, and at most 25 MB.
+     * must have a PDF file name, be non-empty, and be at most 25 MB. The API validates the document
+     * content.
      *
      * @param fileData PDF bytes
      * @param fileName PDF file name
@@ -87,7 +92,7 @@ public class DocumentResource extends BaseResource {
      *
      * @param fileData  the PDF bytes (non-empty, ≤ 25 MB)
      * @param fileName  the file name (must end in {@code .pdf})
-     * @param metadata  optional metadata stored with the document, or {@code null}
+     * @param metadata  optional metadata sent as a multipart field, or {@code null}
      * @param accountId workspace/account ID; falls back to the client default when {@code null}
      * @return the uploaded document summary
      * @throws com.assinafy.sdk.exceptions.ValidationException if the file is invalid
@@ -99,7 +104,7 @@ public class DocumentResource extends BaseResource {
         if (metadata != null) {
             metadataJson = serialise(metadata);
         }
-        logger.info("Uploading document", Map.of("size", fileData.length, "hasMetadata", metadata != null));
+        logInfo("Uploading document", Map.of("size", fileData.length, "hasMetadata", metadata != null));
         String finalMetadata = metadataJson;
         DocumentUploadResponse document = call("Document upload failed",
                 () -> http.postMultipart("/accounts/" + id + "/documents", fileName, fileData, fileName, finalMetadata),
@@ -107,7 +112,7 @@ public class DocumentResource extends BaseResource {
         if (document == null || document.getId() == null) {
             throw new ValidationException("Upload succeeded but no document ID was returned");
         }
-        logger.info("Document uploaded", Map.of("documentId", document.getId()));
+        logInfo("Document uploaded", Map.of("documentId", document.getId()));
         return document;
     }
 
@@ -182,9 +187,8 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Lightweight document search ({@code GET /accounts/{accountId}/documents/search}), returning a
-     * compact representation (no expanded assignment/pages) — cheaper than {@link #list(ListParams)}
-     * when you only need to locate documents. Honors {@code search}, {@code status} and paging via
-     * {@link ListParams}.
+     * compact representation without expanded assignments or pages. Honors {@code search},
+     * {@code status}, and paging via {@link ListParams}.
      *
      * @param params search, status, and paging parameters, or {@code null}
      * @return matching compact documents and pagination metadata
@@ -237,14 +241,14 @@ public class DocumentResource extends BaseResource {
         long timeoutNanos = TimeUnit.MILLISECONDS.toNanos(maxWaitMs);
         long start = System.nanoTime();
         int attempts = 0;
-        logger.info("Waiting for document to be ready", Map.of("documentId", id, "maxWaitMs", maxWaitMs));
+        logInfo("Waiting for document to be ready", Map.of("documentId", id, "maxWaitMs", maxWaitMs));
 
         while (true) {
             attempts++;
             try {
                 DocumentDetails details = this.details(id);
                 String status = details.getStatus() != null ? details.getStatus() : "unknown";
-                logger.debug("Document status check", Map.of("attempts", attempts, "status", status));
+                logDebug("Document status check", Map.of("attempts", attempts, "status", status));
                 if (READY_STATUSES.contains(status)) return details;
                 if (FAILED_STATUSES.contains(status)) {
                     throw new ValidationException("Document processing failed with status: " + status, Map.of("status", status));
@@ -253,9 +257,9 @@ public class DocumentResource extends BaseResource {
                 throw e;
             } catch (ApiException e) {
                 if (e.getStatusCode() != 404 && e.getStatusCode() < 500) throw e;
-                logger.warn("API error checking document status", Map.of("statusCode", e.getStatusCode()));
+                logWarn("API error checking document status", Map.of("statusCode", e.getStatusCode()));
             } catch (NetworkException e) {
-                logger.warn("Network error checking document status");
+                logWarn("Network error checking document status", Map.of());
             } catch (AssinafyException e) {
                 throw e;
             }
@@ -345,30 +349,40 @@ public class DocumentResource extends BaseResource {
     }
 
     /**
-     * Create a document from a template in the default account.
+     * Create a document from a template in the default account. See the account-aware overload for
+     * the signer validation rules.
      *
      * @param templateId template ID
      * @param request signer assignments and document settings
      * @return the created document
+     * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
+     *         invalid
      */
     public DocumentDetails createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return createFromTemplate(templateId, request, null);
     }
 
     /**
-     * Create a document from a template in an explicit or default account.
+     * Create a document from a template in an explicit or default account. At least one template
+     * signer is required, and each signer needs nonblank role and signer IDs. Verification methods
+     * are {@code Email}, {@code Whatsapp}, or {@code DigitalCertificate}; notification methods,
+     * when supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}; at
+     * most one method is permitted per signer. If one signer supplies a step, all must do so and the
+     * positive steps must be contiguous from 1. A digital-certificate signer must be alone in its
+     * step.
      *
      * @param templateId template ID
      * @param request signer assignments and document settings
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the created document
-     * @throws ValidationException if no valid template signers are supplied
+     * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
+     *         invalid
      */
     public DocumentDetails createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
         String accId = pathSegment(accountId(accountId), "Account ID");
         String json = serialise(templatePayload(request, false));
-        logger.info("Creating document from template", Map.of("templateId", tmplId, "accountId", accId));
+        logInfo("Creating document from template", Map.of("templateId", tmplId, "accountId", accId));
         return call("Failed to create document from template",
                 () -> http.post("/accounts/" + accId + "/templates/" + tmplId + "/documents", json),
                 DocumentDetails.class);
@@ -377,12 +391,15 @@ public class DocumentResource extends BaseResource {
     /**
      * Estimate the cost of creating a document from a template in the default account.
      *
-     * <p>The estimate sends only signer role, verification, and notification fields; it omits
-     * signer IDs, signer steps, and creation-only document settings.
+     * <p>The estimate sends only signer role, verification, and notification fields; it requires
+     * nonblank role IDs, validates delivery-method values, and omits signer IDs, signer steps, and
+     * creation-only document settings.
      *
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @return the cost breakdown
+     * @throws ValidationException if no valid template signer roles are supplied or a delivery
+     *         method is invalid
      */
     public Map<String, Object> estimateCostFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return estimateCostFromTemplate(templateId, request, null);
@@ -394,6 +411,8 @@ public class DocumentResource extends BaseResource {
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @return the typed cost breakdown
+     * @throws ValidationException if no valid template signer roles are supplied or a delivery
+     *         method is invalid
      */
     public CostEstimate estimateCostFromTemplateTyped(String templateId, CreateDocumentFromTemplateRequest request) {
         return estimateCostFromTemplateTyped(templateId, request, null);
@@ -402,13 +421,15 @@ public class DocumentResource extends BaseResource {
     /**
      * Estimate the cost of creating a document from a template in an explicit or default account.
      *
-     * <p>The estimate omits signer IDs, signer steps, and creation-only document settings.
+     * <p>The estimate requires nonblank role IDs, validates delivery-method values, and omits
+     * signer IDs, signer steps, and creation-only document settings.
      *
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the cost breakdown
-     * @throws ValidationException if no valid template signer roles are supplied
+     * @throws ValidationException if no valid template signer roles are supplied or a delivery
+     *         method is invalid
      */
     public Map<String, Object> estimateCostFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
@@ -425,6 +446,8 @@ public class DocumentResource extends BaseResource {
      * @param request template signer estimate inputs
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the typed cost breakdown
+     * @throws ValidationException if no valid template signer roles are supplied or a delivery
+     *         method is invalid
      */
     public CostEstimate estimateCostFromTemplateTyped(
             String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
@@ -500,8 +523,8 @@ public class DocumentResource extends BaseResource {
     /**
      * @deprecated This is a signer self-service operation; use
      * {@link com.assinafy.sdk.resources.SignerResource#confirmSignerData(String, String, Map)}
-     * (via {@code client.signers().confirmSignerData(...)}) instead. Retained for backwards
-     * compatibility; additional map keys remain passthrough extensions outside OpenAPI.
+     * (via {@code client.signers().confirmSignerData(...)}) instead. Additional map keys pass
+     * through unchanged.
      *
      * @param documentId document ID
      * @param signerAccessCode signer invitation access code
@@ -545,18 +568,14 @@ public class DocumentResource extends BaseResource {
     }
 
     /**
-     * Replace the document's tag set with the supplied tag <em>names</em>. Unknown names are
-     * auto-created; an empty list detaches all tags.
+     * Replace the document's tag set using tag names. Unknown names are created by the API; an
+     * empty list detaches all tags.
      *
-     * <p>{@code PUT /accounts/{accountId}/documents/{documentId}/tags}. Note: although the API
-     * reference labels the {@code tags} array as "Tag IDs", the live API treats each entry as a tag
-     * <em>name</em> (verified against the sandbox) — passing an existing tag's name links that tag,
-     * while an unknown name creates a new tag; passing a tag ID would create a tag literally named
-     * after the ID.
+     * <p>{@code PUT /accounts/{accountId}/documents/{documentId}/tags}.
      *
      * @param documentId document ID
      * @param tagNames replacement tag names; {@code null} detaches all tags
-     * @return the resulting attached tags
+     * @return resulting attached-tag records; use their IDs when detaching
      */
     public List<Tag> replaceTags(String documentId, List<String> tagNames) {
         return replaceTags(documentId, tagNames, null);
@@ -568,28 +587,50 @@ public class DocumentResource extends BaseResource {
      * @param documentId document ID
      * @param tagNames replacement tag names; {@code null} detaches all tags
      * @param accountId explicit account ID, or {@code null} for the default
-     * @return the resulting attached tags
+     * @return resulting attached-tag records; use their IDs when detaching
      */
     public List<Tag> replaceTags(String documentId, List<String> tagNames, String accountId) {
         String accId = pathSegment(accountId(accountId), "Account ID");
         String docId = pathSegment(documentId, "Document ID");
-        String json = serialise(Map.of("tags", tagNames != null ? tagNames : List.of()));
-        return callList("Failed to replace document tags",
-                () -> http.put("/accounts/" + accId + "/documents/" + docId + "/tags", json),
-                Tag.class).getData();
+        return sendDocumentTags(docId, tagNames != null ? tagNames : List.of(), accId, true);
     }
 
     /**
-     * Attach additional tags to a document (by tag <em>name</em>) without removing existing ones.
-     * Idempotent; unknown names are auto-created.
+     * Replace the document's tag set using workspace tag IDs.
      *
-     * <p>{@code POST /accounts/{accountId}/documents/{documentId}/tags}. As with
-     * {@link #replaceTags}, the {@code tags} array holds tag names (the API reference labels them
-     * "Tag IDs", but the live API resolves/creates by name — verified against the sandbox).
+     * @param documentId document ID
+     * @param tagIds replacement workspace tag IDs; {@code null} detaches all tags
+     * @return resulting attached-tag records; use their IDs when detaching
+     * @throws AssinafyException if an ID cannot be resolved before the document is changed
+     */
+    public List<Tag> replaceTagIds(String documentId, List<String> tagIds) {
+        return replaceTagIds(documentId, tagIds, null);
+    }
+
+    /**
+     * Replace document tags in an explicit or default account using workspace tag IDs.
+     *
+     * @param documentId document ID
+     * @param tagIds replacement workspace tag IDs; {@code null} detaches all tags
+     * @param accountId explicit account ID, or {@code null} for the default
+     * @return resulting attached-tag records; use their IDs when detaching
+     * @throws AssinafyException if an ID cannot be resolved before the document is changed
+     */
+    public List<Tag> replaceTagIds(String documentId, List<String> tagIds, String accountId) {
+        String accId = pathSegment(accountId(accountId), "Account ID");
+        String docId = pathSegment(documentId, "Document ID");
+        return sendDocumentTags(docId, resolveTagIds(accId, tagIds), accId, true);
+    }
+
+    /**
+     * Attach additional tags to a document using tag names without removing existing ones.
+     * Unknown names are created by the API.
+     *
+     * <p>{@code POST /accounts/{accountId}/documents/{documentId}/tags}.
      *
      * @param documentId document ID
      * @param tagNames tag names to attach; {@code null} sends an empty list
-     * @return the resulting attached tags
+     * @return resulting attached-tag records; use their IDs when detaching
      */
     public List<Tag> appendTags(String documentId, List<String> tagNames) {
         return appendTags(documentId, tagNames, null);
@@ -601,15 +642,77 @@ public class DocumentResource extends BaseResource {
      * @param documentId document ID
      * @param tagNames tag names to attach; {@code null} sends an empty list
      * @param accountId explicit account ID, or {@code null} for the default
-     * @return the resulting attached tags
+     * @return resulting attached-tag records; use their IDs when detaching
      */
     public List<Tag> appendTags(String documentId, List<String> tagNames, String accountId) {
         String accId = pathSegment(accountId(accountId), "Account ID");
         String docId = pathSegment(documentId, "Document ID");
-        String json = serialise(Map.of("tags", tagNames != null ? tagNames : List.of()));
-        return callList("Failed to append document tags",
-                () -> http.post("/accounts/" + accId + "/documents/" + docId + "/tags", json),
+        return sendDocumentTags(docId, tagNames != null ? tagNames : List.of(), accId, false);
+    }
+
+    /**
+     * Attach additional tags to a document using workspace tag IDs.
+     *
+     * @param documentId document ID
+     * @param tagIds workspace tag IDs to attach; {@code null} sends an empty list
+     * @return resulting attached-tag records; use their IDs when detaching
+     * @throws AssinafyException if an ID cannot be resolved before the document is changed
+     */
+    public List<Tag> appendTagIds(String documentId, List<String> tagIds) {
+        return appendTagIds(documentId, tagIds, null);
+    }
+
+    /**
+     * Append document tags in an explicit or default account using workspace tag IDs.
+     *
+     * @param documentId document ID
+     * @param tagIds workspace tag IDs to attach; {@code null} sends an empty list
+     * @param accountId explicit account ID, or {@code null} for the default
+     * @return resulting attached-tag records; use their IDs when detaching
+     * @throws AssinafyException if an ID cannot be resolved before the document is changed
+     */
+    public List<Tag> appendTagIds(String documentId, List<String> tagIds, String accountId) {
+        String accId = pathSegment(accountId(accountId), "Account ID");
+        String docId = pathSegment(documentId, "Document ID");
+        return sendDocumentTags(docId, resolveTagIds(accId, tagIds), accId, false);
+    }
+
+    private List<String> resolveTagIds(String accountId, List<String> tagIds) {
+        List<String> requested = tagIds != null ? tagIds : List.of();
+        if (requested.isEmpty()) return requested;
+        Map<String, String> namesById = workspaceTagNames(accountId, requested);
+        if (!namesById.keySet().containsAll(requested)) {
+            throw new AssinafyException("Unable to resolve one or more workspace tag IDs");
+        }
+        return requested.stream().map(namesById::get).toList();
+    }
+
+    private List<Tag> sendDocumentTags(
+            String documentId, List<String> tags, String accountId, boolean replace) {
+        String path = "/accounts/" + accountId + "/documents/" + documentId + "/tags";
+        String json = serialise(Map.of("tags", tags));
+        String label = replace ? "Failed to replace document tags" : "Failed to append document tags";
+        return callList(label, () -> replace ? http.put(path, json) : http.post(path, json),
                 Tag.class).getData();
+    }
+
+    private Map<String, String> workspaceTagNames(String accountId, List<String> tagIds) {
+        Map<String, String> names = new HashMap<>();
+        int page = 1;
+        int lastPage;
+        do {
+            int currentPage = page;
+            PaginatedResult<Tag> result = callList("Failed to resolve workspace tags",
+                    () -> http.get("/accounts/" + accountId + "/tags",
+                            Map.of("page", currentPage, "per-page", 100)), Tag.class);
+            result.getData().stream()
+                    .filter(tag -> tagIds.contains(tag.getId()))
+                    .forEach(tag -> names.put(tag.getId(), tag.getName()));
+            lastPage = result.getMeta() != null && result.getMeta().getLastPage() != null
+                    ? result.getMeta().getLastPage() : currentPage;
+            page++;
+        } while (page <= lastPage && names.size() < tagIds.size());
+        return names;
     }
 
     /**
@@ -618,7 +721,7 @@ public class DocumentResource extends BaseResource {
      * <p>{@code DELETE /accounts/{accountId}/documents/{documentId}/tags/{tagId}}.
      *
      * @param documentId document ID
-     * @param tagId tag ID to detach
+     * @param tagId attached-tag ID returned by {@link #listTags(String)} or the attach response
      */
     public void detachTag(String documentId, String tagId) {
         detachTag(documentId, tagId, null);
@@ -628,7 +731,7 @@ public class DocumentResource extends BaseResource {
      * Detach a tag from a document in an explicit or default account.
      *
      * @param documentId document ID
-     * @param tagId tag ID to detach
+     * @param tagId attached-tag ID returned by a list or attach operation
      * @param accountId explicit account ID, or {@code null} for the default
      */
     public void detachTag(String documentId, String tagId, String accountId) {
@@ -659,6 +762,7 @@ public class DocumentResource extends BaseResource {
         List<Map<String, Object>> signers = request.getSigners().stream()
                 .map(signer -> templateSignerPayload(signer, estimate))
                 .toList();
+        if (!estimate) validateTemplateSignerSteps(request.getSigners());
         Map<String, Object> body = new HashMap<>();
         body.put("signers", signers);
         if (!estimate) {
@@ -678,6 +782,7 @@ public class DocumentResource extends BaseResource {
         if (!estimate && (signer.getId() == null || signer.getId().isBlank())) {
             throw new ValidationException("Every template signer requires a signer ID");
         }
+        validateDeliveryMethods(signer.getVerificationMethod(), signer.getNotificationMethods(), estimate);
         Map<String, Object> value = new HashMap<>();
         value.put("role_id", signer.getRoleId());
         if (!estimate) value.put("id", signer.getId());
@@ -692,6 +797,51 @@ public class DocumentResource extends BaseResource {
             value.put("step", signer.getStep());
         }
         return value;
+    }
+
+    private static void validateDeliveryMethods(
+            String verificationMethod, List<String> notificationMethods, boolean estimate) {
+        if (verificationMethod != null && !VERIFICATION_METHODS.contains(verificationMethod)) {
+            throw new ValidationException("Verification method must be Email, Whatsapp, or DigitalCertificate");
+        }
+        if (notificationMethods != null && notificationMethods.stream().anyMatch(
+                method -> method == null || !NOTIFICATION_METHODS.contains(method))) {
+            throw new ValidationException("Notification methods must contain Email or Whatsapp");
+        }
+        if (!estimate && notificationMethods != null && notificationMethods.size() > 1) {
+            throw new ValidationException("A template signer may use only one notification method");
+        }
+    }
+
+    private static void validateTemplateSignerSteps(List<TemplateSigner> signers) {
+        boolean anyStep = false;
+        boolean missingStep = false;
+        Set<Integer> steps = new HashSet<>();
+        Map<Integer, Integer> signersPerStep = new HashMap<>();
+        for (TemplateSigner signer : signers) {
+            Integer step = signer.getStep();
+            anyStep |= step != null;
+            missingStep |= step == null;
+            int effectiveStep = step != null ? step : 1;
+            signersPerStep.merge(effectiveStep, 1, Integer::sum);
+            if (step != null) steps.add(step);
+        }
+        if (anyStep && missingStep) {
+            throw new ValidationException("Every template signer must provide a step when signing order is used");
+        }
+        for (int step = 1; step <= steps.size(); step++) {
+            if (!steps.contains(step)) {
+                throw new ValidationException("Template signer steps must be contiguous starting at 1");
+            }
+        }
+        for (TemplateSigner signer : signers) {
+            if ("DigitalCertificate".equals(signer.getVerificationMethod())) {
+                int step = signer.getStep() != null ? signer.getStep() : 1;
+                if (signersPerStep.get(step) > 1) {
+                    throw new ValidationException("A DigitalCertificate signer must be alone in its step");
+                }
+            }
+        }
     }
 
     private static void sleep(long nanos) {

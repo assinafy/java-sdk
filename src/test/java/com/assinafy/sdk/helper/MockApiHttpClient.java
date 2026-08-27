@@ -20,7 +20,7 @@ public class MockApiHttpClient implements ApiHttpClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final Deque<HttpRawResponse> queue = new ArrayDeque<>();
+    private final Deque<Object> queue = new ArrayDeque<>();
     private final List<CapturedRequest> captured = new ArrayList<>();
 
     public MockApiHttpClient enqueue(int statusCode, String body) {
@@ -33,6 +33,11 @@ public class MockApiHttpClient implements ApiHttpClient {
 
     public MockApiHttpClient enqueue(HttpRawResponse response) {
         queue.add(response);
+        return this;
+    }
+
+    public MockApiHttpClient enqueueFailure(IOException failure) {
+        queue.add(failure);
         return this;
     }
 
@@ -147,11 +152,12 @@ public class MockApiHttpClient implements ApiHttpClient {
     }
 
     private HttpRawResponse next() throws IOException {
-        HttpRawResponse response = queue.poll();
-        if (response == null) {
+        Object queued = queue.poll();
+        if (queued == null) {
             throw new IOException("No more enqueued responses in MockApiHttpClient");
         }
-        return response;
+        if (queued instanceof IOException failure) throw failure;
+        return (HttpRawResponse) queued;
     }
 
     public static class CapturedRequest {

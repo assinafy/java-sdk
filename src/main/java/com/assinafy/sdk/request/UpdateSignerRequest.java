@@ -97,7 +97,7 @@ public class UpdateSignerRequest {
     /**
      * @deprecated Use {@link #getGovernmentId()}; the API wire field is {@code government_id}.
      *
-     * @return the CPF
+     * @return the CPF or CNPJ
      */
     @Deprecated
     @JsonIgnore
@@ -106,7 +106,7 @@ public class UpdateSignerRequest {
     /**
      * @deprecated Use {@link #setGovernmentId(String)}.
      *
-     * @param cpf the CPF
+     * @param cpf the CPF or CNPJ
      */
     @Deprecated
     @JsonIgnore
@@ -156,7 +156,7 @@ public class UpdateSignerRequest {
         /**
          * @deprecated Use {@link #governmentId(String)}.
          *
-         * @param cpf the CPF
+         * @param cpf the CPF or CNPJ
          * @return this builder
          */
         @Deprecated

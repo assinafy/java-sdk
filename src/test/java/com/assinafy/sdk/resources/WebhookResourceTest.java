@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.helper.MockApiHttpClient.CapturedRequest;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.WebhookDispatch;
 import com.assinafy.sdk.request.ListParams;
@@ -125,5 +126,45 @@ class WebhookResourceTest {
                 .url("https://example.com/webhook")
                 .build()))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void explicitAccountOverloadsRouteToRequestedAccount() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, WEBHOOK_ACTIVE)
+                .enqueue(200, WEBHOOK_ACTIVE)
+                .enqueue(200, WEBHOOK_INACTIVE)
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"retry-1\"}}");
+        WebhookResource resource = new WebhookResource(mock, "acc");
+
+        resource.register(RegisterWebhookRequest.builder()
+                .url("https://example.com/webhook")
+                .email("webhook@example.invalid")
+                .build(), "other");
+        resource.get("other");
+        resource.inactivate("other");
+        resource.listDispatches(null, "other");
+        resource.retryDispatch("history-1", "other");
+
+        assertThat(mock.getCaptured())
+                .extracting(CapturedRequest::getMethod, CapturedRequest::getPath)
+                .containsExactly(
+                        tuple("PUT", "/accounts/other/webhooks/subscriptions"),
+                        tuple("GET", "/accounts/other/webhooks/subscriptions"),
+                        tuple("PUT", "/accounts/other/webhooks/inactivate"),
+                        tuple("GET", "/accounts/other/webhooks"),
+                        tuple("POST", "/accounts/other/webhooks/history-1/retry"));
+    }
+
+    @Test
+    void defaultDispatchListUsesDefaultAccount() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        new WebhookResource(mock, "acc").listDispatches();
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/webhooks");
     }
 }

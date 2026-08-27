@@ -39,6 +39,49 @@ class AssignmentResourceExtraTest {
     }
 
     @Test
+    void signValidatesRequiredItemShapeBeforeSending() {
+        assertThatThrownBy(() -> assignments.sign("d1", "a1", "code1", null))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        assertThatThrownBy(() -> assignments.sign("d1", "a1", "code1",
+                java.util.Arrays.asList((Map<String, Object>) null)))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        for (String key : List.of("itemId", "fieldId", "pageId")) {
+            Map<String, Object> item = new java.util.HashMap<>(Map.of(
+                    "itemId", "i1", "fieldId", "f1", "pageId", "p1", "value", ""));
+            item.remove(key);
+            assertThatThrownBy(() -> assignments.sign("d1", "a1", "code1", List.of(item)))
+                    .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        }
+        assertThatThrownBy(() -> assignments.sign("d1", "a1", "code1",
+                List.of(Map.of("itemId", "i1", "fieldId", "f1", "pageId", "p1", "value", 1))))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
+    void signPassesSchemaValidEmptyItemsAndBlankStringIds() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        assignments.sign("d1", "a1", "code1", List.of());
+        assignments.sign("d1", "a1", "code1",
+                List.of(Map.of("itemId", "", "fieldId", " ", "pageId", "", "value", "")));
+
+        assertThat(http.capturedAt(0).getJsonBody()).isEqualTo("[]");
+        assertThat(http.capturedAt(1).getJsonBody()).contains("\"fieldId\":\" \"");
+    }
+
+    @Test
+    void signAllowsAnEmptyStringValue() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        assignments.sign("d1", "a1", "code1",
+                List.of(Map.of("itemId", "i1", "fieldId", "f1", "pageId", "p1", "value", "")));
+
+        assertThat(http.lastCaptured().getJsonBody()).contains("\"value\":\"\"");
+    }
+
+    @Test
     void getForSignerHitsSignEndpoint() {
         http.enqueue(200, "{\"id\":\"x\",\"status\":\"pending\"}");
         Map<String, Object> result = assignments.getForSigner("code1");

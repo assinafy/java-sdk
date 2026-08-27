@@ -48,17 +48,19 @@ public class PublicDocumentResource extends BaseResource {
 
     /**
      * {@code PUT /public/documents/{documentId}/send-token} — send a one-time access token by
-     * email so the recipient can view/sign a public document. The request includes the documented
-     * {@code email} field plus the deployed API's compatible {@code recipient}/{@code channel}
-     * fields.
+     * email so the recipient can view/sign a public document. Sends the documented
+     * {@code {"email":"..."}} request body.
      *
      * @param documentId target document ID
      * @param email      recipient email address
      * @return the API response payload
      */
     public Map<String, Object> sendToken(String documentId, String email) {
+        String id = pathSegment(documentId, "Document ID");
         requireEmail(email);
-        return sendToken(documentId, email, "email");
+        return callMap("Failed to send signer token",
+                () -> http.put("/public/documents/" + id + "/send-token",
+                        serialise(Map.of("email", email))));
     }
 
     /**
@@ -74,7 +76,9 @@ public class PublicDocumentResource extends BaseResource {
     }
 
     /**
-     * Send a token through an explicitly selected delivery channel.
+     * Send a token through an explicitly selected delivery channel. For {@code email}, the request
+     * contains {@code email}, {@code recipient}, and {@code channel}; other channels send
+     * {@code recipient} and {@code channel}.
      *
      * @param documentId target document ID
      * @param recipient  recipient email address or phone number

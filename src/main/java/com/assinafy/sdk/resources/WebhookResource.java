@@ -101,7 +101,7 @@ public class WebhookResource extends BaseResource {
         body.put("email", request.getEmail());
         body.put("events", (request.getEvents() != null && !request.getEvents().isEmpty()) ? request.getEvents() : DEFAULT_EVENTS);
         body.put("is_active", request.getIsActive() != null ? request.getIsActive() : true);
-        logger.info("Registering webhook");
+        logInfo("Registering webhook", Map.of());
         String json = serialise(body);
         return call("Failed to register webhook", () -> http.put("/accounts/" + id + "/webhooks/subscriptions", json), WebhookSubscription.class);
     }
@@ -109,7 +109,7 @@ public class WebhookResource extends BaseResource {
     /**
      * Fetch the default account's subscription.
      *
-     * @return the subscription, or {@code null} for a deployed 404
+     * @return the subscription, or {@code null} when no subscription exists
      */
     public WebhookSubscription get() {
         return get(null);
@@ -119,7 +119,7 @@ public class WebhookResource extends BaseResource {
      * Fetch an account subscription ({@code GET /accounts/{id}/webhooks/subscriptions}).
      *
      * @param accountId explicit account ID, or {@code null} for the default
-     * @return the subscription, or {@code null} for a deployed 404
+     * @return the subscription, or {@code null} when no subscription exists
      */
     public WebhookSubscription get(String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
@@ -127,9 +127,8 @@ public class WebhookResource extends BaseResource {
     }
 
     /**
-     * @deprecated The {@code DELETE /accounts/{id}/webhooks/subscriptions} route is not served
-     * by the live API (it returns 404). Use {@link #inactivate()} to stop webhook delivery.
-     * Retained as a deployed-compatibility method even though the production OpenAPI omits it.
+     * @deprecated This deployment-specific route may be unavailable. Use {@link #inactivate()}
+     * to stop webhook delivery.
      */
     @Deprecated
     public void delete() {
@@ -144,7 +143,7 @@ public class WebhookResource extends BaseResource {
     @Deprecated
     public void delete(String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
-        logger.info("Deleting webhook subscription");
+        logInfo("Deleting webhook subscription", Map.of());
         callVoid("Failed to delete webhook subscription", () -> http.delete("/accounts/" + id + "/webhooks/subscriptions"));
     }
 
@@ -165,7 +164,7 @@ public class WebhookResource extends BaseResource {
      */
     public WebhookSubscription inactivate(String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
-        logger.info("Inactivating webhook subscription");
+        logInfo("Inactivating webhook subscription", Map.of());
         return call("Failed to inactivate webhook subscription", () -> http.put("/accounts/" + id + "/webhooks/inactivate", null), WebhookSubscription.class);
     }
 

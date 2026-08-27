@@ -83,7 +83,7 @@ public final class ResponseHandler {
      */
     public static <T> T handle(HttpRawResponse response, Class<T> type) {
         validateHttpStatus(response);
-        return parseEnvelope(response.getBody(), type);
+        return parseEnvelope(response.getBody(), response.getHeaders(), type);
     }
 
     /**
@@ -95,7 +95,7 @@ public final class ResponseHandler {
      */
     public static Map<String, Object> handleMap(HttpRawResponse response) {
         validateHttpStatus(response);
-        return parseEnvelopeAsMap(response.getBody());
+        return parseEnvelopeAsMap(response.getBody(), response.getHeaders());
     }
 
     /**
@@ -109,7 +109,7 @@ public final class ResponseHandler {
      */
     public static <T> PaginatedResult<T> handleList(HttpRawResponse response, Class<T> elementType) {
         validateHttpStatus(response);
-        List<T> data = parseListData(response.getBody(), elementType);
+        List<T> data = parseListData(response.getBody(), response.getHeaders(), elementType);
         PaginationMeta meta = parsePaginationMeta(response.getHeaders());
         return new PaginatedResult<>(data, meta);
     }
@@ -125,7 +125,7 @@ public final class ResponseHandler {
         String body = response.getBody();
         if (body == null || body.isBlank()) return;
         try {
-            validateEnvelopeStatus(MAPPER.readTree(body));
+            validateEnvelopeStatus(MAPPER.readTree(body), response.getHeaders());
         } catch (AssinafyException e) {
             throw e;
         } catch (Exception e) {
@@ -168,13 +168,13 @@ public final class ResponseHandler {
     }
 
     @SuppressWarnings("unchecked")
-    private static <T> T parseEnvelope(String body, Class<T> type) {
+    private static <T> T parseEnvelope(String body, Map<String, String> headers, Class<T> type) {
         if (body == null || body.isBlank()) {
             throw new AssinafyException("Response body is empty");
         }
         try {
             JsonNode root = MAPPER.readTree(body);
-            validateEnvelopeStatus(root);
+            validateEnvelopeStatus(root, headers);
             if (isEnvelope(root)) {
                 JsonNode dataNode = root.get("data");
                 if (dataNode == null || dataNode.isNull()) return null;
@@ -188,13 +188,13 @@ public final class ResponseHandler {
         }
     }
 
-    private static Map<String, Object> parseEnvelopeAsMap(String body) {
+    private static Map<String, Object> parseEnvelopeAsMap(String body, Map<String, String> headers) {
         if (body == null || body.isBlank()) {
             return Map.of();
         }
         try {
             JsonNode root = MAPPER.readTree(body);
-            validateEnvelopeStatus(root);
+            validateEnvelopeStatus(root, headers);
             if (isEnvelope(root)) {
                 JsonNode dataNode = root.get("data");
                 if (dataNode == null || dataNode.isNull()) return Map.of();
@@ -212,13 +212,14 @@ public final class ResponseHandler {
         }
     }
 
-    private static <T> List<T> parseListData(String body, Class<T> elementType) {
+    private static <T> List<T> parseListData(String body, Map<String, String> headers,
+                                              Class<T> elementType) {
         if (body == null || body.isBlank()) {
             throw new AssinafyException("List response body is empty");
         }
         try {
             JsonNode root = MAPPER.readTree(body);
-            validateEnvelopeStatus(root);
+            validateEnvelopeStatus(root, headers);
 
             if (isEnvelope(root)) {
                 return extractArray(root.get("data"), elementType);
@@ -257,12 +258,12 @@ public final class ResponseHandler {
         throw new AssinafyException("List response data is not an array");
     }
 
-    private static void validateEnvelopeStatus(JsonNode root) {
+    private static void validateEnvelopeStatus(JsonNode root, Map<String, String> headers) {
         if (!isEnvelope(root)) return;
         int status = root.get("status").asInt();
         if (status < 200 || status >= 300) {
             Map<String, Object> response = MAPPER.convertValue(root, new TypeReference<>() {});
-            throw ApiException.fromResponse(status, response);
+            throw ApiException.fromResponse(status, response, headers);
         }
     }
 

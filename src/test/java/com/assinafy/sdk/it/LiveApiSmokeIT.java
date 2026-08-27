@@ -14,16 +14,21 @@ import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.models.Tag;
 import com.assinafy.sdk.models.TemplateListItem;
+import com.assinafy.sdk.models.UploadAndRequestSignaturesResult;
 import com.assinafy.sdk.models.WebhookEventTypeInfo;
 import com.assinafy.sdk.models.WorkspaceListItem;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
+import com.assinafy.sdk.request.CreateFieldRequest;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.CreateTagRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RenameTagRequest;
 import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.request.UpdateSignerRequest;
+import com.assinafy.sdk.request.UpdateFieldRequest;
+import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
 import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.NetworkException;
 import com.assinafy.sdk.exceptions.RateLimitException;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -41,6 +46,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -49,8 +58,8 @@ import static org.assertj.core.api.Assertions.*;
  *
  * <p>This test is opt-in: it only runs when the environment variables
  * {@code ASSINAFY_API_KEY} and {@code ASSINAFY_ACCOUNT_ID} are set.
- * It exercises reads and isolated create/delete lifecycles. Tests that send invitations require
- * the two optional {@code ASSINAFY_TEST_EMAIL_PRIMARY/SECONDARY} environment variables.
+ * It exercises reads and isolated create/delete lifecycles. Tests that send invitations use
+ * the optional {@code ASSINAFY_TEST_EMAIL_PRIMARY/SECONDARY} environment variables.
  *
  * <p>Run with:
  * <pre>
@@ -60,6 +69,12 @@ import static org.assertj.core.api.Assertions.*;
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LiveApiSmokeIT {
+
+    private static final int RECONCILE_ATTEMPTS = 5;
+    private static final long RECONCILE_DELAY_MS = 500;
+    private static final long DOCUMENT_DELETE_TIMEOUT_MS = 30_000;
+    private static final long DOCUMENT_DELETE_POLL_MS = 1_000;
+    private static final long MAX_RETRY_DELAY_MS = 10_000;
 
     private static String apiKey;
     private static String accountId;
@@ -174,9 +189,18 @@ class LiveApiSmokeIT {
     void uploadsTinyPdfAndCleansItUp() {
         byte[] pdf = minimalPdf();
         String tagName = "sdk-it-doctag-" + UUID.randomUUID().toString().substring(0, 8);
-        DocumentUploadResponse doc = client.documents().upload(pdf, "sdk-it-" + UUID.randomUUID() + ".pdf");
-        String createdTagId = null;
-        try {
+        String fileName = "sdk-it-" + UUID.randomUUID() + ".pdf";
+        AtomicReference<String> documentId = new AtomicReference<>();
+        AtomicReference<String> tagId = new AtomicReference<>();
+        AtomicBoolean documentCreateAttempted = new AtomicBoolean();
+        AtomicBoolean tagCreateAttempted = new AtomicBoolean();
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            cleanup.add(() -> deleteDocument(
+                    documentId.get(), fileName, documentCreateAttempted.get()));
+            cleanup.add(() -> deleteTag(tagId.get(), tagName, tagCreateAttempted.get()));
+            documentCreateAttempted.set(true);
+            DocumentUploadResponse doc = client.documents().upload(pdf, fileName);
+            documentId.set(doc.getId());
             assertThat(doc.getId()).isNotBlank();
             // Wait for status to advance past 'uploading' or 'metadata_processing'.
             client.documents().waitUntilReady(doc.getId(), 20_000, 1_500);
@@ -202,20 +226,29 @@ class LiveApiSmokeIT {
                     ListParams.builder().search("sdk-it-renamed").perPage(10).build());
             assertThat(searchResult.getData()).as("search returns a (possibly empty) page").isNotNull();
 
-            // ...while an unavailable artifact (no certificate yet) now throws instead of
-            // silently returning the JSON error body as bytes (the getBinary status-check fix).
+            // An unavailable artifact is surfaced as an API error.
             assertThatThrownBy(() -> client.documents().download(doc.getId(), "certificated"))
                     .isInstanceOf(com.assinafy.sdk.exceptions.ApiException.class);
 
-            // Document tags: append, list, detach (auto-creates the workspace tag by name).
-            client.documents().appendTags(doc.getId(), List.of(tagName));
-            List<Tag> docTags = client.documents().listTags(doc.getId());
-            Tag added = docTags.stream().filter(t -> tagName.equals(t.getName())).findFirst().orElse(null);
-            assertThat(added).as("appended tag is listed on the document").isNotNull();
-            createdTagId = added.getId();
+            // Document tags: create, attach by name and ID, replace, list, and detach.
+            tagCreateAttempted.set(true);
+            Tag createdTag = client.tags().create(
+                    CreateTagRequest.builder().name(tagName).build());
+            tagId.set(createdTag.getId());
+            List<Tag> attached = client.documents().appendTags(doc.getId(), List.of(tagName));
+            assertThat(attached).extracting(Tag::getName).contains(tagName);
+            Tag added = waitForDocumentTag(doc.getId(), tagName, true);
             client.documents().detachTag(doc.getId(), added.getId());
-            assertThat(client.documents().listTags(doc.getId()))
-                    .extracting(Tag::getName).doesNotContain(tagName);
+            waitForDocumentTag(doc.getId(), tagName, false);
+            assertThat(client.documents().appendTagIds(doc.getId(), List.of(createdTag.getId())))
+                    .extracting(Tag::getName).contains(tagName);
+            assertThat(client.documents().replaceTags(doc.getId(), List.of(tagName)))
+                    .extracting(Tag::getName).contains(tagName);
+            assertThat(client.documents().replaceTagIds(doc.getId(), List.of(createdTag.getId())))
+                    .extracting(Tag::getName).contains(tagName);
+            Tag addedById = waitForDocumentTag(doc.getId(), tagName, true);
+            client.documents().detachTag(doc.getId(), addedById.getId());
+            waitForDocumentTag(doc.getId(), tagName, false);
 
             // Estimate cost for a 1-signer assignment (no email is sent).
             Map<String, Object> cost = client.assignments().estimateCost(doc.getId(),
@@ -224,12 +257,6 @@ class LiveApiSmokeIT {
                             .signers(List.of(SignerReference.builder().verificationMethod("Email").build()))
                             .build());
             assertThat(cost).isNotNull();
-        } finally {
-            if (createdTagId != null) {
-                String tagId = createdTagId;
-                retryCleanup(() -> client.tags().delete(tagId, true));
-            }
-            retryCleanup(() -> client.documents().delete(doc.getId()));
         }
     }
 
@@ -238,23 +265,27 @@ class LiveApiSmokeIT {
     void createsAndDeletesEphemeralSigner() {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         String email = "sdk-it-" + suffix + "@example.invalid";
-
-        Signer created = client.signers().create(
-                CreateSignerRequest.builder()
-                        .fullName("SDK IT " + suffix)
-                        .email(email)
-                        .whatsappPhoneNumber("+5548999990000")
-                        .cpf("400.676.228-36")
-                        .build()
-        );
-        try {
+        String fullName = "SDK IT " + suffix;
+        AtomicReference<String> signerId = new AtomicReference<>();
+        AtomicBoolean createAttempted = new AtomicBoolean();
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            cleanup.add(() -> deleteSigner(
+                    signerId.get(), email, fullName, createAttempted.get()));
+            createAttempted.set(true);
+            Signer created = client.signers().create(
+                    CreateSignerRequest.builder()
+                            .fullName(fullName)
+                            .email(email)
+                            .whatsappPhoneNumber("+5548999990000")
+                            .cpf("400.676.228-36")
+                            .build()
+            );
+            signerId.set(created.getId());
             assertThat(created.getId()).isNotBlank();
             assertThat(created.getEmail()).isEqualToIgnoringCase(email);
 
             Signer fetched = client.signers().get(created.getId());
             assertThat(fetched.getId()).isEqualTo(created.getId());
-        } finally {
-            retryCleanup(() -> client.signers().delete(created.getId()));
         }
     }
 
@@ -262,16 +293,21 @@ class LiveApiSmokeIT {
     @Order(13)
     void createsWhatsappOnlySignerWithoutEmail() {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
-        Signer created = client.signers().create(
-                CreateSignerRequest.builder()
-                        .fullName("SDK WA " + suffix)
-                        .whatsappPhoneNumber("+5548999990000")
-                        .build()
-        );
-        try {
+        String fullName = "SDK WA " + suffix;
+        AtomicReference<String> signerId = new AtomicReference<>();
+        AtomicBoolean createAttempted = new AtomicBoolean();
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            cleanup.add(() -> deleteSigner(
+                    signerId.get(), null, fullName, createAttempted.get()));
+            createAttempted.set(true);
+            Signer created = client.signers().create(
+                    CreateSignerRequest.builder()
+                            .fullName(fullName)
+                            .whatsappPhoneNumber("+5548999990000")
+                            .build()
+            );
+            signerId.set(created.getId());
             assertThat(created.getId()).isNotBlank();
-        } finally {
-            retryCleanup(() -> client.signers().delete(created.getId()));
         }
     }
 
@@ -308,21 +344,45 @@ class LiveApiSmokeIT {
     @Order(16)
     void tagLifecycleCreateRenameDelete() {
         String name = "sdk-it-tag-" + UUID.randomUUID().toString().substring(0, 8);
-        Tag created = client.tags().create(CreateTagRequest.builder().name(name).color("FF0000").build());
-        try {
+        AtomicReference<String> tagId = new AtomicReference<>();
+        AtomicBoolean createAttempted = new AtomicBoolean();
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            cleanup.add(() -> deleteTag(tagId.get(), name, createAttempted.get()));
+            createAttempted.set(true);
+            Tag created = client.tags().create(
+                    CreateTagRequest.builder().name(name).color("FF0000").build());
+            tagId.set(created.getId());
             assertThat(created.getId()).isNotBlank();
             assertThat(created.getName()).isEqualTo(name);
 
             Tag renamed = client.tags().rename(created.getId(),
                     RenameTagRequest.builder().name(name + "-renamed").build());
             assertThat(renamed.getName()).isEqualTo(name + "-renamed");
-        } finally {
-            retryCleanup(() -> client.tags().delete(created.getId(), true));
         }
     }
 
     @Test
     @Order(17)
+    void fieldLifecycleCreateGetUpdateDelete() {
+        String name = "sdk-it-field-" + UUID.randomUUID().toString().substring(0, 8);
+        AtomicReference<String> fieldId = new AtomicReference<>();
+        AtomicBoolean createAttempted = new AtomicBoolean();
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            cleanup.add(() -> deleteField(fieldId.get(), name, createAttempted.get()));
+            createAttempted.set(true);
+            FieldDefinition created = client.fields().create(
+                    CreateFieldRequest.builder().type("text").name(name).build());
+            fieldId.set(created.getId());
+            assertThat(client.fields().get(created.getId()).getName()).isEqualTo(name);
+
+            FieldDefinition updated = client.fields().update(created.getId(),
+                    UpdateFieldRequest.builder().name(name + "-updated").build());
+            assertThat(updated.getName()).isEqualTo(name + "-updated");
+        }
+    }
+
+    @Test
+    @Order(18)
     void getsAccountTheme() {
         var theme = client.workspaces().getTheme(accountId);
         assertThat(theme).isNotNull();
@@ -331,14 +391,14 @@ class LiveApiSmokeIT {
     }
 
     @Test
-    @Order(18)
+    @Order(19)
     void listsAssignmentsWithSandboxAccountContext() {
         assertThat(client.assignments().list(ListParams.builder().perPage(1).build()).getData())
                 .isNotNull();
     }
 
     @Test
-    @Order(19)
+    @Order(20)
     void getsAuthenticatedUserAndProbesDocumentedSandboxRoutes() {
         assertThat(client.users().get().getId()).isNotBlank();
 
@@ -348,7 +408,7 @@ class LiveApiSmokeIT {
     }
 
     @Test
-    @Order(20)
+    @Order(21)
     void assignmentEmailLifecycleWithConfiguredRecipients() {
         String primaryEmail = System.getenv("ASSINAFY_TEST_EMAIL_PRIMARY");
         String secondaryEmail = System.getenv("ASSINAFY_TEST_EMAIL_SECONDARY");
@@ -356,29 +416,49 @@ class LiveApiSmokeIT {
                         && secondaryEmail != null && !secondaryEmail.isBlank(),
                 "Set both ASSINAFY_TEST_EMAIL_PRIMARY and ASSINAFY_TEST_EMAIL_SECONDARY");
 
-        Signer primary = null;
-        Signer secondary = null;
-        DocumentUploadResponse document = null;
-        boolean deletePrimary = false;
-        boolean deleteSecondary = false;
-        try {
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
             Signer existingPrimary = client.signers().findByEmail(primaryEmail);
-            primary = client.signers().create(CreateSignerRequest.builder()
-                    .fullName("SDK Integration Primary").email(primaryEmail).build());
-            deletePrimary = existingPrimary == null;
-            if (deletePrimary) {
+            Signer primary = existingPrimary;
+            if (primary == null) {
+                String fullName = "SDK Integration Primary "
+                        + UUID.randomUUID().toString().substring(0, 8);
+                AtomicReference<String> signerId = new AtomicReference<>();
+                AtomicBoolean createAttempted = new AtomicBoolean();
+                cleanup.add(() -> deleteSigner(
+                        signerId.get(), primaryEmail, fullName, createAttempted.get()));
+                createAttempted.set(true);
+                primary = client.signers().create(CreateSignerRequest.builder()
+                        .fullName(fullName).email(primaryEmail).build());
+                signerId.set(primary.getId());
                 primary = client.signers().update(primary.getId(), UpdateSignerRequest.builder()
-                        .fullName("SDK Integration Primary")
+                        .fullName(fullName)
                         .governmentId("400.676.228-36")
                         .build());
             }
 
             Signer existingSecondary = client.signers().findByEmail(secondaryEmail);
-            secondary = client.signers().create(CreateSignerRequest.builder()
-                    .fullName("SDK Integration Secondary").email(secondaryEmail).build());
-            deleteSecondary = existingSecondary == null;
+            Signer secondary = existingSecondary;
+            if (secondary == null) {
+                String fullName = "SDK Integration Secondary "
+                        + UUID.randomUUID().toString().substring(0, 8);
+                AtomicReference<String> signerId = new AtomicReference<>();
+                AtomicBoolean createAttempted = new AtomicBoolean();
+                cleanup.add(() -> deleteSigner(
+                        signerId.get(), secondaryEmail, fullName, createAttempted.get()));
+                createAttempted.set(true);
+                secondary = client.signers().create(CreateSignerRequest.builder()
+                        .fullName(fullName).email(secondaryEmail).build());
+                signerId.set(secondary.getId());
+            }
 
-            document = client.documents().upload(minimalPdf(), "sdk-it-assignment-" + UUID.randomUUID() + ".pdf");
+            String fileName = "sdk-it-assignment-" + UUID.randomUUID() + ".pdf";
+            AtomicReference<String> documentId = new AtomicReference<>();
+            AtomicBoolean documentCreateAttempted = new AtomicBoolean();
+            cleanup.add(() -> deleteDocument(
+                    documentId.get(), fileName, documentCreateAttempted.get()));
+            documentCreateAttempted.set(true);
+            DocumentUploadResponse document = client.documents().upload(minimalPdf(), fileName);
+            documentId.set(document.getId());
             client.documents().waitUntilReady(document.getId(), 30_000, 1_500);
 
             CreateAssignmentRequest request = CreateAssignmentRequest.builder()
@@ -391,7 +471,7 @@ class LiveApiSmokeIT {
                                     .verificationMethod("Email")
                                     .notificationMethods(List.of("Email")).build()))
                     .message("Assinafy SDK sandbox integration test")
-                    .expiresAt(Instant.now().plus(7, ChronoUnit.DAYS).toString())
+                    .expiresAt(expirationInDays(7))
                     .build();
 
             assertThat(client.assignments().estimateCost(document.getId(), request)).isNotNull();
@@ -400,7 +480,7 @@ class LiveApiSmokeIT {
             assertThat(assignment.getSigners()).hasSize(2);
 
             client.assignments().resetExpiration(document.getId(), assignment.getId(),
-                    Instant.now().plus(8, ChronoUnit.DAYS).toString());
+                    expirationInDays(8));
             assertThat(client.assignments().estimateResendCost(
                     document.getId(), assignment.getId(), primary.getId())).isNotNull();
             assertThat(client.assignments().resendNotification(
@@ -408,42 +488,13 @@ class LiveApiSmokeIT {
                     .isEqualTo(document.getId());
             assertThat(client.assignments().getWhatsappNotifications(
                     document.getId(), assignment.getId())).isNotNull();
-            client.publicDocuments().sendToken(document.getId(), secondaryEmail);
+            client.publicDocuments().sendToken(document.getId(), secondaryEmail, "email");
             assertThat(client.documents().activities(document.getId())).isNotNull();
-        } finally {
-            Throwable cleanupFailure = null;
-            if (document != null) {
-                try {
-                    DocumentUploadResponse createdDocument = document;
-                    retryCleanup(() -> client.documents().delete(createdDocument.getId()));
-                } catch (Throwable failure) {
-                    cleanupFailure = failure;
-                }
-            }
-            if (deletePrimary && primary != null) {
-                try {
-                    Signer createdPrimary = primary;
-                    retryCleanup(() -> client.signers().delete(createdPrimary.getId()));
-                } catch (Throwable failure) {
-                    if (cleanupFailure == null) cleanupFailure = failure;
-                    else cleanupFailure.addSuppressed(failure);
-                }
-            }
-            if (deleteSecondary && secondary != null) {
-                try {
-                    Signer createdSecondary = secondary;
-                    retryCleanup(() -> client.signers().delete(createdSecondary.getId()));
-                } catch (Throwable failure) {
-                    if (cleanupFailure == null) cleanupFailure = failure;
-                    else cleanupFailure.addSuppressed(failure);
-                }
-            }
-            if (cleanupFailure != null) throw new AssertionError("Sandbox cleanup failed", cleanupFailure);
         }
     }
 
     @Test
-    @Order(21)
+    @Order(22)
     void requestsPasswordResetForConfiguredSandboxIdentity() {
         String email = System.getenv("ASSINAFY_TEST_EMAIL_PRIMARY");
         Assumptions.assumeTrue(email != null && !email.isBlank(),
@@ -452,37 +503,352 @@ class LiveApiSmokeIT {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    @Order(23)
+    void uploadsAndRequestsSignaturesWithConfiguredRecipient() {
+        String email = System.getenv("ASSINAFY_TEST_EMAIL_PRIMARY");
+        Assumptions.assumeTrue(email != null && !email.isBlank(),
+                "Set ASSINAFY_TEST_EMAIL_PRIMARY");
+
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String fullName = "SDK Workflow " + suffix;
+        String fileName = "sdk-it-workflow-" + UUID.randomUUID() + ".pdf";
+        AtomicReference<String> createdSignerId = new AtomicReference<>();
+        AtomicReference<String> workflowSignerId = new AtomicReference<>();
+        AtomicReference<String> documentId = new AtomicReference<>();
+        AtomicBoolean signerCreateAttempted = new AtomicBoolean();
+        AtomicBoolean workflowAttempted = new AtomicBoolean();
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            cleanup.add(() -> deleteSigner(
+                    createdSignerId.get(), email, fullName, signerCreateAttempted.get()));
+            cleanup.add(() -> deleteSigner(
+                    workflowSignerId.get(), email, fullName, workflowAttempted.get()));
+            cleanup.add(() -> deleteDocument(
+                    documentId.get(), fileName, workflowAttempted.get()));
+
+            Signer expectedSigner = client.signers().findByEmail(email);
+            if (expectedSigner == null) {
+                signerCreateAttempted.set(true);
+                expectedSigner = client.signers().create(CreateSignerRequest.builder()
+                        .fullName(fullName)
+                        .email(email)
+                        .build());
+                createdSignerId.set(expectedSigner.getId());
+            }
+            assertThat(expectedSigner.getId()).isNotBlank();
+
+            workflowAttempted.set(true);
+            UploadAndRequestSignaturesResult result = client.uploadAndRequestSignatures(
+                    UploadAndRequestSignaturesRequest.builder()
+                            .fileData(minimalPdf())
+                            .fileName(fileName)
+                            .signers(List.of(
+                                    UploadAndRequestSignaturesRequest.SignerEntry.builder()
+                                            .name(fullName)
+                                            .email(email)
+                                            .build()))
+                            .message("Assinafy SDK sandbox workflow test")
+                            .build());
+
+            assertThat(result.getDocument()).isNotNull();
+            documentId.set(result.getDocument().getId());
+            assertThat(documentId.get()).isNotBlank();
+            assertThat(result.getAssignment()).isNotNull();
+            assertThat(result.getAssignment().getId()).isNotBlank();
+            String resultSignerId = result.getSignerIds().getFirst();
+            if (!expectedSigner.getId().equals(resultSignerId)) {
+                workflowSignerId.set(resultSignerId);
+            }
+            assertThat(result.getSignerIds()).containsExactly(expectedSigner.getId());
+            assertThat(resultSignerId).isNotBlank();
+        }
+    }
+
+    @Test
+    @Order(24)
+    void leavesNoNamedSandboxTestResources() {
+        assertThat(client.documents().search(
+                        ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
+                .extracting(DocumentListItem::getName)
+                .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
+        assertThat(client.tags().list(
+                        ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
+                .extracting(Tag::getName)
+                .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
+        assertThat(client.fields().list(
+                        ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
+                .extracting(FieldDefinition::getName)
+                .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
+    }
+
     private static void probeDocumentedRoute(Runnable operation) {
         try {
             operation.run();
         } catch (ApiException error) {
             assertThat(error.getStatusCode())
-                    .as("documented route may be absent from the current sandbox deployment")
+                    .as("optional route returns 404 when unavailable")
                     .isEqualTo(404);
         }
     }
 
+    private static String expirationInDays(long days) {
+        return Instant.now().plus(days, ChronoUnit.DAYS)
+                .truncatedTo(ChronoUnit.SECONDS).toString();
+    }
+
+    private static Tag waitForDocumentTag(String documentId, String tagName, boolean present) {
+        for (int attempt = 0; attempt < RECONCILE_ATTEMPTS; attempt++) {
+            Tag match = client.documents().listTags(documentId).stream()
+                    .filter(tag -> tagName.equals(tag.getName()))
+                    .findFirst().orElse(null);
+            if (present == (match != null)) return match;
+            if (attempt + 1 < RECONCILE_ATTEMPTS) sleepCleanup(RECONCILE_DELAY_MS);
+        }
+        throw new AssertionError(present
+                ? "Attached tag was not returned by the document"
+                : "Detached tag remained on the document");
+    }
+
+    private static void deleteDocument(String documentId, String fileName, boolean createAttempted) {
+        if (documentId != null) {
+            long deadline = System.nanoTime()
+                    + TimeUnit.MILLISECONDS.toNanos(DOCUMENT_DELETE_TIMEOUT_MS);
+            RuntimeException lastFailure = null;
+            int notFoundAttempts = 0;
+            while (true) {
+                try {
+                    String status = client.documents().details(documentId).getStatus();
+                    notFoundAttempts = 0;
+                    lastFailure = null;
+                    if (List.of("uploading", "uploaded", "metadata_processing", "certificating")
+                            .contains(status)) {
+                        if (!pauseBefore(deadline, DOCUMENT_DELETE_POLL_MS)) break;
+                        continue;
+                    }
+                    client.documents().delete(documentId);
+                    return;
+                } catch (RuntimeException error) {
+                    if (error instanceof ApiException api && api.getStatusCode() == 404) {
+                        lastFailure = error;
+                        if (++notFoundAttempts >= RECONCILE_ATTEMPTS
+                                && !documentExists(documentId, fileName)) return;
+                        if (!pauseBefore(deadline, RECONCILE_DELAY_MS)) break;
+                        continue;
+                    }
+                    notFoundAttempts = 0;
+                    if (!isRetryableDocumentCleanup(error)) throw error;
+                    lastFailure = error;
+                    if (!pauseBefore(deadline, DOCUMENT_DELETE_POLL_MS)) break;
+                }
+            }
+            if (lastFailure != null) throw lastFailure;
+            throw new AssertionError("Document did not reach a deletable status before cleanup timed out");
+        }
+        if (!createAttempted) return;
+        reconcileCleanup(() -> client.documents().search(
+                        ListParams.builder().search(fileName).perPage(100).build())
+                .getData().stream()
+                .filter(document -> fileName.equals(document.getName()))
+                .findFirst()
+                .map(document -> {
+                    deleteDocument(document.getId(), fileName, true);
+                    return true;
+                })
+                .orElse(false));
+    }
+
+    private static boolean isRetryableDocumentCleanup(RuntimeException error) {
+        if (error instanceof NetworkException) return true;
+        if (!(error instanceof ApiException api)) return false;
+        int status = api.getStatusCode();
+        return status == 400 || status == 409 || status == 423 || status == 429 || status >= 500;
+    }
+
+    private static void deleteSigner(
+            String signerId, String email, String fullName, boolean createAttempted) {
+        String search = email != null ? email : fullName;
+        if (signerId != null) {
+            deleteKnownResource(
+                    () -> client.signers().delete(signerId),
+                    () -> client.signers().list(
+                                    ListParams.builder().search(search).perPage(100).build())
+                            .getData().stream()
+                            .filter(signer -> signerId.equals(signer.getId()))
+                            .findFirst()
+                            .map(signer -> {
+                                client.signers().delete(signer.getId());
+                                return true;
+                            })
+                            .orElse(false));
+            return;
+        }
+        if (!createAttempted) return;
+        reconcileCleanup(() -> client.signers().list(
+                        ListParams.builder().search(search).perPage(100).build())
+                .getData().stream()
+                .filter(signer -> email == null
+                        || signer.getEmail() != null && email.equalsIgnoreCase(signer.getEmail()))
+                .filter(signer -> fullName == null || fullName.equals(signer.getFullName()))
+                .findFirst()
+                .map(signer -> {
+                    client.signers().delete(signer.getId());
+                    return true;
+                })
+                .orElse(false));
+    }
+
+    private static void deleteTag(String tagId, String name, boolean createAttempted) {
+        if (tagId != null) {
+            deleteKnownResource(
+                    () -> client.tags().delete(tagId, true),
+                    () -> client.tags().list(
+                                    ListParams.builder().search(name).perPage(100).build())
+                            .getData().stream()
+                            .filter(tag -> tagId.equals(tag.getId()))
+                            .findFirst()
+                            .map(tag -> {
+                                client.tags().delete(tag.getId(), true);
+                                return true;
+                            })
+                            .orElse(false));
+            return;
+        }
+        if (!createAttempted) return;
+        reconcileCleanup(() -> client.tags().list(
+                        ListParams.builder().search(name).perPage(100).build())
+                .getData().stream()
+                .filter(tag -> name.equals(tag.getName()))
+                .findFirst()
+                .map(tag -> {
+                    client.tags().delete(tag.getId(), true);
+                    return true;
+                })
+                .orElse(false));
+    }
+
+    private static void deleteField(String fieldId, String name, boolean createAttempted) {
+        if (fieldId != null) {
+            deleteKnownResource(
+                    () -> client.fields().delete(fieldId),
+                    () -> client.fields().list(
+                                    ListParams.builder().search(name).perPage(100).build())
+                            .getData().stream()
+                            .filter(field -> fieldId.equals(field.getId()))
+                            .findFirst()
+                            .map(field -> {
+                                client.fields().delete(field.getId());
+                                return true;
+                            })
+                            .orElse(false));
+            return;
+        }
+        if (!createAttempted) return;
+        reconcileCleanup(() -> client.fields().list(
+                        ListParams.builder().search(name).perPage(100).build())
+                .getData().stream()
+                .filter(field -> name.equals(field.getName()))
+                .findFirst()
+                .map(field -> {
+                    client.fields().delete(field.getId());
+                    return true;
+                })
+                .orElse(false));
+    }
+
+    private static void reconcileCleanup(BooleanSupplier deleteIfFound) {
+        for (int attempt = 0; attempt < RECONCILE_ATTEMPTS; attempt++) {
+            if (deleteIfFound.getAsBoolean()) return;
+            if (attempt + 1 < RECONCILE_ATTEMPTS) sleepCleanup(RECONCILE_DELAY_MS);
+        }
+    }
+
+    private static boolean documentExists(String documentId, String fileName) {
+        return client.documents().search(ListParams.builder().search(fileName).perPage(100).build())
+                .getData().stream()
+                .anyMatch(document -> documentId.equals(document.getId()));
+    }
+
+    private static void deleteKnownResource(Runnable delete, BooleanSupplier deleteIfFound) {
+        try {
+            delete.run();
+        } catch (ApiException error) {
+            if (error.getStatusCode() != 404) throw error;
+            reconcileCleanup(deleteIfFound);
+        }
+    }
+
+    private static boolean pauseBefore(long deadlineNanos, long delayMs) {
+        long remaining = deadlineNanos - System.nanoTime();
+        if (remaining <= 0) return false;
+        sleepCleanup(Math.min(delayMs,
+                Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining))));
+        return true;
+    }
+
+    private static void sleepCleanup(long delayMs) {
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted during sandbox cleanup", interrupted);
+        }
+    }
+
     private static void retryCleanup(Runnable operation) {
-        for (int attempt = 0; ; attempt++) {
+        int retryAttempts = 0;
+        int notFoundAttempts = 0;
+        while (true) {
             try {
                 operation.run();
                 return;
-            } catch (RateLimitException error) {
-                if (attempt == 2) throw error;
-                long seconds = 5;
-                String retryAfter = error.getResponseHeader("retry-after");
-                try {
-                    if (retryAfter != null) seconds = Math.max(1, Long.parseLong(retryAfter));
-                } catch (NumberFormatException ignored) {
-                    // Retry-After can be an HTTP date; the short sandbox fallback is sufficient.
+            } catch (RuntimeException error) {
+                if (error instanceof ApiException api && api.getStatusCode() == 404) {
+                    if (++notFoundAttempts >= RECONCILE_ATTEMPTS) return;
+                    sleepCleanup(RECONCILE_DELAY_MS);
+                    continue;
                 }
+                notFoundAttempts = 0;
+                boolean retryable = error instanceof RateLimitException
+                        || error instanceof NetworkException
+                        || error instanceof ApiException api && api.getStatusCode() >= 500;
+                if (!retryable || retryAttempts++ == 2) throw error;
+                long delayMs = 1_250;
+                if (error instanceof RateLimitException rateLimit) {
+                    String retryAfter = rateLimit.getResponseHeader("retry-after");
+                    try {
+                        if (retryAfter != null) {
+                            long seconds = Math.min(MAX_RETRY_DELAY_MS / 1_000,
+                                    Math.max(1, Long.parseLong(retryAfter)));
+                            delayMs = Math.min(MAX_RETRY_DELAY_MS, seconds * 1_000 + 250);
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // Retry-After may be an HTTP date; use the short sandbox fallback.
+                    }
+                }
+                sleepCleanup(delayMs);
+            }
+        }
+    }
+
+    private static final class SandboxCleanup implements AutoCloseable {
+        private final List<Runnable> actions = new ArrayList<>();
+
+        void add(Runnable action) {
+            actions.add(action);
+        }
+
+        @Override
+        public void close() {
+            Throwable failure = null;
+            for (int i = actions.size() - 1; i >= 0; i--) {
                 try {
-                    Thread.sleep(seconds * 1_000 + 250);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new AssertionError("Interrupted during sandbox cleanup", interrupted);
+                    retryCleanup(actions.get(i));
+                } catch (Throwable error) {
+                    if (failure == null) failure = error;
+                    else failure.addSuppressed(error);
                 }
             }
+            if (failure != null) throw new AssertionError("Sandbox cleanup failed", failure);
         }
     }
 

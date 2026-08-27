@@ -61,4 +61,18 @@ class WebhookResourceExtraTest {
         assertThat(sub.getUrl()).isEqualTo("https://example.com");
         assertThat(sub.getIsActive()).isFalse();
     }
+
+    @SuppressWarnings("deprecation")
+    @Test
+    void deprecatedDeleteOverloadsUseExactSubscriptionPath() {
+        http.enqueue(200, "{}").enqueue(200, "{}");
+
+        webhooks.delete();
+        webhooks.delete("other");
+
+        assertThat(http.capturedAt(0).getMethod()).isEqualTo("DELETE");
+        assertThat(http.capturedAt(0).getPath()).isEqualTo("/accounts/acc/webhooks/subscriptions");
+        assertThat(http.capturedAt(1).getMethod()).isEqualTo("DELETE");
+        assertThat(http.capturedAt(1).getPath()).isEqualTo("/accounts/other/webhooks/subscriptions");
+    }
 }

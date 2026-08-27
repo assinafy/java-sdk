@@ -3,6 +3,7 @@ package com.assinafy.sdk.support;
 import com.assinafy.sdk.models.WebhookPayload;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
@@ -34,6 +35,18 @@ class WebhookVerifierExtraTest {
 
         assertThat(event.getPayload()).containsEntry("user_name", "John");
         assertThat(verifier.getEventData(event)).containsEntry("user_name", "John");
+    }
+
+    @Test
+    void extractEventParsesUtf8BytePayload() {
+        byte[] body = "{\"event\":\"document_ready\",\"message\":\"ação\"}"
+                .getBytes(StandardCharsets.UTF_8);
+
+        WebhookPayload event = verifier.extractEvent(body);
+
+        assertThat(event).isNotNull();
+        assertThat(event.getEvent()).isEqualTo("document_ready");
+        assertThat(event.getMessage()).isEqualTo("ação");
     }
 
     @Test

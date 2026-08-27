@@ -12,3 +12,4 @@ target/
 *.log
 .env*
 !.env.example
+.claude/settings.local.json

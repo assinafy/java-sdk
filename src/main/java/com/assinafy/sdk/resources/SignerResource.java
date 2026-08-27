@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.DocumentDetails;
@@ -55,60 +56,130 @@ public class SignerResource extends BaseResource {
     }
 
     /**
-     * Create or reuse a signer in the default account.
+     * Create a signer in the default account.
      *
      * @param request signer profile; {@code full_name} is required
-     * @return the created signer, or an exact email match already in the account
+     * @return the created signer
      */
     public Signer create(CreateSignerRequest request) {
         return create(request, null);
     }
 
     /**
-     * Create or reuse a signer ({@code POST /accounts/{id}/signers}).
+     * Create a signer ({@code POST /accounts/{id}/signers}). This method always issues the POST;
+     * use {@link #findOrCreate(CreateSignerRequest, String)} when reuse by email is intended. A
+     * supplied CPF/CNPJ is applied through the documented signer update after creation; if that
+     * update fails, the newly created signer is deleted. Request metadata is not sent because
+     * signer creation does not define a metadata field.
      *
      * @param request signer profile; {@code full_name} is required
      * @param accountId explicit account ID, or {@code null} for the default
-     * @return the created signer, or an exact email match already in the account
+     * @return the created signer
      */
     public Signer create(CreateSignerRequest request, String accountId) {
         String account = accountId(accountId);
-        String id = pathSegment(account, "Account ID");
-        if (request == null || request.getFullName() == null || request.getFullName().isBlank()) {
-            throw new ValidationException("Signer full_name is required");
-        }
-        String email = request.getEmail();
-        boolean hasEmail = email != null;
+        validateCreateRequest(request);
+        Signer signer = postSigner(request, account);
+        return applyGovernmentId(request, signer, account);
+    }
 
-        // Email is optional per the API (a signer may have only a name + WhatsApp number).
-        // When an email is supplied we validate it and reuse an existing signer with the same
-        // address to keep create() idempotent.
-        if (hasEmail) {
-            requireEmail(email);
-            Signer existing = findByEmail(email, account);
-            if (existing != null) {
-                logger.info("Using existing signer");
-                return existing;
+    private Signer postSigner(CreateSignerRequest request, String accountId) {
+        String id = pathSegment(accountId, "Account ID");
+        logInfo("Creating signer", Map.of("hasEmail", request.getEmail() != null));
+        Map<String, Object> createBody = new HashMap<>();
+        createBody.put("full_name", request.getFullName());
+        if (request.getEmail() != null) createBody.put("email", request.getEmail());
+        if (request.getWhatsappPhoneNumber() != null) {
+            createBody.put("whatsapp_phone_number", request.getWhatsappPhoneNumber());
+        }
+        String body = serialise(createBody);
+        return requireSignerId(call("Failed to create signer",
+                        () -> http.post("/accounts/" + id + "/signers", body), Signer.class),
+                "Signer creation");
+    }
+
+    private Signer applyGovernmentId(CreateSignerRequest request, Signer signer,
+                                     String accountId) {
+        if (request.getCpf() != null && !request.getCpf().isBlank()) {
+            try {
+                return update(signer.getId(), UpdateSignerRequest.builder()
+                        .governmentId(request.getCpf())
+                        .build(), accountId);
+            } catch (RuntimeException error) {
+                try {
+                    delete(signer.getId(), accountId);
+                } catch (RuntimeException cleanupError) {
+                    error.addSuppressed(cleanupError);
+                }
+                throw error;
             }
         }
+        return signer;
+    }
 
-        logger.info("Creating signer", Map.of("hasEmail", hasEmail));
+    /**
+     * Return an exact case-insensitive email match from the default account, or create the signer
+     * when none exists. A request without an email is always created. An existing match is returned
+     * unchanged; request name, phone, and CPF/CNPJ apply only when a signer is created.
+     *
+     * @param request signer profile; {@code full_name} is required
+     * @return an existing email match or the created signer
+     */
+    public Signer findOrCreate(CreateSignerRequest request) {
+        return findOrCreate(request, null);
+    }
+
+    /**
+     * Return an exact case-insensitive email match, or create the signer when none exists. If a
+     * concurrent request creates the same email after the lookup, a duplicate 4xx response is
+     * resolved with one final lookup. An existing match is returned unchanged; request name, phone,
+     * and CPF/CNPJ apply only when a signer is created.
+     *
+     * @param request signer profile; {@code full_name} is required
+     * @param accountId explicit account ID, or {@code null} for the default
+     * @return an existing email match or the created signer
+     */
+    public Signer findOrCreate(CreateSignerRequest request, String accountId) {
+        validateCreateRequest(request);
+        String account = accountId(accountId);
+        String email = request.getEmail();
+        if (email == null) return create(request, account);
+
+        Signer existing = findByEmail(email, account);
+        if (existing != null) {
+            logInfo("Using existing signer", Map.of());
+            return existing;
+        }
+
+        Signer created;
         try {
-            String body = serialise(signerBody(request));
-            return call("Failed to create signer", () -> http.post("/accounts/" + id + "/signers", body), Signer.class);
+            created = postSigner(request, account);
         } catch (ApiException e) {
-            // The API rejects a duplicate email with 4xx (the live sandbox uses 400, not 409). If an
-            // email was supplied and a signer with that address now exists, treat create() as
-            // idempotent and return the existing signer; otherwise surface the original error.
-            if (hasEmail && e.getStatusCode() >= 400 && e.getStatusCode() < 500) {
+            if (isDuplicateCreate(e)) {
                 Signer duplicate = findByEmail(email, account);
                 if (duplicate != null) {
-                    logger.info("Signer already exists, using existing signer");
+                    logInfo("Signer already exists, using existing signer", Map.of());
                     return duplicate;
                 }
             }
             throw e;
         }
+        return applyGovernmentId(request, created, account);
+    }
+
+    private static boolean isDuplicateCreate(ApiException error) {
+        if (error.getStatusCode() == 409) return true;
+        if (error.getStatusCode() != 400 || error.getMessage() == null) return false;
+        String message = error.getMessage().toLowerCase(Locale.ROOT);
+        return message.contains("already exists") || message.contains("já existe");
+    }
+
+    private static void validateCreateRequest(CreateSignerRequest request) {
+        if (request == null || request.getFullName() == null || request.getFullName().isBlank()) {
+            throw new ValidationException("Signer full_name is required");
+        }
+        String email = request.getEmail();
+        if (email != null) requireEmail(email);
     }
 
     /**
@@ -189,7 +260,16 @@ public class SignerResource extends BaseResource {
         String id = pathSegment(accountId(accountId), "Account ID");
         String sid = pathSegment(signerId, "Signer ID");
         String body = serialise(signerBody(request));
-        return call("Failed to update signer", () -> http.put("/accounts/" + id + "/signers/" + sid, body), Signer.class);
+        return requireSignerId(call("Failed to update signer",
+                        () -> http.put("/accounts/" + id + "/signers/" + sid, body), Signer.class),
+                "Signer update");
+    }
+
+    private static Signer requireSignerId(Signer signer, String operation) {
+        if (signer == null || signer.getId() == null || signer.getId().isBlank()) {
+            throw new AssinafyException(operation + " succeeded but no signer ID was returned");
+        }
+        return signer;
     }
 
     /**
@@ -289,9 +369,8 @@ public class SignerResource extends BaseResource {
      * {@link Signer}.
      *
      * <p>Maps to {@code PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}}.
-     * The {@code data} map may carry the documented fields {@code full_name}, {@code email} and
-     * {@code government_id}. Other keys are forwarded only for backwards compatibility and are
-     * not part of the published contract.
+     * The {@code data} map may carry {@code full_name}, {@code email}, and {@code government_id}.
+     * Additional keys are forwarded unchanged.
      *
      * @param documentId document ID
      * @param signerAccessCode signer query credential
@@ -331,7 +410,7 @@ public class SignerResource extends BaseResource {
      *
      * @param signerAccessCode signer query credential
      * @param type signature type, or {@code null} to omit it
-     * @param imageData non-empty PNG or deployed-compatible JPEG bytes
+     * @param imageData non-empty PNG or JPEG bytes
      */
     public void uploadSignature(String signerAccessCode, String type, byte[] imageData) {
         uploadSignature(signerAccessCode, type, imageData, null);
@@ -344,7 +423,7 @@ public class SignerResource extends BaseResource {
      *
      * @param signerAccessCode signer query credential
      * @param type signature type, or {@code null} to omit it
-     * @param imageData non-empty PNG or deployed-compatible JPEG bytes
+     * @param imageData non-empty PNG or JPEG bytes
      * @param reuse whether future signatures may reuse the image, or {@code null} to omit the flag
      */
     public void uploadSignature(String signerAccessCode, String type, byte[] imageData, Boolean reuse) {
@@ -360,7 +439,7 @@ public class SignerResource extends BaseResource {
         String path = withAccessCode("/signature", signerAccessCode);
         if (type != null && !type.isBlank()) path = path + "&type=" + encode(type);
         if (reuse != null) path = path + "&reuse=" + reuse;
-        logger.info("Uploading signature", Map.of("type", type != null ? type : ""));
+        logInfo("Uploading signature", Map.of("type", type != null ? type : ""));
         String finalPath = path;
         callVoid("Failed to upload signature",
                 () -> http.postSignature(finalPath, imageData));
@@ -381,7 +460,7 @@ public class SignerResource extends BaseResource {
     }
 
     /**
-     * Fetch the signer's current document as a compatibility map.
+     * Fetch the signer's current document as a map.
      *
      * @param signerId signer ID
      * @param signerAccessCode signer query credential
@@ -458,7 +537,7 @@ public class SignerResource extends BaseResource {
     }
 
     /**
-     * Download a signer document using the deployed access-code compatibility query.
+     * Download a signer document using an access-code query.
      *
      * @param signerId signer ID
      * @param documentId document ID
@@ -499,14 +578,12 @@ public class SignerResource extends BaseResource {
      * Sign multiple eligible documents ({@code PUT /signers/documents/sign-multiple}).
      *
      * @param signerAccessCode signer query credential
-     * @param documentIds non-empty document ID list
+     * @param documentIds document ID list
      * @return the response data map, normally wrapping an empty array
      */
     public Map<String, Object> signMultiple(String signerAccessCode, List<String> documentIds) {
         requireId(signerAccessCode, "Signer access code");
-        if (documentIds == null || documentIds.isEmpty()) {
-            throw new ValidationException("At least one document ID is required");
-        }
+        validateDocumentIds(documentIds);
         String json = serialise(Map.of("document_ids", documentIds));
         return callMap("Failed to sign multiple documents",
                 () -> http.put(withAccessCode("/signers/documents/sign-multiple", signerAccessCode), json));
@@ -516,15 +593,13 @@ public class SignerResource extends BaseResource {
      * Decline multiple documents ({@code PUT /signers/documents/decline-multiple}).
      *
      * @param signerAccessCode signer query credential
-     * @param documentIds non-empty document ID list
+     * @param documentIds document ID list
      * @param declineReason non-blank decline reason
      * @return the response data map, normally wrapping an empty array
      */
     public Map<String, Object> declineMultiple(String signerAccessCode, List<String> documentIds, String declineReason) {
         requireId(signerAccessCode, "Signer access code");
-        if (documentIds == null || documentIds.isEmpty()) {
-            throw new ValidationException("At least one document ID is required");
-        }
+        validateDocumentIds(documentIds);
         requireId(declineReason, "Decline reason");
         Map<String, Object> body = new HashMap<>();
         body.put("document_ids", documentIds);
@@ -532,5 +607,14 @@ public class SignerResource extends BaseResource {
         String json = serialise(body);
         return callMap("Failed to decline multiple documents",
                 () -> http.put(withAccessCode("/signers/documents/decline-multiple", signerAccessCode), json));
+    }
+
+    private static void validateDocumentIds(List<String> documentIds) {
+        if (documentIds == null) {
+            throw new ValidationException("Document IDs are required");
+        }
+        if (documentIds.stream().anyMatch(id -> id == null)) {
+            throw new ValidationException("Document IDs must not be null");
+        }
     }
 }

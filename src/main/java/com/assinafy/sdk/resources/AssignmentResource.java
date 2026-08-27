@@ -1,6 +1,7 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
@@ -15,11 +16,17 @@ import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Assignment creation, cost estimation, notification, and signer-facing operations. */
 public class AssignmentResource extends BaseResource {
+
+    private static final Set<String> VERIFICATION_METHODS =
+            Set.of("Email", "Whatsapp", "DigitalCertificate");
+    private static final Set<String> NOTIFICATION_METHODS = Set.of("Email", "Whatsapp");
 
     /**
      * Create assignment operations with a default account and logger.
@@ -55,9 +62,8 @@ public class AssignmentResource extends BaseResource {
      * List the assignments belonging to the authenticated user's <em>current account</em>
      * ({@code GET /v1/assignments}), paginated via {@code page}/{@code per-page}.
      *
-     * <p>The deployed sandbox requires an {@code accountId} query when API-key authentication is
-     * used. This overload supplies the client's default account automatically; bearer sessions may
-     * resolve their account without it.
+     * <p>This overload supplies the client's default {@code accountId} query automatically when one
+     * is configured; bearer sessions may resolve their account without it.
      *
      * @param params paging and filtering parameters, or {@code null}
      * @return matching assignments and pagination metadata
@@ -67,8 +73,8 @@ public class AssignmentResource extends BaseResource {
     }
 
     /**
-     * List assignments, adding the live API's required {@code accountId} query context when an
-     * explicit or default account is available. The parameter is not yet described by OpenAPI.
+     * List assignments, adding {@code accountId} query context when an explicit or default account
+     * is available.
      *
      * @param params paging and filtering parameters, or {@code null}
      * @param accountId explicit account ID, or {@code null} to use the default/session context
@@ -93,34 +99,49 @@ public class AssignmentResource extends BaseResource {
     /**
      * Request signatures for a document ({@code POST /documents/{documentId}/assignments}). The
      * request {@code method} defaults to {@code virtual} when unset; at least one signer is
-     * required (each {@link SignerReference} needs a signer {@code id}). Returns the created
-     * {@link Assignment} (signers, items, summary and per-signer signing URLs).
+     * required (each {@link SignerReference} needs a signer {@code id}). Verification methods are
+     * {@code Email}, {@code Whatsapp}, or {@code DigitalCertificate}; notification methods, when
+     * supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}. If one
+     * signer supplies a step, all must do so and the positive steps must be contiguous from 1. A
+     * digital-certificate signer must be alone in its step, and {@code collect} requires nonempty
+     * entries. Returns the created {@link Assignment} (signers, items, summary and per-signer
+     * signing URLs).
      *
      * @param documentId document receiving the assignment
      * @param request assignment method, signers, entries, and notification settings
      * @return the created assignment
-     * @throws ValidationException if the request, method, or signer references are invalid
+     * @throws ValidationException if the request, method, signer references, delivery methods,
+     *         signing order, or collect entries are invalid
      */
     public Assignment create(String documentId, CreateAssignmentRequest request) {
         String docId = pathSegment(documentId, "Document ID");
         Map<String, Object> body = buildAssignmentPayload(request, false);
-        logger.info("Creating assignment", Map.of("documentId", docId, "signers", request.getSigners() != null ? request.getSigners().size() : 0));
+        logInfo("Creating assignment", Map.of("documentId", docId,
+                "signers", request.getSigners() != null ? request.getSigners().size() : 0));
         String json = serialise(body);
-        return call("Failed to create assignment", () -> http.post("/documents/" + docId + "/assignments", json), Assignment.class);
+        Assignment assignment = call("Failed to create assignment",
+                () -> http.post("/documents/" + docId + "/assignments", json), Assignment.class);
+        if (assignment == null || assignment.getId() == null || assignment.getId().isBlank()) {
+            throw new AssinafyException("Assignment creation succeeded but no assignment ID was returned");
+        }
+        return assignment;
     }
 
     /**
      * Estimate the credit cost of requesting signatures, without creating the assignment
      * ({@code POST /documents/{documentId}/assignments/estimate-cost}). Unlike creation, the
      * estimate payload contains only explicitly supplied {@code method}, {@code signers}, and
-     * {@code entries}; unset fields are omitted. Returns a cost breakdown map ({@code credits},
+     * {@code entries}; signer IDs and steps are omitted, delivery methods are validated, and unset
+     * fields are omitted. A virtual estimate requires at least one signer; a collect estimate
+     * requires nonempty entries. Returns a cost breakdown map ({@code credits},
      * {@code total_credits},
      * {@code document_balance}, {@code has_sufficient_resources}, …).
      *
      * @param documentId document to estimate
      * @param request estimate inputs
      * @return the cost breakdown
-     * @throws ValidationException if the request or method is invalid
+     * @throws ValidationException if the request, method, signer delivery methods, or required
+     *         estimate inputs are invalid
      */
     public Map<String, Object> estimateCost(String documentId, CreateAssignmentRequest request) {
         String docId = pathSegment(documentId, "Document ID");
@@ -141,12 +162,14 @@ public class AssignmentResource extends BaseResource {
     }
 
     /**
-     * Update an assignment's expiration. Pass {@code expiresAt = null} to remove the
-     * expiration entirely (the assignment will no longer expire).
+     * Update an assignment's expiration. Passing {@code expiresAt = null} sends
+     * {@code expires_at: null}; use that deployment extension only when the target supports
+     * clearing expiration.
      *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
-     * @param expiresAt new expiration timestamp, or {@code null} to remove it
+     * @param expiresAt new ISO-8601 expiration timestamp (whole-second UTC recommended), or
+     *                  {@code null} to remove it
      * @return the updated assignment
      */
     public Assignment resetExpiration(String documentId, String assignmentId, String expiresAt) {
@@ -324,7 +347,8 @@ public class AssignmentResource extends BaseResource {
      * @param documentId owning document ID
      * @param assignmentId assignment ID
      * @param signerAccessCode signer invitation access code
-     * @param items the completed items, each typically {@code {itemId, fieldId, pageId, value}}
+     * @param items completed-item list; every item requires string {@code itemId},
+     *              {@code fieldId}, {@code pageId}, and {@code value} properties
      * @return the API response payload
      */
     public Map<String, Object> sign(String documentId, String assignmentId, String signerAccessCode,
@@ -332,7 +356,8 @@ public class AssignmentResource extends BaseResource {
         String docId = pathSegment(documentId, "Document ID");
         String asgId = pathSegment(assignmentId, "Assignment ID");
         requireId(signerAccessCode, "Signer access code");
-        String json = serialise(items != null ? items : List.of());
+        validateSigningItems(items);
+        String json = serialise(items);
         return callMap("Failed to submit signature",
                 () -> http.post(
                         "/documents/" + docId + "/assignments/" + asgId + "?signer-access-code=" + encode(signerAccessCode),
@@ -351,10 +376,18 @@ public class AssignmentResource extends BaseResource {
         if (!estimate && (signers == null || signers.isEmpty())) {
             throw new ValidationException("At least one signer is required");
         }
+        if (estimate && "virtual".equals(method) && (signers == null || signers.isEmpty())) {
+            throw new ValidationException("At least one signer is required for a virtual estimate");
+        }
+        if ("collect".equals(method)
+                && (request.getEntries() == null || request.getEntries().isEmpty())) {
+            throw new ValidationException("At least one entry is required for a collect assignment");
+        }
 
         List<Map<String, Object>> normalisedSigners = (signers != null ? signers : List.<SignerReference>of()).stream()
                 .map(ref -> normaliseSignerRef(ref, estimate))
                 .toList();
+        if (!estimate) validateSignerSteps(signers);
 
         Map<String, Object> body = new HashMap<>();
         if (method != null || !estimate) body.put("method", method != null ? method : "virtual");
@@ -377,6 +410,7 @@ public class AssignmentResource extends BaseResource {
             }
             map.put("id", ref.getId());
         }
+        validateDeliveryMethods(ref.getVerificationMethod(), ref.getNotificationMethods());
         if (ref.getVerificationMethod() != null) map.put("verification_method", ref.getVerificationMethod());
         if (ref.getNotificationMethods() != null) map.put("notification_methods", ref.getNotificationMethods());
         if (!allowWithoutId && ref.getStep() != null) {
@@ -384,5 +418,61 @@ public class AssignmentResource extends BaseResource {
             map.put("step", ref.getStep());
         }
         return map;
+    }
+
+    private static void validateDeliveryMethods(String verificationMethod, List<String> notificationMethods) {
+        if (verificationMethod != null && !VERIFICATION_METHODS.contains(verificationMethod)) {
+            throw new ValidationException("Verification method must be Email, Whatsapp, or DigitalCertificate");
+        }
+        if (notificationMethods != null && notificationMethods.stream().anyMatch(
+                method -> method == null || !NOTIFICATION_METHODS.contains(method))) {
+            throw new ValidationException("Notification methods must contain Email or Whatsapp");
+        }
+    }
+
+    private static void validateSignerSteps(List<SignerReference> signers) {
+        boolean anyStep = false;
+        boolean missingStep = false;
+        Set<Integer> steps = new HashSet<>();
+        Map<Integer, Integer> signersPerStep = new HashMap<>();
+        for (SignerReference signer : signers) {
+            Integer step = signer.getStep();
+            anyStep |= step != null;
+            missingStep |= step == null;
+            int effectiveStep = step != null ? step : 1;
+            signersPerStep.merge(effectiveStep, 1, Integer::sum);
+            if (step != null) steps.add(step);
+        }
+        if (anyStep && missingStep) {
+            throw new ValidationException("Every signer must provide a step when signing order is used");
+        }
+        for (int step = 1; step <= steps.size(); step++) {
+            if (!steps.contains(step)) {
+                throw new ValidationException("Signer steps must be contiguous starting at 1");
+            }
+        }
+        for (SignerReference signer : signers) {
+            if ("DigitalCertificate".equals(signer.getVerificationMethod())) {
+                int step = signer.getStep() != null ? signer.getStep() : 1;
+                if (signersPerStep.get(step) > 1) {
+                    throw new ValidationException("A DigitalCertificate signer must be alone in its step");
+                }
+            }
+        }
+    }
+
+    private static void validateSigningItems(List<Map<String, Object>> items) {
+        if (items == null) throw new ValidationException("Signing items are required");
+        for (Map<String, Object> item : items) {
+            if (item == null) throw new ValidationException("Signing item is required");
+            for (String key : List.of("itemId", "fieldId", "pageId")) {
+                if (!(item.get(key) instanceof String)) {
+                    throw new ValidationException("Signing item " + key + " must be a string");
+                }
+            }
+            if (!(item.get("value") instanceof String)) {
+                throw new ValidationException("Signing item value must be a string");
+            }
+        }
     }
 }

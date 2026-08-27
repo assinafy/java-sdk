@@ -57,14 +57,28 @@ class SignerResourceExtraTest {
     }
 
     @Test
-    void createReturnsExistingSignerWhenApiRejectsDuplicateEmailWith400() {
+    void findOrCreateReturnsExistingSignerWhenApiRejectsDuplicateEmailWith400() {
         // Live API returns 400 (not 409) for a duplicate email. Pre-check (findByEmail via search)
         // misses here (empty), then the POST 400s; the SDK re-queries and returns the existing signer.
         http.enqueue(200, "{\"status\":200,\"data\":[]}");                       // pre-check findByEmail -> none
         http.enqueue(400, "{\"status\":400,\"message\":\"Um signatário com este e-mail já existe.\"}"); // POST create -> duplicate
         http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"Dup\",\"email\":\"dup@example.invalid\"}]}"); // re-query finds it
-        Signer s = signers.create(CreateSignerRequest.builder().fullName("Dup").email("dup@example.invalid").build());
+        Signer s = signers.findOrCreate(
+                CreateSignerRequest.builder().fullName("Dup").email("dup@example.invalid")
+                        .cpf("400.676.228-36").build());
         assertThat(s.getId()).isEqualTo("existing");
+        assertThat(http.capturedCount()).isEqualTo(3);
+    }
+
+    @Test
+    void findOrCreateDoesNotHideUnrelatedValidationErrors() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}");
+        http.enqueue(400, "{\"status\":400,\"message\":\"Invalid signer data\"}");
+
+        assertThatThrownBy(() -> signers.findOrCreate(
+                CreateSignerRequest.builder().fullName("Dup").email("dup@example.invalid").build()))
+                .isInstanceOf(ApiException.class);
+        assertThat(http.capturedCount()).isEqualTo(2);
     }
 
     @Test
@@ -152,17 +166,54 @@ class SignerResourceExtraTest {
 
     @Test
     void createDigitStripsCpfInWireBody() {
-        // WhatsApp-only signer (no email) skips the findByEmail dedupe round-trip.
-        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s9\",\"full_name\":\"Maria\"}}");
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s9\",\"full_name\":\"Maria\"}}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s9\",\"full_name\":\"Maria\"}}");
         Signer s = signers.create(CreateSignerRequest.builder()
                 .fullName("Maria")
                 .whatsappPhoneNumber("+5548999990000")
                 .cpf("400.676.228-36")
                 .build());
-        String body = http.lastCaptured().getJsonBody();
-        assertThat(body).contains("\"cpf\":\"40067622836\"");
-        assertThat(body).contains("\"full_name\":\"Maria\"");
+        assertThat(http.capturedAt(0).getJsonBody())
+                .contains("\"full_name\":\"Maria\"")
+                .doesNotContain("cpf", "government_id");
+        assertThat(http.capturedAt(1).getJsonBody())
+                .contains("\"government_id\":\"40067622836\"");
         assertThat(s.getId()).isEqualTo("s9");
+    }
+
+    @Test
+    void createDeletesNewSignerWhenCpfUpdateFailsAndSuppressesCleanupFailure() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s9\"}}")
+                .enqueue(500, "{\"status\":500,\"message\":\"update failed\"}")
+                .enqueue(500, "{\"status\":500,\"message\":\"delete failed\"}");
+
+        assertThatThrownBy(() -> signers.create(CreateSignerRequest.builder()
+                .fullName("Maria").cpf("400.676.228-36").build()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(error.getSuppressed()).hasSize(1));
+        assertThat(http.capturedAt(1).getMethod()).isEqualTo("PUT");
+        assertThat(http.capturedAt(2).getMethod()).isEqualTo("DELETE");
+        assertThat(http.capturedAt(2).getPath()).isEqualTo("/accounts/acc/signers/s9");
+    }
+
+    @Test
+    void findOrCreateDoesNotReconcileDuplicateLookingCpfUpdateFailure() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"s9\"}}")
+                .enqueue(400, "{\"status\":400,\"message\":\"government_id already exists\"}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        assertThatThrownBy(() -> signers.findOrCreate(CreateSignerRequest.builder()
+                .fullName("Maria").email("maria@example.invalid")
+                .cpf("400.676.228-36").build()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("already exists");
+
+        assertThat(http.capturedCount()).isEqualTo(4);
+        assertThat(http.capturedAt(0).getMethod()).isEqualTo("GET");
+        assertThat(http.capturedAt(1).getMethod()).isEqualTo("POST");
+        assertThat(http.capturedAt(2).getMethod()).isEqualTo("PUT");
+        assertThat(http.capturedAt(3).getMethod()).isEqualTo("DELETE");
     }
 
     @Test

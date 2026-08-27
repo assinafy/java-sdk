@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.helper.MockApiHttpClient.CapturedRequest;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Tag;
 import com.assinafy.sdk.request.CreateTagRequest;
@@ -78,5 +79,29 @@ class TagResourceTest {
         resource.delete("t1", true);
 
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/tags/t1?force=true");
+    }
+
+    @Test
+    void defaultListAndExplicitAccountOverloadsUseRequestedAccounts() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"t1\"}}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"t1\"}}")
+                .enqueue(200, "{}");
+
+        resource.list();
+        resource.list(null, "other");
+        resource.create(CreateTagRequest.builder().name("Tag").build(), "other");
+        resource.rename("t1", RenameTagRequest.builder().name("Renamed").build(), "other");
+        resource.delete("t1", true, "other");
+
+        assertThat(mock.getCaptured())
+                .extracting(CapturedRequest::getMethod, CapturedRequest::getPath)
+                .containsExactly(
+                        tuple("GET", "/accounts/acc/tags"),
+                        tuple("GET", "/accounts/other/tags"),
+                        tuple("POST", "/accounts/other/tags"),
+                        tuple("PUT", "/accounts/other/tags/t1"),
+                        tuple("DELETE", "/accounts/other/tags/t1?force=true"));
     }
 }

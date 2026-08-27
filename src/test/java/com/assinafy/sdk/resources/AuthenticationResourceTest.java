@@ -15,7 +15,8 @@ class AuthenticationResourceTest {
             "\"access_token\":\"token\",\"user\":{\"id\":\"u1\",\"email\":\"user@example.invalid\"}," +
             "\"accounts\":[{\"id\":\"a1\",\"name\":\"Example\",\"roles\":[\"owner\"]," +
             "\"is_delete_allowed\":true,\"created_at\":\"2026-08-20T12:00:00Z\"}]}}";
-    private static final String SUCCESS = "{\"status\":200,\"message\":\"\"}";
+    private static final String SUCCESS = "{\"status\":200,\"message\":\"\","
+            + "\"data\":{\"email\":\"user@example.invalid\"}}";
 
     @Test
     void mapsAllDocumentedAuthenticationOperations() {
@@ -79,5 +80,21 @@ class AuthenticationResourceTest {
         assertThatThrownBy(() -> authentication.resetPassword("user@example.invalid", null, ""))
                 .isInstanceOf(ValidationException.class);
         assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
+    void exposesPasswordOperationResponseDataWithoutBreakingVoidMethods() {
+        MockApiHttpClient http = new MockApiHttpClient()
+                .enqueue(200, SUCCESS)
+                .enqueue(200, SUCCESS)
+                .enqueue(200, SUCCESS);
+        AuthenticationResource authentication = new AuthenticationResource(http);
+
+        assertThat(authentication.changePasswordResult("user@example.invalid", "old", "new"))
+                .containsEntry("email", "user@example.invalid");
+        assertThat(authentication.requestPasswordResetResult("user@example.invalid"))
+                .containsEntry("email", "user@example.invalid");
+        assertThat(authentication.resetPasswordResult("user@example.invalid", "token", "new"))
+                .containsEntry("email", "user@example.invalid");
     }
 }

@@ -55,7 +55,7 @@ public class ApiKeyResource extends BaseResource {
     public ApiKey create(String password) {
         requireId(password, "Password");
         String body = serialise(Map.of("password", password));
-        logger.info("Generating new API key");
+        logInfo("Generating new API key", Map.of());
         return call("Failed to generate API key", () -> http.post("/users/api-keys", body), ApiKey.class);
     }
 

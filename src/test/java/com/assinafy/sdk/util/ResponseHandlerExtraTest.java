@@ -32,6 +32,18 @@ class ResponseHandlerExtraTest {
     }
 
     @Test
+    void inBodyErrorEnvelopeRetainsHttpHeaders() {
+        HttpRawResponse response = new HttpRawResponse(200,
+                "{\"status\":429,\"message\":\"slow down\",\"data\":null}",
+                Map.of("retry-after", "7"));
+
+        assertThatThrownBy(() -> ResponseHandler.handle(response, Map.class))
+                .isInstanceOf(RateLimitException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getResponseHeader("Retry-After"))
+                        .isEqualTo("7"));
+    }
+
+    @Test
     void handleVoidThrowsOnHttpError() {
         assertThatThrownBy(() -> ResponseHandler.handleVoid(resp(404, "{\"message\":\"gone\"}")))
                 .isInstanceOf(ApiException.class)

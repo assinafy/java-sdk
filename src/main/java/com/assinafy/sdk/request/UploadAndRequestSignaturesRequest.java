@@ -126,7 +126,7 @@ public class UploadAndRequestSignaturesRequest {
     /**
      * Sets the expiration timestamp.
      *
-     * @param expiresAt the expiration timestamp
+     * @param expiresAt ISO-8601 expiration timestamp; whole-second UTC form is recommended
      */
     public void setExpiresAt(String expiresAt) { this.expiresAt = expiresAt; }
 
@@ -223,31 +223,31 @@ public class UploadAndRequestSignaturesRequest {
         public void setWhatsappPhoneNumber(String phone) { this.whatsappPhoneNumber = phone; }
 
         /**
-         * Returns the CPF.
+         * Returns the CPF or CNPJ stored through the signer's {@code government_id} update.
          *
-         * @return the CPF
+         * @return the CPF or CNPJ
          */
         public String getCpf() { return cpf; }
 
         /**
-         * Sets the CPF.
+         * Sets the CPF or CNPJ to persist through the signer's {@code government_id} update.
          *
-         * @param cpf the CPF
+         * @param cpf the CPF or CNPJ
          */
         public void setCpf(String cpf) { this.cpf = cpf; }
 
         /**
-         * Returns the metadata.
-         *
-         * @return the metadata
+         * @deprecated Signers have no persisted metadata field; this value is not sent.
+         * @return the retained local metadata value
          */
+        @Deprecated
         public Map<String, Object> getMetadata() { return metadata; }
 
         /**
-         * Sets the metadata.
-         *
-         * @param metadata the metadata
+         * @deprecated Signers have no persisted metadata field; this value is not sent.
+         * @param metadata the local metadata value
          */
+        @Deprecated
         public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
 
         /**
@@ -284,19 +284,19 @@ public class UploadAndRequestSignaturesRequest {
             public Builder whatsappPhoneNumber(String phone) { entry.setWhatsappPhoneNumber(phone); return this; }
 
             /**
-             * Sets the CPF for the object being built.
+             * Sets the CPF or CNPJ for the object being built.
              *
-             * @param cpf the CPF
+             * @param cpf the CPF or CNPJ
              * @return this builder
              */
             public Builder cpf(String cpf) { entry.setCpf(cpf); return this; }
 
             /**
-             * Sets the metadata for the object being built.
-             *
-             * @param metadata the metadata
+             * @deprecated Signers have no persisted metadata field; this value is not sent.
+             * @param metadata the local metadata value
              * @return this builder
              */
+            @Deprecated
             public Builder metadata(Map<String, Object> metadata) { entry.setMetadata(metadata); return this; }
 
             /**
@@ -368,7 +368,7 @@ public class UploadAndRequestSignaturesRequest {
         /**
          * Sets the expiration timestamp for the object being built.
          *
-         * @param expiresAt the expiration timestamp
+         * @param expiresAt ISO-8601 expiration timestamp; whole-second UTC form is recommended
          * @return this builder
          */
         public Builder expiresAt(String expiresAt) { req.setExpiresAt(expiresAt); return this; }

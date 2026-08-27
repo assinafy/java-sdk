@@ -96,7 +96,7 @@ public class TagResource extends BaseResource {
             throw new com.assinafy.sdk.exceptions.ValidationException("Tag name is required");
         }
         String body = serialise(request);
-        logger.info("Creating tag");
+        logInfo("Creating tag", Map.of());
         return call("Failed to create tag",
                 () -> http.post("/accounts/" + id + "/tags", body),
                 Tag.class);
@@ -156,7 +156,7 @@ public class TagResource extends BaseResource {
      * from every document and then deleted.
      *
      * @param tagId tag ID
-     * @param force whether to request the deployed force-delete extension
+     * @param force whether to detach the tag from resources before deletion
      */
     public void delete(String tagId, boolean force) {
         delete(tagId, force, null);
@@ -166,7 +166,7 @@ public class TagResource extends BaseResource {
      * Delete a tag from an explicit or default account.
      *
      * @param tagId tag ID
-     * @param force whether to request the deployed force-delete extension
+     * @param force whether to detach the tag from resources before deletion
      * @param accountId explicit account ID, or {@code null} for the default
      */
     public void delete(String tagId, boolean force, String accountId) {

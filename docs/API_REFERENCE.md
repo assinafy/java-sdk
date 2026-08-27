@@ -1,6 +1,6 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>, fetched 2026-08-20. It covers all **89** documented operations. The production contract is authoritative; the sandbox parity notes below identify observed deployment differences.
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **89** documented operations.
 
 ## Conventions
 
@@ -10,16 +10,9 @@ This is the Java mapping of the official production OpenAPI document published a
 - JSON success bodies use `{ "status": integer, "message": string, "data": ... }`. The SDK returns `data`. A Java `void` method discards the success envelope and also accepts an empty 2xx body. Binary methods return raw `byte[]`, not JSON.
 - A `!` after an inline JSON field name means required. `?` after a type means explicitly nullable. “Required: no” means the OpenAPI schema does not require the field; it does not imply the server always omits it.
 - Linked component schemas are part of the operation payload; follow the link for every nested field. List methods return `PaginatedResult<T>` when pagination headers are exposed.
-- Raw `Map<String,Object>` methods expose object-valued `data` fields directly. A scalar or array `data` value is returned as `{ "data": value }`; missing data or an empty success body becomes an empty map. Typed alternatives are listed beside their compatibility map methods.
-- Operation request tables describe the production OpenAPI wire contract. Compatibility overloads that send additional deployed fields are identified at the end of this reference.
+- Raw `Map<String,Object>` methods expose object-valued `data` fields directly. A scalar or array `data` value is returned as `{ "data": value }`; missing data or an empty success body becomes an empty map. Typed alternatives are listed beside their map-returning methods.
+- Operation request tables describe the production OpenAPI wire contract. Additional Java helpers are identified at the end of this reference.
 - Non-2xx responses and non-2xx numeric envelope statuses throw `ApiException`; 401/403 use `AuthenticationException`, 429 uses `RateLimitException`, I/O failures use `NetworkException`, and local argument failures use `ValidationException`.
-
-## Sandbox parity observed on 2026-08-20
-
-- The sandbox returned application-level 404 responses for account statistics, user statistics, and both notification-preference operations, although all four are present in the production OpenAPI contract. The SDK keeps these methods for production and future sandbox parity.
-- The sandbox rejected an email-only public send-token body as missing `channel`. The production OpenAPI declares an optional body with only optional `email`; the SDK email overload therefore sends `email` plus deployed compatibility fields `recipient` and `channel: "email"`.
-- The sandbox returned 406 when a document artifact request sent `Accept: application/pdf`, but returned PDF bytes for `Accept: */*`. Binary SDK requests use `*/*`, which accepts the production contract's documented PDF response and works on the sandbox.
-- Treat every sandbox write as real mutable state. Use a dedicated sandbox account, unique fixture names, and `finally` cleanup; never point integration tests at production.
 
 ## Authentication
 
@@ -53,7 +46,7 @@ Documented statuses: `200` Provider linked; `400` One or more fields failed vali
 
 ### 2. Change password
 
-- **Java:** `client.authentication()` — `AuthenticationResource: public void changePassword(String email, String password, String newPassword)`
+- **Java:** `client.authentication()` — `AuthenticationResource: public void changePassword(String email, String password, String newPassword)`; `client.authentication()` — `AuthenticationResource: public Map<String, Object> changePasswordResult(String email, String password, String newPassword)`
 - **HTTP:** `PUT /v1/authentication/change-password`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: change password.
@@ -83,7 +76,7 @@ Documented statuses: `200` Password changed; `400` One or more fields failed val
 
 ### 3. Request password reset
 
-- **Java:** `client.authentication()` — `AuthenticationResource: public void requestPasswordReset(String email)`
+- **Java:** `client.authentication()` — `AuthenticationResource: public void requestPasswordReset(String email)`; `client.authentication()` — `AuthenticationResource: public Map<String, Object> requestPasswordResetResult(String email)`
 - **HTTP:** `PUT /v1/authentication/request-password-reset`
 - **Auth:** Public (no SDK credential)
 - **Side effects:** Sends password-reset instructions.
@@ -111,7 +104,7 @@ Documented statuses: `200` Reset email sent; `500` Unexpected server error.
 
 ### 4. Reset password
 
-- **Java:** `client.authentication()` — `AuthenticationResource: public void resetPassword(String email, String token, String newPassword)`
+- **Java:** `client.authentication()` — `AuthenticationResource: public void resetPassword(String email, String token, String newPassword)`; `client.authentication()` — `AuthenticationResource: public Map<String, Object> resetPasswordResult(String email, String token, String newPassword)`
 - **HTTP:** `PUT /v1/authentication/reset-password`
 - **Auth:** Public (no SDK credential)
 - **Side effects:** Mutates server state: reset password.
@@ -763,11 +756,12 @@ Documented statuses: `200` Attached tags; `401` Missing or invalid credentials; 
 
 ### 28. Attach document tags
 
-- **Java:** `client.documents()` — `DocumentResource: public List<Tag> appendTags(String documentId, List<String> tagNames)`; `client.documents()` — `DocumentResource: public List<Tag> appendTags(String documentId, List<String> tagNames, String accountId)`
+- **Java:** `client.documents()` — `DocumentResource: public List<Tag> appendTagIds(String documentId, List<String> tagIds)`; `client.documents()` — `DocumentResource: public List<Tag> appendTagIds(String documentId, List<String> tagIds, String accountId)`; name-based convenience overloads: `appendTags(String documentId, List<String> tagNames)` and `appendTags(String documentId, List<String> tagNames, String accountId)`
 - **HTTP:** `POST /v1/accounts/{accountId}/documents/{documentId}/tags`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: attach document tags.
-- **Contract notes:** Attach one or more tags to a document.
+- **Contract notes:** Attach one or more tags to a document. `appendTagIds` resolves every workspace
+  ID before changing the document. `appendTags` accepts tag names and creates unknown names.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -794,11 +788,13 @@ Documented statuses: `200` Attached tags; `401` Missing or invalid credentials; 
 
 ### 29. Replace document tags
 
-- **Java:** `client.documents()` — `DocumentResource: public List<Tag> replaceTags(String documentId, List<String> tagNames)`; `client.documents()` — `DocumentResource: public List<Tag> replaceTags(String documentId, List<String> tagNames, String accountId)`
+- **Java:** `client.documents()` — `DocumentResource: public List<Tag> replaceTagIds(String documentId, List<String> tagIds)`; `client.documents()` — `DocumentResource: public List<Tag> replaceTagIds(String documentId, List<String> tagIds, String accountId)`; name-based convenience overloads: `replaceTags(String documentId, List<String> tagNames)` and `replaceTags(String documentId, List<String> tagNames, String accountId)`
 - **HTTP:** `PUT /v1/accounts/{accountId}/documents/{documentId}/tags`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: replace document tags.
-- **Contract notes:** Replace the full set of tags attached to a document.
+- **Contract notes:** Replace the full set of tags attached to a document. `replaceTagIds` resolves
+  every workspace ID before changing the document. `replaceTags` accepts tag names and creates
+  unknown names.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -883,7 +879,7 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create document from template.
-- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account.
+- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account. The Java SDK requires nonblank role and signer IDs, accepts only the documented verification and notification methods, permits at most one notification method per signer, and validates signing steps as an all-or-none contiguous sequence starting at 1. A `DigitalCertificate` signer must be alone in its step.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -919,7 +915,7 @@ Documented statuses: `200` The created document; `400` One or more fields failed
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None persisted; calculates cost only.
-- **Contract notes:** Estimate the cost of creating a document from a template without creating it. Contact information is not required — only the role_id and optionally a verification or notification method are needed. Each document always consumes 1 document from the plan's monthly allowance; if exhausted, the ExtraDocument cost is charged from credits (needs_extra_document = true). blocking_reason may be PendingPayment, InsufficientDocuments, or InsufficientCredits.
+- **Contract notes:** Estimate the cost of creating a document from a template without creating it. Contact information is not required — only the `role_id` and optionally a verification or notification method are needed. The Java SDK requires a nonblank role ID, validates the documented delivery-method values, and omits signer IDs, signing steps, and creation-only document settings. Each document always consumes 1 document from the plan's monthly allowance; if exhausted, the `ExtraDocument` cost is charged from credits (`needs_extra_document = true`). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments`, or `InsufficientCredits`.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1132,7 +1128,21 @@ Documented statuses: `200` Verification result; `500` Unexpected server error.
 - **HTTP:** `GET /v1/documents/statuses`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** The supported document statuses and whether a document in each status can be deleted. \| Status \| Deletable \| Description \| \|--------\|-----------\|-------------\| \| `uploading` \| no \| The document upload is in process. \| \| `uploaded` \| no \| The document has been uploaded. \| \| `metadata_processing` \| no \| The initial processing is under way. \| \| `metadata_ready` \| yes \| The initial processing has been completed. \| \| `expired` \| yes \| The signature deadline has been reached. \| \| `certificating` \| no \| The document has been signed and is being certificated. \| \| `certificated` \| no \| The document is certificated. \| \| `rejected_by_signer` \| yes \| A signer declined signing the document. \| \| `pending_signature` \| yes \| The document is waiting for signatures. \| \| `rejected_by_user` \| yes \| The signature process was cancelled by a user. \| \| `failed` \| yes \| The document processing has failed. \|
+- **Contract notes:** The supported document statuses and whether a document in each status can be deleted.
+
+| Status | Deletable | Description |
+|---|---:|---|
+| `uploading` | no | The document upload is in process. |
+| `uploaded` | no | The document has been uploaded. |
+| `metadata_processing` | no | The initial processing is under way. |
+| `metadata_ready` | yes | The initial processing has been completed. |
+| `expired` | yes | The signature deadline has been reached. |
+| `certificating` | no | The document has been signed and is being certificated. |
+| `certificated` | no | The document is certificated. |
+| `rejected_by_signer` | yes | A signer declined signing the document. |
+| `pending_signature` | yes | The document is waiting for signatures. |
+| `rejected_by_user` | yes | The signature process was cancelled by a user. |
+| `failed` | yes | The document processing has failed. |
 
 Parameters: none.
 
@@ -1181,7 +1191,7 @@ Documented statuses: `200` A page of assignments; `401` Missing or invalid crede
 - **HTTP:** `POST /v1/documents/{documentId}/assignments`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Creates the assignment and dispatches configured signature requests.
-- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1.
+- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires signer IDs, validates the documented delivery-method values, and requires nonempty `entries` for `collect`. `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1. A `DigitalCertificate` signer must be alone in its step.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1324,7 +1334,14 @@ Documented statuses: `200` WhatsApp notifications; `401` Missing or invalid cred
 - **HTTP:** `POST /v1/documents/{documentId}/assignments/estimate-cost`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None persisted; calculates cost only.
-- **Contract notes:** Estimate the cost of creating an assignment without creating it, returning a cost breakdown and the current account balances. Signer IDs are not required — only the verification/notification method affects cost. Each assignment consumes 1 document from the plan allowance; if exhausted, an extra document is charged from credits (`needs_extra_document` = true). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments` or `InsufficientCredits`. ### Pricing Per-unit costs (in credits) used to build the estimate: \| Item \| Cost \| \|------\|------\| \| Extra document \| 1 credit \| \| Email notification \| 0 credits \| \| WhatsApp notification \| 0.45 credits \| \| Digital certificate signature (per signer) \| 2 credits \| A `DigitalCertificate` signer adds the digital-certificate signature cost **on top of** its notification cost; it appears in the `breakdown` under the `SignatureDigitalCertificate` code.
+- **Contract notes:** Estimate the cost of creating an assignment without creating it, returning a cost breakdown and the current account balances. Signer IDs and signing steps are not required and are omitted by the Java SDK; delivery-method values are validated. A virtual estimate requires at least one signer, while a collect estimate requires nonempty `entries`. Each assignment consumes one document from the plan allowance; if exhausted, an extra document is charged from credits (`needs_extra_document = true`). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments`, or `InsufficientCredits`. A `DigitalCertificate` signer adds its signature cost on top of its notification cost and appears in `breakdown` under `SignatureDigitalCertificate`.
+
+| Item | Cost |
+|---|---:|
+| Extra document | 1 credit |
+| Email notification | 0 credits |
+| WhatsApp notification | 0.45 credits |
+| Digital certificate signature (per signer) | 2 credits |
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1508,7 +1525,7 @@ Documented statuses: `200` Token sent; `500` Unexpected server error.
 - **HTTP:** `GET /v1/sign`
 - **Auth:** `signer-access-code` query credential
 - **Side effects:** Marks the signer document as viewed; otherwise read-only.
-- **Contract notes:** Retrieve the invited document using the signer access code and mark it viewed. A 409 means processing is still in progress. The documented has_accepted_terms query can record acceptance; PUT /v1/signers/accept-terms is the explicit alternative. The confirm-data request schema permits only full_name, email, and government_id, despite older prose that mentions terms acceptance there.
+- **Contract notes:** Retrieve the invited document using the signer access code and mark it viewed. A 409 means processing is still in progress. The `has_accepted_terms` query can record acceptance; `PUT /v1/signers/accept-terms` is the explicit alternative. Confirm-data accepts `full_name`, `email`, and `government_id`.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1800,7 +1817,15 @@ Documented statuses: `200` Code verified; `400` One or more fields failed valida
 - **HTTP:** `GET /v1/accounts/{accountId}/templates`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** List the templates of a workspace. The `status` field of a template is one of: \| Status \| Description \| \|--------\|-------------\| \| `uploading` \| The template is being uploaded. \| \| `uploaded` \| The template has been uploaded. \| \| `processing` \| The template is being processed. \| \| `ready` \| The template is ready to use. \| \| `failed` \| The template processing has failed. \|
+- **Contract notes:** List the templates of a workspace. The `status` field uses one of the values below.
+
+| Status | Description |
+|---|---|
+| `uploading` | The template is being uploaded. |
+| `uploaded` | The template has been uploaded. |
+| `processing` | The template is being processed. |
+| `ready` | The template is ready to use. |
+| `failed` | The template processing has failed. |
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2472,6 +2497,7 @@ Standard error wrapper. `status` mirrors the HTTP status code.
 | `government_id` | `string`? | no | yes |  |
 | `is_email_verified` | `boolean` | no | no |  |
 | `has_accepted_terms` | `boolean` | no | no |  |
+| `is_password_set` | `boolean` | no | no | Whether the user has configured a password. |
 | `created_at` | `string(date-time)` | no | no |  |
 | `to_be_deleted_at` | `string(date-time)`? | no | yes |  |
 
@@ -2557,7 +2583,7 @@ A document and its current lifecycle state.
 | `template_id` | `string`? | no | yes |  |
 | `name` | `string` | no | no |  |
 | `status` | `string` | no | no | Status code — see GET /v1/documents/statuses. |
-| `artifacts` | `object` | no | no | Artifact download URLs keyed by name (original, certificated, certificate-page, bundle). |
+| `artifacts` | [DocumentArtifacts](#documentartifacts) | no | no | Available artifact download URLs, including thumbnail and PAdES when applicable. |
 | `is_closed` | `boolean` | no | no |  |
 | `signing_url` | `string` | no | no |  |
 | `decline_reason` | `string`? | no | yes |  |
@@ -2872,7 +2898,7 @@ The verification result for a document looked up by signature hash. When not ver
 
 ### Schema: DocumentActivity
 
-A document activity/audit event.
+A document activity event.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
@@ -2908,7 +2934,7 @@ A JWT access token plus the authenticated user and the accounts they belong to.
 
 ### Schema: DocumentStatsRow
 
-One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or `YYYY-MM-DD` (daily); series are zero-filled, no gaps.
+One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or `YYYY-MM-DD` (daily); series are zero-filled, no gaps. Notification counters split requests by every channel used, so a request notified through multiple channels appears in each channel count. Verification counters are mutually exclusive and add up to `signature_requests`.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
@@ -2916,8 +2942,13 @@ One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or
 | `documents_uploaded` | `integer` | no | no |  |
 | `documents_sent` | `integer` | no | no |  |
 | `signature_requests` | `integer` | no | no |  |
-| `signature_requests_email` | `integer` | no | no |  |
-| `signature_requests_whatsapp` | `integer` | no | no |  |
+| `signature_requests_notification_email` | `integer` | no | no | Requests notified by email. |
+| `signature_requests_notification_whatsapp` | `integer` | no | no | Requests notified by WhatsApp. |
+| `signature_requests_notification_bypass` | `integer` | no | no | Requests with no notification sent (`Bypass`). |
+| `signature_requests_verification_email` | `integer` | no | no | Requests verified by an email token. |
+| `signature_requests_verification_whatsapp` | `integer` | no | no | Requests verified by a WhatsApp token. |
+| `signature_requests_verification_bypass` | `integer` | no | no | Requests signed without token verification (`Bypass`). |
+| `signature_requests_verification_digital_certificate` | `integer` | no | no | Requests signed with the signer's ICP-Brasil digital certificate. |
 | `signature_requests_viewed` | `integer` | no | no | Signature requests whose document was first viewed during the period. |
 | `signature_requests_completed` | `integer` | no | no | Signature requests completed by individual signers during the period. |
 | `documents_certified` | `integer` | no | no |  |
@@ -2938,20 +2969,118 @@ Owner-facing document notifications, keyed by notification type. `true` means th
 | `TemplateProcessingFailed` | `boolean` | no | no | A template could not be processed. |
 | `SignerWhatsappFailed` | `boolean` | no | no | A WhatsApp notification to a signer could not be delivered. |
 
-## Java-only helpers and compatibility extensions
+## Java convenience APIs
 
 - `DocumentResource: public DocumentDetails get(String documentId)` aliases `details`. `public DocumentDetails waitUntilReady(String documentId)`, `public DocumentDetails waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs)`, `public boolean isFullySigned(String documentId)`, and `public SigningProgress getSigningProgress(String documentId)` compose documented document reads locally.
-- `DocumentResource.download(String)` and `SignerResource.downloadDocument(...)` supply the `certificated` artifact default; signer-download overloads with an access code retain compatibility with deployments that require it.
-- `DocumentResource.upload(byte[], String, Map<String,Object>, String)` sends extra multipart `name` and optional `metadata` parts. The production OpenAPI declares only required `file`.
-- `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer creation/reuse, and assignment creation. It is not atomic and can leave successfully created resources if a later step fails.
-- `SignerResource: public Signer findByEmail(String email)` and `public Signer findByEmail(String email, String accountId)` are list/search conveniences. `SignerResource.create` reuses an exact email match before creating. `CreateSignerRequest.cpf` and `.metadata` send fields absent from the create-signer schema; the documented fields are `full_name`, `email`, and `whatsapp_phone_number`.
-- `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call `GET /accounts/{accountId}/templates/{templateId}`, which is absent from the production OpenAPI. Treat it as experimental until verified on the target deployment.
-- `WebhookResource: public void delete()` and `public void delete(String accountId)` call a compatibility DELETE subscription route and are deprecated; use `inactivate`. The deployed API returned 404 for the DELETE route during verification.
-- `DocumentResource: public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data)` is a deprecated alias; use `SignerResource.confirmSignerData`. `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`, although the production schema does not mark that property nullable.
-- `PublicDocumentResource.sendToken(String)` follows the OpenAPI optional/bodyless form. `sendToken(String, String)` adds sandbox-required `recipient` and `channel: "email"` beside documented `email`; `sendToken(String, String, String)` exposes the deployed channel form. Only `email` appears in the production schema.
-- `AssignmentResource.list(..., accountId)` can add the undocumented `accountId` query parameter for deployments that require explicit account context.
-- `CreateFieldRequest` retains deployed `is_active`, `is_read_only`, and `is_visible` properties that are absent from the production create-field schema. `UpdateFieldRequest` likewise retains deployed `type`, `is_required`, `is_read_only`, and `is_visible`; the production update-field schema declares only `name`, `regex`, and `is_active`.
-- Field validation overloads that add `signer-access-code` retain a deployed compatibility query input not declared on those production operations.
-- `SignerResource.uploadSignature` currently recognizes PNG and JPEG bytes; only `image/png` is declared by the production request content.
-- `WebhookResource.get` maps an undocumented runtime 404 to `null`; the production operation documents only 200, 401, and 500.
+- `DocumentResource.download(String)` and `SignerResource.downloadDocument(...)` supply the `certificated` artifact default; signer-download overloads also accept an access code for deployments that require it.
+- `DocumentResource.upload(byte[], String, Map<String,Object>, String)` sends multipart `file`, `name`, and optional `metadata` parts.
+- `DocumentResource.appendTagIds(...)` and `replaceTagIds(...)` resolve workspace tag IDs before
+  changing a document. The existing `appendTags(...)` and `replaceTags(...)` methods accept tag
+  names. Returned `Tag` records carry the attached-tag IDs accepted by `detachTag(...)`.
+- `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer resolution, and assignment creation. On an ordinary later-step failure, it attempts to delete the uploaded document and signer records whose create responses returned valid IDs; cleanup failures are suppressed on the original exception. Signers recovered after an indeterminate create response are not updated or deleted. A recovered entry containing CPF/CNPJ fails before assignment creation. If assignment creation has an indeterminate result and reconciliation cannot find it, the resources are retained to avoid deleting a potentially active request.
+- `SignerResource.create(...)` always sends the create POST. A supplied `CreateSignerRequest.cpf` (CPF or CNPJ) is persisted through a follow-up `government_id` update; if that update fails, the new signer is deleted. `CreateSignerRequest.metadata` is deprecated and is not sent. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
+- `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call the deployment extension `GET /accounts/{accountId}/templates/{templateId}`. Confirm endpoint support before using it.
+- `WebhookResource: public void delete()` and `public void delete(String accountId)` call an optional DELETE subscription route and are deprecated; use `inactivate`.
+- `DocumentResource: public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data)` is a deprecated alias; use `SignerResource.confirmSignerData`. `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`; use this form only where clearing expiration is supported.
+- `PublicDocumentResource.sendToken(String)` follows the optional/bodyless form, and `sendToken(String, String)` sends only `email`. The deployment-specific `sendToken(String, String, String)` sends `email`, `recipient`, and `channel` for the email channel, and `recipient` plus `channel` for other channels.
+- `AssignmentResource.list(..., accountId)` adds optional `accountId` query context.
+- `CreateFieldRequest` exposes optional deployment fields `is_active`, `is_read_only`, and `is_visible`. `UpdateFieldRequest` also exposes `type`, `is_required`, `is_read_only`, and `is_visible` for deployments that accept them.
+- Field validation overloads can add the deployment-specific `signer-access-code` query input.
+- `SignerResource.uploadSignature` accepts PNG or JPEG bytes. Use PNG unless the target tenant accepts JPEG uploads.
+- `WebhookResource.get` returns `null` when no subscription exists (HTTP 404).
+- `CreateWorkspaceRequest` and `UpdateWorkspaceRequest` expose optional deployment theme fields through `primaryColor` and `secondaryColor`; use `WorkspaceResource.getTheme` and the logo methods for the remaining branding operations.
 - `WebhookVerifier` implements optional out-of-band HMAC-SHA256 verification. Assinafy does not publish a webhook signature header or shared-secret scheme; do not treat it as platform authentication unless your tenant has a separate agreement.
+
+## SDK convenience payloads
+
+These Java types support composed or locally calculated helpers and are not standalone HTTP
+operation bodies unless stated otherwise.
+
+### `UploadAndRequestSignaturesRequest`
+
+Input to `AssinafyClient.uploadAndRequestSignatures(...)`. The client converts it into document,
+signer, and assignment requests.
+
+| Java property | Type | Required/default | Behavior |
+|---|---|---|---|
+| `fileData` | `byte[]` | required | PDF bytes passed to `documents().upload(...)`. |
+| `fileName` | `String` | required | Uploaded PDF file name. |
+| `signers` | `List<SignerEntry>` | at least one | Signers resolved in list order. |
+| `message` | `String` | optional | Assignment invitation message. |
+| `metadata` | `Map<String,Object>` | optional | Upload metadata multipart field. |
+| `waitForReady` | `boolean` | `true` | Poll before signer and assignment creation. |
+| `expiresAt` | `String` | optional | ISO-8601 assignment expiration timestamp; use whole-second UTC form such as `2026-12-31T23:59:59Z`. |
+| `copyReceivers` | `List<String>` | optional | Assignment copy recipients. |
+| `accountId` | `String` | client default | Explicit workspace account ID. |
+
+`SignerEntry` fields are `name` (required), `email`, `whatsappPhoneNumber`, `cpf`, and the deprecated
+local-only `metadata`. Each entry requires an email or WhatsApp number. Email entries reuse an exact
+case-insensitive match without replacing its name, phone, or CPF/CNPJ. When a signer create response
+returns a valid ID, a supplied CPF/CNPJ is persisted through the signer's `government_id` update.
+A signer recovered after an indeterminate create response is not updated or deleted; if the entry
+contains CPF/CNPJ, the workflow fails before assignment creation. Email-bearing entries
+must have unique addresses (case-insensitive); WhatsApp-only entries must have unique phone numbers
+(exact match). WhatsApp-only entries use `Whatsapp` verification and notification.
+Signer metadata is not sent.
+
+### `UploadAndRequestSignaturesResult`
+
+| Getter | Type | Meaning |
+|---|---|---|
+| `getDocument()` | `DocumentUploadResponse` | Uploaded document response. |
+| `getAssignment()` | `Assignment` | Created virtual assignment. |
+| `getSignerIds()` | `List<String>` | Resolved signer IDs in request order, whether created, reused, or recovered after an indeterminate response. |
+
+### `SigningProgress`
+
+Returned by `documents().getSigningProgress(documentId)` and calculated from the expanded
+assignment summary.
+
+| Getter | Type | Meaning |
+|---|---|---|
+| `getSigned()` | `int` | Completed signer count. |
+| `getTotal()` | `int` | Total signer count. |
+| `getPending()` | `int` | `max(total - signed, 0)`. |
+| `getPercentage()` | `double` | Completion percentage rounded to two decimal places; zero when total is zero. |
+
+### `PaginationMeta`
+
+| Response header | Getter | Meaning |
+|---|---|---|
+| `X-Pagination-Current-Page` | `getCurrentPage()` | Current page number. |
+| `X-Pagination-Page-Count` | `getLastPage()` | Total page count. |
+| `X-Pagination-Per-Page` | `getPerPage()` | Requested page size. |
+| `X-Pagination-Total-Count` | `getTotal()` | Total matching item count across every page. |
+
+`PaginatedResult.getMeta()` is `null` when a response supplies no pagination headers.
+
+### `WebhookPayload`
+
+Parsed by `WebhookVerifier.extractEvent(...)`. Unknown top-level fields remain available from
+`getAdditionalProperties()`.
+
+| JSON field | Java type | Meaning |
+|---|---|---|
+| `id` | `Long` | Activity/event ID. |
+| `event` | `String` | Event type code. |
+| `message` | `String` | Human-readable event message. |
+| `payload` | `Object` | Event-specific object, array, or null; `getPayload()` returns only object-shaped values. |
+| `origin` | `Map<String,Object>` | Origin IP and user-agent details when supplied. |
+| `created_at` | `Long` | Unix timestamp in seconds. |
+| `subject` | `Map<String,Object>` | Actor, including its `type` discriminator. |
+| `object` | `Map<String,Object>` | Entity affected by the event, including its `type` discriminator. |
+| `account_id` | `String` | Workspace account ID. |
+
+### `DocumentArtifacts`
+
+Document payloads expose available artifact URLs through `DocumentDetails.getArtifacts()` and
+`DocumentUploadResponse.getArtifacts()`.
+
+| JSON field | Getter | Availability |
+|---|---|---|
+| `original` | `getOriginal()` | Original uploaded PDF. |
+| `thumbnail` | `getThumbnail()` | First-page thumbnail after metadata processing. |
+| `certificated` | `getCertificated()` | Final certificated PDF. |
+| `certificate-page` | `getCertificatePage()` | Certificate page artifact. |
+| `pades` | `getPades()` | PAdES PDF for digital-certificate signing processes. |
+| `bundle` | `getBundle()` | ZIP bundle of available final artifacts. |

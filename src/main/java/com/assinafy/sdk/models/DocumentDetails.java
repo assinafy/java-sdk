@@ -34,7 +34,7 @@ public class DocumentDetails {
     @JsonProperty("assignment")
     private Assignment assignment;
 
-    // Legacy fields the current API does not populate (always null); use artifacts for links.
+    // Deprecated top-level download links; use artifacts for link discovery.
     @JsonProperty("download_url")
     private String downloadUrl;
 
@@ -176,8 +176,8 @@ public class DocumentDetails {
     public void setAssignment(Assignment assignment) { this.assignment = assignment; }
 
     /**
-     * @deprecated The current API does not populate this (always {@code null}). Download links live
-     * under {@link #getArtifacts()} ({@code original}/{@code thumbnail}/{@code certificated}/…).
+     * @deprecated Use {@link #getArtifacts()} for {@code original}, {@code thumbnail},
+     * {@code certificated}, and other download links.
      *
      * @return the download URL
      */
@@ -192,8 +192,7 @@ public class DocumentDetails {
     public void setDownloadUrl(String downloadUrl) { this.downloadUrl = downloadUrl; }
 
     /**
-     * @deprecated The current API does not populate this (always {@code null}). Use
-     * {@link #getArtifacts()} for download links.
+     * @deprecated Use {@link #getArtifacts()} for download links.
      *
      * @return the final-download URL
      */

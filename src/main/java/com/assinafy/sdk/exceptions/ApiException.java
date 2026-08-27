@@ -15,11 +15,15 @@ import java.util.Map;
  */
 public class ApiException extends AssinafyException {
 
+    private static final long serialVersionUID = 1L;
+
     /** API status code. */
     private final int statusCode;
     /** Decoded response data. */
+    @SuppressWarnings("serial") // Decoded API data may contain caller-defined value types.
     private final Object responseData;
     /** Normalized response headers. */
+    @SuppressWarnings("serial") // This immutable view is diagnostic state, not a wire format.
     private final Map<String, String> responseHeaders;
 
     /**

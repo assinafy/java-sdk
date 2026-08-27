@@ -20,7 +20,7 @@ public class AssinafyClientOptions {
     private String accountId;
     /** API endpoint. */
     private String baseUrl = DEFAULT_BASE_URL;
-    /** Webhook verification secret. */
+    /** Secret for an optional out-of-band webhook HMAC arrangement. */
     private String webhookSecret;
     /** Transport timeout. */
     private long timeoutMs = DEFAULT_TIMEOUT_MS;
@@ -71,17 +71,19 @@ public class AssinafyClientOptions {
     /**
      * Set the API endpoint.
      *
-     * @param baseUrl HTTP or HTTPS API base URL without a query or fragment
+     * @param baseUrl HTTPS API base URL without a query or fragment; HTTP is accepted only for a
+     *                loopback host used in local tests
      */
     public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
 
-    /** {@return the webhook signing secret, or {@code null} when verification is not configured} */
+    /** {@return the out-of-band webhook HMAC secret, or {@code null} when not configured} */
     public String getWebhookSecret() { return webhookSecret; }
 
     /**
-     * Set the webhook verification credential.
+     * Set a secret for tenants with an out-of-band HMAC-SHA256 webhook arrangement. Assinafy does
+     * not publish a platform webhook-signature scheme.
      *
-     * @param webhookSecret secret used to verify webhook signatures
+     * @param webhookSecret shared secret supplied by that separate arrangement
      */
     public void setWebhookSecret(String webhookSecret) { this.webhookSecret = webhookSecret; }
 
@@ -139,15 +141,16 @@ public class AssinafyClientOptions {
         /**
          * Set the API endpoint.
          *
-         * @param baseUrl HTTP or HTTPS API base URL without a query or fragment
+         * @param baseUrl HTTPS API base URL without a query or fragment; HTTP is accepted only for
+         *                a loopback host used in local tests
          * @return this builder
          */
         public Builder baseUrl(String baseUrl) { opts.setBaseUrl(baseUrl); return this; }
 
         /**
-         * Set the webhook verification credential.
+         * Set a secret for an out-of-band HMAC-SHA256 webhook arrangement.
          *
-         * @param webhookSecret secret used to verify webhook signatures
+         * @param webhookSecret shared secret supplied by that separate arrangement
          * @return this builder
          */
         public Builder webhookSecret(String webhookSecret) { opts.setWebhookSecret(webhookSecret); return this; }

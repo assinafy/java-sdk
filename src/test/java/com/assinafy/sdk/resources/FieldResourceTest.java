@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.helper.MockApiHttpClient.CapturedRequest;
 import com.assinafy.sdk.models.FieldDefinition;
 import com.assinafy.sdk.models.FieldType;
 import com.assinafy.sdk.models.FieldValidationResult;
@@ -130,5 +131,35 @@ class FieldResourceTest {
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/field-types");
         assertThat(types).hasSize(1);
         assertThat(types.get(0).getType()).isEqualTo("cpf");
+    }
+
+    @Test
+    void explicitAccountOverloadsRouteToRequestedAccount() {
+        mock.enqueue(200, FIELD_RESPONSE)
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, FIELD_RESPONSE)
+                .enqueue(200, FIELD_RESPONSE)
+                .enqueue(200, "{}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"success\":true}}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        resource.create(CreateFieldRequest.builder().type("text").name("Name").build(), "other");
+        resource.list(null, "other");
+        resource.get("f1", "other");
+        resource.update("f1", UpdateFieldRequest.builder().name("New Name").build(), "other");
+        resource.delete("f1", "other");
+        resource.validate("f1", "value", null, "other");
+        resource.validateMultiple(List.of(), null, "other");
+
+        assertThat(mock.getCaptured())
+                .extracting(CapturedRequest::getMethod, CapturedRequest::getPath)
+                .containsExactly(
+                        tuple("POST", "/accounts/other/fields"),
+                        tuple("GET", "/accounts/other/fields"),
+                        tuple("GET", "/accounts/other/fields/f1"),
+                        tuple("PUT", "/accounts/other/fields/f1"),
+                        tuple("DELETE", "/accounts/other/fields/f1"),
+                        tuple("POST", "/accounts/other/fields/f1/validate"),
+                        tuple("POST", "/accounts/other/fields/validate-multiple"));
     }
 }

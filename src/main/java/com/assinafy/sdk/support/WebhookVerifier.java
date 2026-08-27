@@ -28,9 +28,9 @@ import java.util.Map;
  * request is forged: it also returns {@code false} when no {@code webhookSecret} is configured,
  * when no signature is supplied, or when the platform simply sends no signature header. Do not
  * reject deliveries on {@code verify() == false} unless you have confirmed your tenant signs
- * webhooks with this exact scheme; otherwise authenticate deliveries another way (e.g. a secret
- * path/query token) and use {@link #extractEvent(String)} to parse the body. Pass the signature
- * header value verbatim (strip any {@code algo=} prefix yourself if one is present).
+ * webhooks with this exact scheme; otherwise apply authentication at a trusted network boundary
+ * and use {@link #extractEvent(String)} to parse the body. Pass the signature header value
+ * verbatim (strip any {@code algo=} prefix yourself if one is present).
  */
 public class WebhookVerifier {
 

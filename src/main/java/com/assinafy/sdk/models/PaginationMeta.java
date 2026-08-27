@@ -20,17 +20,17 @@ public class PaginationMeta {
     private Integer total;
 
     /**
-     * Creates an empty pagination metadata.
+     * Creates empty pagination metadata.
      */
     public PaginationMeta() {}
 
     /**
-     * Creates a pagination metadata.
+     * Creates pagination metadata.
      *
      * @param currentPage the current page
      * @param lastPage the last page
      * @param perPage the items per page
-     * @param total the total signer count
+     * @param total the total item count across all pages
      */
     public PaginationMeta(Integer currentPage, Integer lastPage, Integer perPage, Integer total) {
         this.currentPage = currentPage;
@@ -82,16 +82,16 @@ public class PaginationMeta {
     public void setPerPage(Integer perPage) { this.perPage = perPage; }
 
     /**
-     * Returns the total signer count.
+     * Returns the total item count across all pages.
      *
-     * @return the total signer count
+     * @return the total item count across all pages
      */
     public Integer getTotal() { return total; }
 
     /**
-     * Sets the total signer count.
+     * Sets the total item count across all pages.
      *
-     * @param total the total signer count
+     * @param total the total item count across all pages
      */
     public void setTotal(Integer total) { this.total = total; }
 }

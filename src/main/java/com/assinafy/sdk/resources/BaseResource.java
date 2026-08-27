@@ -242,6 +242,48 @@ public abstract class BaseResource {
     }
 
     /**
+     * Log diagnostic detail without allowing a logger failure to affect an API operation.
+     *
+     * @param message event message
+     * @param context structured event fields
+     */
+    protected void logDebug(String message, Map<String, Object> context) {
+        try {
+            logger.debug(message, context);
+        } catch (RuntimeException ignored) {
+            // Logging is diagnostic only.
+        }
+    }
+
+    /**
+     * Log operational information without allowing a logger failure to affect an API operation.
+     *
+     * @param message event message
+     * @param context structured event fields
+     */
+    protected void logInfo(String message, Map<String, Object> context) {
+        try {
+            logger.info(message, context);
+        } catch (RuntimeException ignored) {
+            // Logging is diagnostic only.
+        }
+    }
+
+    /**
+     * Log a warning without allowing a logger failure to affect an API operation.
+     *
+     * @param message event message
+     * @param context structured event fields
+     */
+    protected void logWarn(String message, Map<String, Object> context) {
+        try {
+            logger.warn(message, context);
+        } catch (RuntimeException ignored) {
+            // Logging is diagnostic only.
+        }
+    }
+
+    /**
      * Serialize a request value to JSON.
      *
      * @param obj request value

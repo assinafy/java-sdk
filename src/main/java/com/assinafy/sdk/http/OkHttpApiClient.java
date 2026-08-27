@@ -39,7 +39,8 @@ public class OkHttpApiClient implements ApiHttpClient {
     /**
      * Create an OkHttp transport.
      *
-     * @param baseUrl HTTP or HTTPS API base URL without a query or fragment
+     * @param baseUrl HTTPS API base URL without a query or fragment; HTTP is accepted only for a
+     *                loopback host used in local tests
      * @param apiKey API key sent in {@code X-Api-Key}, or {@code null}
      * @param token bearer token used when {@code apiKey} is blank, or {@code null}
      * @param timeoutMs positive call, connection, read, and write timeout in milliseconds
@@ -200,16 +201,25 @@ public class OkHttpApiClient implements ApiHttpClient {
             }
             MediaType contentType = responseBody.contentType();
             byte[] bytes = responseBody.bytes();
-            if (contentType != null && (contentType.subtype().equalsIgnoreCase("json")
-                    || contentType.subtype().toLowerCase(Locale.ROOT).endsWith("+json"))) {
-                Object parsed = parseErrorBody(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
-                if (parsed instanceof Map<?, ?> map && map.get("status") instanceof Number status
-                        && (status.intValue() < 200 || status.intValue() >= 300)) {
-                    throw ApiException.fromResponse(status.intValue(), parsed, headers);
-                }
+            boolean declaredJson = contentType != null && (contentType.subtype().equalsIgnoreCase("json")
+                    || contentType.subtype().toLowerCase(Locale.ROOT).endsWith("+json"));
+            Object parsed = declaredJson
+                    ? parseErrorBody(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+                    : parseJsonObject(bytes);
+            if (parsed instanceof Map<?, ?> map && map.get("status") instanceof Number status
+                    && (status.intValue() < 200 || status.intValue() >= 300)) {
+                throw ApiException.fromResponse(status.intValue(), parsed, headers);
             }
             return bytes;
         }
+    }
+
+    private static Object parseJsonObject(byte[] bytes) {
+        int index = 0;
+        while (index < bytes.length && (bytes[index] == ' ' || bytes[index] == '\t'
+                || bytes[index] == '\r' || bytes[index] == '\n')) index++;
+        if (index >= bytes.length || bytes[index] != '{') return null;
+        return parseErrorBody(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /** Parse a binary-endpoint error body into a Map (for a useful message), falling back to the raw text. */
@@ -273,7 +283,7 @@ public class OkHttpApiClient implements ApiHttpClient {
                     "baseUrl must be an HTTP(S) URL without credentials, query, or fragment");
         }
         String host = parsed.host();
-        boolean loopback = host.equals("localhost") || host.startsWith("127.") || host.equals("::1");
+        boolean loopback = host.equals("localhost") || host.equals("127.0.0.1") || host.equals("::1");
         if (!parsed.isHttps() && !loopback) {
             throw new IllegalArgumentException("baseUrl must use HTTPS except for loopback testing");
         }

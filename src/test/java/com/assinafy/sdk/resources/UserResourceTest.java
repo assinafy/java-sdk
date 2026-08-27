@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.NotificationPreferences;
@@ -42,7 +43,7 @@ class UserResourceTest {
     }
 
     @Test
-    void acceptsSchemaValidEmptyUpdateAndRejectsUnknownKeys() {
+    void passesThroughEmptyUpdateAndRejectsUnknownKeys() {
         MockApiHttpClient http = new MockApiHttpClient().enqueue(200, RESPONSE);
         UserResource users = new UserResource(http);
 
@@ -50,6 +51,18 @@ class UserResourceTest {
         assertThat(http.lastCaptured().getJsonBody()).isEqualTo("{}");
         assertThatThrownBy(() -> users.updateNotificationPreferences(Map.of("Unknown", true)))
                 .isInstanceOf(ValidationException.class);
+        assertThat(http.capturedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void rejectsEmptyAuthenticatedUserPayload() {
+        MockApiHttpClient http = new MockApiHttpClient()
+                .enqueue(200, "{\"status\":200,\"data\":null}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"user\":null,\"accounts\":[]}}");
+        UserResource users = new UserResource(http);
+
+        assertThatThrownBy(users::get).isExactlyInstanceOf(AssinafyException.class);
+        assertThatThrownBy(users::get).isExactlyInstanceOf(AssinafyException.class);
     }
 
     @Test

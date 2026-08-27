@@ -111,8 +111,7 @@ public class WorkspaceResource extends BaseResource {
      * Delete a workspace. When {@code force} is {@code true} the API cancels any active paid
      * subscription on the workspace and proceeds with immediate deletion; this sends the documented
      * {@code {"force": true}} request body. The default ({@code force = false}) path issues a plain
-     * bodyless DELETE (the historical, verified behaviour), which the server already treats as
-     * {@code force = false}.
+     * bodyless DELETE, which the server treats as {@code force = false}.
      *
      * @param accountId account ID
      * @param force whether to cancel a blocking paid subscription and force deletion
@@ -151,7 +150,10 @@ public class WorkspaceResource extends BaseResource {
     /**
      * {@code GET /accounts/{accountId}/stats} — return document funnel KPIs. Each row is
      * {@code {period, documents_uploaded, documents_sent, signature_requests,
-     * signature_requests_email, signature_requests_whatsapp, signature_requests_viewed,
+     * signature_requests_notification_email, signature_requests_notification_whatsapp,
+     * signature_requests_notification_bypass, signature_requests_verification_email,
+     * signature_requests_verification_whatsapp, signature_requests_verification_bypass,
+     * signature_requests_verification_digital_certificate, signature_requests_viewed,
      * signature_requests_completed, documents_certified}}.
      *
      * @param accountId account whose statistics to return

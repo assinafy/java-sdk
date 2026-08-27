@@ -125,17 +125,18 @@ public class Signer {
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
     /**
-     * Returns the CPF.
-     *
-     * @return the CPF
+     * @deprecated Signer responses do not provide this value. Use
+     * {@code UpdateSignerRequest.governmentId(...)} when updating a signer.
+     * @return a retained CPF/CNPJ response value, or {@code null}
      */
+    @Deprecated
     public String getCpf() { return cpf; }
 
     /**
-     * Sets the CPF.
-     *
-     * @param cpf the CPF
+     * @deprecated Retained for decoding older response payloads.
+     * @param cpf the retained CPF/CNPJ value
      */
+    @Deprecated
     public void setCpf(String cpf) { this.cpf = cpf; }
 
     /**
@@ -195,16 +196,16 @@ public class Signer {
     public void setIsSignatureReusable(Boolean isSignatureReusable) { this.isSignatureReusable = isSignatureReusable; }
 
     /**
-     * Returns the metadata.
-     *
-     * @return the metadata
+     * @deprecated Signer responses do not provide metadata.
+     * @return retained signer metadata, or {@code null}
      */
+    @Deprecated
     public Map<String, Object> getMetadata() { return metadata; }
 
     /**
-     * Sets the metadata.
-     *
-     * @param metadata the metadata
+     * @deprecated Retained for decoding older response payloads.
+     * @param metadata retained signer metadata
      */
+    @Deprecated
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
 }

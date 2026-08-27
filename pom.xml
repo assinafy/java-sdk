@@ -6,7 +6,7 @@
 
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.5.1</version>
+    <version>1.5.2</version>
     <packaging>jar</packaging>
 
     <name>Assinafy Java SDK</name>
@@ -20,6 +20,13 @@
         </license>
     </licenses>
 
+    <scm>
+        <connection>scm:git:https://github.com/assinafy/java-sdk.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/assinafy/java-sdk.git</developerConnection>
+        <url>https://github.com/assinafy/java-sdk</url>
+        <tag>HEAD</tag>
+    </scm>
+
     <distributionManagement>
         <repository>
             <id>github</id>
@@ -32,7 +39,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <project.build.outputTimestamp>2026-08-20T00:00:00Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2026-08-26T00:00:00Z</project.build.outputTimestamp>
 
         <okhttp.version>5.5.0</okhttp.version>
         <jackson.version>2.22.2</jackson.version>
@@ -83,7 +90,7 @@
 
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>mockwebserver</artifactId>
+            <artifactId>mockwebserver3</artifactId>
             <version>${okhttp.version}</version>
             <scope>test</scope>
         </dependency>
@@ -97,6 +104,18 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${project.basedir}</directory>
+                <targetPath>META-INF</targetPath>
+                <includes>
+                    <include>LICENSE</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -114,6 +133,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.15.0</version>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-Xlint:all</arg>
+                        <arg>-Werror</arg>
+                    </compilerArgs>
+                </configuration>
             </plugin>
 
             <plugin>
@@ -125,6 +150,9 @@
                         <manifest>
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                         </manifest>
+                        <manifestEntries>
+                            <Automatic-Module-Name>com.assinafy.sdk</Automatic-Module-Name>
+                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>
@@ -184,7 +212,7 @@
                         <configuration>
                             <rules>
                                 <requireMavenVersion>
-                                    <version>[3.9,)</version>
+                                    <version>[3.9.16,4)</version>
                                 </requireMavenVersion>
                                 <requireJavaVersion>
                                     <version>[25,26)</version>

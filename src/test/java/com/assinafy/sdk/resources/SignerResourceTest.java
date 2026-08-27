@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.PaginatedResult;
@@ -72,28 +73,26 @@ class SignerResourceTest {
 
     @Test
     void usesCustomAccountIdWhenProvided() {
-        mock.enqueue(200, EMPTY_LIST)
-            .enqueue(200, SIGNER_123);
+        mock.enqueue(200, SIGNER_123);
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("Test")
                 .email("test@example.invalid")
                 .build(), "custom-account");
 
-        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/custom-account/signers");
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/custom-account/signers");
     }
 
     @Test
     void usesDefaultAccountIdWhenCustomNotProvided() {
-        mock.enqueue(200, EMPTY_LIST)
-            .enqueue(200, SIGNER_123);
+        mock.enqueue(200, SIGNER_123);
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("Test")
                 .email("test@example.invalid")
                 .build());
 
-        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/test-account/signers");
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/test-account/signers");
     }
 
     @Test
@@ -157,12 +156,13 @@ class SignerResourceTest {
     }
 
     @Test
-    void createReusesExistingSignerByEmail() {
+    void findOrCreateReusesExistingSignerByEmail() {
         mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"John\",\"email\":\"john@example.com\"}]}");
 
-        Signer result = resource.create(CreateSignerRequest.builder()
+        Signer result = resource.findOrCreate(CreateSignerRequest.builder()
                 .fullName("John")
                 .email("john@example.com")
+                .cpf("123.456.789-00")
                 .build());
 
         assertThat(result.getId()).isEqualTo("existing");
@@ -171,8 +171,7 @@ class SignerResourceTest {
 
     @Test
     void createMapsPhoneToWhatsappPhoneNumber() {
-        mock.enqueue(200, EMPTY_LIST)
-            .enqueue(200, SIGNER_123);
+        mock.enqueue(200, SIGNER_123);
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
@@ -180,7 +179,7 @@ class SignerResourceTest {
                 .phone("+5548999990000")
                 .build());
 
-        String body = mock.capturedAt(1).getJsonBody();
+        String body = mock.capturedAt(0).getJsonBody();
         assertThat(body).contains("whatsapp_phone_number");
         assertThat(body).contains("+5548999990000");
         assertThat(body).doesNotContain("\"phone\"");
@@ -206,9 +205,25 @@ class SignerResourceTest {
     }
 
     @Test
-    void signMultipleRequiresDocumentIds() {
-        assertThatThrownBy(() -> resource.signMultiple("code", java.util.List.of()))
+    void signMultiplePassesThroughSchemaValidEmptyAndBlankDocumentIds() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        resource.signMultiple("code", java.util.List.of());
+        resource.signMultiple("code", java.util.List.of(" "));
+
+        assertThat(mock.capturedAt(0).getJsonBody()).isEqualTo("{\"document_ids\":[]}");
+        assertThat(mock.capturedAt(1).getJsonBody()).isEqualTo("{\"document_ids\":[\" \"]}");
+    }
+
+    @Test
+    void signMultipleRejectsNullDocumentIds() {
+        assertThatThrownBy(() -> resource.signMultiple("code", null))
                 .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> resource.signMultiple("code",
+                java.util.Arrays.asList("d1", null)))
+                .isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isZero();
     }
 
     @Test
@@ -232,18 +247,24 @@ class SignerResourceTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void createNormalisesCpfByStrippingNonDigits() {
-        mock.enqueue(200, EMPTY_LIST)
-            .enqueue(200, SIGNER_123);
+        mock.enqueue(200, SIGNER_123).enqueue(200, SIGNER_123);
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
                 .email("john@example.com")
                 .cpf("123.456.789-00")
+                .metadata(Map.of("source", "test"))
                 .build());
 
-        String body = mock.capturedAt(1).getJsonBody();
-        assertThat(body).contains("\"cpf\":\"12345678900\"");
+        assertThat(mock.capturedAt(0).getJsonBody())
+                .doesNotContain("cpf", "government_id", "metadata");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("PUT");
+        assertThat(mock.capturedAt(1).getPath())
+                .isEqualTo("/accounts/test-account/signers/123");
+        assertThat(mock.capturedAt(1).getJsonBody())
+                .contains("\"government_id\":\"12345678900\"");
     }
 
     @Test
@@ -282,8 +303,7 @@ class SignerResourceTest {
 
     @Test
     void createWithoutEmailPostsDirectlyWithoutLookup() {
-        // email is optional per the API: a WhatsApp-only signer must be creatable, and
-        // create() must skip the findByEmail dedupe pre-check when no email is supplied.
+        // Email is optional per the API: a WhatsApp-only signer must be creatable.
         mock.enqueue(200, SIGNER_123);
 
         Signer signer = resource.create(CreateSignerRequest.builder()
@@ -299,11 +319,52 @@ class SignerResourceTest {
     }
 
     @Test
+    void createWithEmailAlwaysPostsWithoutLookup() {
+        mock.enqueue(200, SIGNER_123);
+
+        resource.create(CreateSignerRequest.builder()
+                .fullName("John")
+                .email("john@example.com")
+                .build());
+
+        assertThat(mock.capturedCount()).isEqualTo(1);
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/test-account/signers");
+    }
+
+    @Test
     void createRequiresFullName() {
         assertThatThrownBy(() -> resource.create(CreateSignerRequest.builder()
                 .email("john@example.com")
                 .build()))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void createRequiresNonblankIdInSuccessfulResponse() {
+        mock.enqueue(200, "{\"status\":200,\"data\":null}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\" \"}}");
+        CreateSignerRequest request = CreateSignerRequest.builder().fullName("John").build();
+
+        assertThatThrownBy(() -> resource.create(request))
+                .isExactlyInstanceOf(AssinafyException.class)
+                .hasMessageContaining("no signer ID");
+        assertThatThrownBy(() -> resource.create(request))
+                .isExactlyInstanceOf(AssinafyException.class)
+                .hasMessageContaining("no signer ID");
+    }
+
+    @Test
+    void updateRequiresNonblankIdInSuccessfulResponse() {
+        mock.enqueue(200, "{\"status\":200,\"data\":null}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\" \"}}");
+
+        assertThatThrownBy(() -> resource.update("123", UpdateSignerRequest.builder().build()))
+                .isExactlyInstanceOf(AssinafyException.class)
+                .hasMessageContaining("no signer ID");
+        assertThatThrownBy(() -> resource.update("123", UpdateSignerRequest.builder().build()))
+                .isExactlyInstanceOf(AssinafyException.class)
+                .hasMessageContaining("no signer ID");
     }
 
     @Test
@@ -333,5 +394,18 @@ class SignerResourceTest {
     void declineMultipleRequiresReason() {
         assertThatThrownBy(() -> resource.declineMultiple("code", java.util.List.of("d1"), ""))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void declineMultiplePassesThroughBlankDocumentIdsAndRejectsNullItems() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        resource.declineMultiple("code", java.util.List.of(" "), "no");
+
+        assertThat(mock.lastCaptured().getJsonBody()).contains("\"document_ids\":[\" \"]");
+        assertThatThrownBy(() -> resource.declineMultiple("code",
+                java.util.Arrays.asList("d1", null), "no"))
+                .isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isEqualTo(1);
     }
 }

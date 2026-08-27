@@ -10,6 +10,8 @@ import java.util.Map;
  */
 public class RateLimitException extends ApiException {
 
+    private static final long serialVersionUID = 1L;
+
     /**
      * Create a rate-limit exception without response headers or an underlying cause.
      *

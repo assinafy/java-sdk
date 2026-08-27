@@ -9,7 +9,7 @@ import com.assinafy.sdk.request.ListParams;
 
 import java.util.Map;
 
-/** Lists account templates and retains an experimental single-template compatibility lookup. */
+/** Lists account templates and provides an optional single-template deployment lookup. */
 public class TemplateResource extends BaseResource {
 
     /**
@@ -70,10 +70,8 @@ public class TemplateResource extends BaseResource {
     /**
      * Fetch a single template by ID.
      *
-     * <p>Note: the API reference documents the template <em>list</em> endpoint and describes
-     * the single-template object as returned by {@code GET /accounts/{account_id}/templates/{template_id}},
-     * but does not give that path its own endpoint specification. It is exposed here for
-     * completeness; verify availability against your account before relying on it.
+     * <p>The single-template deployment route may be unavailable; confirm support before relying
+     * on it.
      *
      * @param templateId template ID
      * @return the template
@@ -83,7 +81,7 @@ public class TemplateResource extends BaseResource {
     }
 
     /**
-     * Fetch one template through the extra-contract compatibility route.
+     * Fetch one template through an optional deployment route.
      *
      * @param templateId template ID
      * @param accountId explicit account ID, or {@code null} for the default

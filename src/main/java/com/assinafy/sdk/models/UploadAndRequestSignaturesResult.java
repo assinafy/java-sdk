@@ -16,7 +16,7 @@ public class UploadAndRequestSignaturesResult {
      *
      * @param document the uploaded document
      * @param assignment the created assignment
-     * @param signerIds IDs of the created signers
+     * @param signerIds IDs of the resolved signers, whether created or reused
      */
     public UploadAndRequestSignaturesResult(DocumentUploadResponse document, Assignment assignment, List<String> signerIds) {
         this.document = document;
@@ -39,9 +39,9 @@ public class UploadAndRequestSignaturesResult {
     public Assignment getAssignment() { return assignment; }
 
     /**
-     * Returns the created signer IDs.
+     * Returns the resolved signer IDs in request order.
      *
-     * @return signer IDs
+     * @return IDs of signers created or reused by the workflow
      */
     public List<String> getSignerIds() { return signerIds; }
 }

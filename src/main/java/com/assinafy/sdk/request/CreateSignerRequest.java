@@ -21,17 +21,18 @@ public class CreateSignerRequest {
     private String whatsappPhoneNumber;
 
     /**
-     * Brazilian CPF (non-digits are stripped before sending). Sent for parity with the PHP/TS
-     * SDKs; note the documented signer contract is {@code full_name}/{@code email}/
-     * {@code whatsapp_phone_number} only, and the current API does not persist or return CPF.
+     * Brazilian CPF or CNPJ. After signer creation, {@code SignerResource.create} stores this value
+     * through the signer update operation's {@code government_id} field; non-digits are stripped
+     * there.
      */
     @JsonProperty("cpf")
     private String cpf;
 
     /**
-     * Arbitrary metadata. Sent as-is; note the current signer API does not persist or return
-     * metadata (it is silently ignored), so do not rely on reading it back from a {@code Signer}.
+     * @deprecated Signers have no persisted metadata field. This value remains available for source
+     * compatibility but is not sent by {@code SignerResource.create}.
      */
+    @Deprecated
     @JsonProperty("metadata")
     private Map<String, Object> metadata;
 
@@ -92,31 +93,31 @@ public class CreateSignerRequest {
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
     /**
-     * Returns the CPF.
+     * Returns the CPF or CNPJ.
      *
-     * @return the CPF
+     * @return the CPF or CNPJ
      */
     public String getCpf() { return cpf; }
 
     /**
-     * Sets the CPF.
+     * Sets the CPF or CNPJ.
      *
-     * @param cpf the CPF
+     * @param cpf the CPF or CNPJ
      */
     public void setCpf(String cpf) { this.cpf = cpf; }
 
     /**
-     * Returns the metadata.
-     *
-     * @return the metadata
+     * @deprecated Signer metadata is not sent or persisted.
+     * @return the retained local metadata value
      */
+    @Deprecated
     public Map<String, Object> getMetadata() { return metadata; }
 
     /**
-     * Sets the metadata.
-     *
-     * @param metadata the metadata
+     * @deprecated Signer metadata is not sent or persisted.
+     * @param metadata the local metadata value
      */
+    @Deprecated
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
 
     /**
@@ -161,19 +162,19 @@ public class CreateSignerRequest {
         public Builder phone(String phone) { req.setWhatsappPhoneNumber(phone); return this; }
 
         /**
-         * Sets the CPF for the object being built.
+         * Sets the CPF or CNPJ for the object being built.
          *
-         * @param cpf the CPF
+         * @param cpf the CPF or CNPJ
          * @return this builder
          */
         public Builder cpf(String cpf) { req.setCpf(cpf); return this; }
 
         /**
-         * Sets the metadata for the object being built.
-         *
-         * @param metadata the metadata
+         * @deprecated Signer metadata is not sent or persisted.
+         * @param metadata the local metadata value
          * @return this builder
          */
+        @Deprecated
         public Builder metadata(Map<String, Object> metadata) { req.setMetadata(metadata); return this; }
 
         /**
