@@ -2,21 +2,23 @@ package com.assinafy.sdk.it;
 
 import com.assinafy.sdk.AssinafyClient;
 import com.assinafy.sdk.AssinafyClientOptions;
+import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.NetworkException;
+import com.assinafy.sdk.exceptions.RateLimitException;
 import com.assinafy.sdk.models.ApiKey;
 import com.assinafy.sdk.models.Assignment;
-import com.assinafy.sdk.models.DocumentListItem;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.DocumentStatusInfo;
-import com.assinafy.sdk.models.DocumentUploadResponse;
 import com.assinafy.sdk.models.FieldDefinition;
 import com.assinafy.sdk.models.FieldType;
 import com.assinafy.sdk.models.FieldValidationResult;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.models.Tag;
-import com.assinafy.sdk.models.TemplateListItem;
+import com.assinafy.sdk.models.Template;
 import com.assinafy.sdk.models.UploadAndRequestSignaturesResult;
 import com.assinafy.sdk.models.WebhookEventTypeInfo;
-import com.assinafy.sdk.models.WorkspaceListItem;
+import com.assinafy.sdk.models.Workspace;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.CreateFieldRequest;
 import com.assinafy.sdk.request.CreateSignerRequest;
@@ -24,12 +26,9 @@ import com.assinafy.sdk.request.CreateTagRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RenameTagRequest;
 import com.assinafy.sdk.request.SignerReference;
-import com.assinafy.sdk.request.UpdateSignerRequest;
 import com.assinafy.sdk.request.UpdateFieldRequest;
+import com.assinafy.sdk.request.UpdateSignerRequest;
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
-import com.assinafy.sdk.exceptions.ApiException;
-import com.assinafy.sdk.exceptions.NetworkException;
-import com.assinafy.sdk.exceptions.RateLimitException;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -100,10 +99,10 @@ class LiveApiSmokeIT {
     @Test
     @Order(1)
     void listsWorkspacesIncludesTheConfiguredAccount() {
-        PaginatedResult<WorkspaceListItem> result = client.workspaces().list();
+        PaginatedResult<Workspace> result = client.workspaces().list();
         assertThat(result.getData()).isNotEmpty();
         assertThat(result.getData())
-                .extracting(WorkspaceListItem::getId)
+                .extracting(Workspace::getId)
                 .contains(accountId);
     }
 
@@ -118,7 +117,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(3)
     void listsDocumentsWithPaginationMeta() {
-        PaginatedResult<DocumentListItem> result =
+        PaginatedResult<Document> result =
                 client.documents().list(ListParams.builder().perPage(2).page(1).build());
         // Even with empty data the meta should be populated when per-page works correctly.
         assertThat(result.getMeta()).as("pagination meta proves per-page is honored").isNotNull();
@@ -136,7 +135,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(5)
     void listsTemplates() {
-        PaginatedResult<TemplateListItem> templates = client.templates().list();
+        PaginatedResult<Template> templates = client.templates().list();
         // Workspaces may have zero templates; just check it doesn't error.
         assertThat(templates.getData()).isNotNull();
     }
@@ -199,7 +198,7 @@ class LiveApiSmokeIT {
                     documentId.get(), fileName, documentCreateAttempted.get()));
             cleanup.add(() -> deleteTag(tagId.get(), tagName, tagCreateAttempted.get()));
             documentCreateAttempted.set(true);
-            DocumentUploadResponse doc = client.documents().upload(pdf, fileName);
+            Document doc = client.documents().upload(pdf, fileName);
             documentId.set(doc.getId());
             assertThat(doc.getId()).isNotBlank();
             // Wait for status to advance past 'uploading' or 'metadata_processing'.
@@ -457,7 +456,7 @@ class LiveApiSmokeIT {
             cleanup.add(() -> deleteDocument(
                     documentId.get(), fileName, documentCreateAttempted.get()));
             documentCreateAttempted.set(true);
-            DocumentUploadResponse document = client.documents().upload(minimalPdf(), fileName);
+            Document document = client.documents().upload(minimalPdf(), fileName);
             documentId.set(document.getId());
             client.documents().waitUntilReady(document.getId(), 30_000, 1_500);
 
@@ -569,7 +568,7 @@ class LiveApiSmokeIT {
     void leavesNoNamedSandboxTestResources() {
         assertThat(client.documents().search(
                         ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
-                .extracting(DocumentListItem::getName)
+                .extracting(Document::getName)
                 .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
         assertThat(client.tags().list(
                         ListParams.builder().search("sdk-it-").perPage(100).build()).getData())

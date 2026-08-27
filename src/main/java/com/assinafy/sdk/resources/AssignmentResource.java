@@ -6,27 +6,25 @@ import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
 import com.assinafy.sdk.models.CostEstimate;
-import com.assinafy.sdk.models.DocumentDetails;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.ResendNotificationResponse;
 import com.assinafy.sdk.models.WhatsappNotification;
+import com.assinafy.sdk.models.enums.AssignmentMethod;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /** Assignment creation, cost estimation, notification, and signer-facing operations. */
 public class AssignmentResource extends BaseResource {
 
-    private static final Set<String> VERIFICATION_METHODS =
-            Set.of("Email", "Whatsapp", "DigitalCertificate");
-    private static final Set<String> NOTIFICATION_METHODS = Set.of("Email", "Whatsapp");
+    private static final String VIRTUAL = AssignmentMethod.VIRTUAL.getValue();
+    private static final String COLLECT = AssignmentMethod.COLLECT.getValue();
 
     /**
      * Create assignment operations with a default account and logger.
@@ -250,8 +248,8 @@ public class AssignmentResource extends BaseResource {
         requireId(declineReason, "Decline reason");
         String json = serialise(Map.of("decline_reason", declineReason));
         return callMap("Failed to decline assignment",
-                () -> http.put(
-                        "/documents/" + docId + "/assignments/" + asgId + "/reject?signer-access-code=" + encode(signerAccessCode),
+                () -> http.put(withAccessCode(
+                        "/documents/" + docId + "/assignments/" + asgId + "/reject", signerAccessCode),
                         json));
     }
 
@@ -306,7 +304,7 @@ public class AssignmentResource extends BaseResource {
      * @param signerAccessCode signer invitation access code
      * @return typed document and assignment data
      */
-    public DocumentDetails getForSignerTyped(String signerAccessCode) {
+    public Document getForSignerTyped(String signerAccessCode) {
         return getForSignerTyped(signerAccessCode, null);
     }
 
@@ -321,7 +319,7 @@ public class AssignmentResource extends BaseResource {
      */
     public Map<String, Object> getForSigner(String signerAccessCode, Boolean hasAcceptedTerms) {
         requireId(signerAccessCode, "Signer access code");
-        String path = "/sign?signer-access-code=" + encode(signerAccessCode);
+        String path = withAccessCode("/sign", signerAccessCode);
         if (hasAcceptedTerms != null) path += "&has_accepted_terms=" + hasAcceptedTerms;
         String finalPath = path;
         return callMap("Failed to fetch signer assignment",
@@ -335,8 +333,8 @@ public class AssignmentResource extends BaseResource {
      * @param hasAcceptedTerms optional terms-acceptance flag
      * @return typed document and assignment data
      */
-    public DocumentDetails getForSignerTyped(String signerAccessCode, Boolean hasAcceptedTerms) {
-        return ResponseHandler.convert(getForSigner(signerAccessCode, hasAcceptedTerms), DocumentDetails.class);
+    public Document getForSignerTyped(String signerAccessCode, Boolean hasAcceptedTerms) {
+        return ResponseHandler.convert(getForSigner(signerAccessCode, hasAcceptedTerms), Document.class);
     }
 
     /**
@@ -359,8 +357,8 @@ public class AssignmentResource extends BaseResource {
         validateSigningItems(items);
         String json = serialise(items);
         return callMap("Failed to submit signature",
-                () -> http.post(
-                        "/documents/" + docId + "/assignments/" + asgId + "?signer-access-code=" + encode(signerAccessCode),
+                () -> http.post(withAccessCode(
+                        "/documents/" + docId + "/assignments/" + asgId, signerAccessCode),
                         json));
     }
 
@@ -369,17 +367,15 @@ public class AssignmentResource extends BaseResource {
             throw new ValidationException("Assignment request is required");
         }
         String method = request.getMethod();
-        if (method != null && !method.equals("virtual") && !method.equals("collect")) {
-            throw new ValidationException("Assignment method must be virtual or collect");
-        }
+        SigningRules.validateMethod(method);
         List<SignerReference> signers = request.getSigners();
         if (!estimate && (signers == null || signers.isEmpty())) {
             throw new ValidationException("At least one signer is required");
         }
-        if (estimate && "virtual".equals(method) && (signers == null || signers.isEmpty())) {
+        if (estimate && VIRTUAL.equals(method) && (signers == null || signers.isEmpty())) {
             throw new ValidationException("At least one signer is required for a virtual estimate");
         }
-        if ("collect".equals(method)
+        if (COLLECT.equals(method)
                 && (request.getEntries() == null || request.getEntries().isEmpty())) {
             throw new ValidationException("At least one entry is required for a collect assignment");
         }
@@ -390,7 +386,7 @@ public class AssignmentResource extends BaseResource {
         if (!estimate) validateSignerSteps(signers);
 
         Map<String, Object> body = new HashMap<>();
-        if (method != null || !estimate) body.put("method", method != null ? method : "virtual");
+        if (method != null || !estimate) body.put("method", method != null ? method : VIRTUAL);
         if (!normalisedSigners.isEmpty() || !estimate) body.put("signers", normalisedSigners);
         if (request.getEntries() != null) body.put("entries", request.getEntries());
         if (!estimate) {
@@ -410,7 +406,7 @@ public class AssignmentResource extends BaseResource {
             }
             map.put("id", ref.getId());
         }
-        validateDeliveryMethods(ref.getVerificationMethod(), ref.getNotificationMethods());
+        SigningRules.validateDeliveryMethods(ref.getVerificationMethod(), ref.getNotificationMethods());
         if (ref.getVerificationMethod() != null) map.put("verification_method", ref.getVerificationMethod());
         if (ref.getNotificationMethods() != null) map.put("notification_methods", ref.getNotificationMethods());
         if (!allowWithoutId && ref.getStep() != null) {
@@ -420,45 +416,10 @@ public class AssignmentResource extends BaseResource {
         return map;
     }
 
-    private static void validateDeliveryMethods(String verificationMethod, List<String> notificationMethods) {
-        if (verificationMethod != null && !VERIFICATION_METHODS.contains(verificationMethod)) {
-            throw new ValidationException("Verification method must be Email, Whatsapp, or DigitalCertificate");
-        }
-        if (notificationMethods != null && notificationMethods.stream().anyMatch(
-                method -> method == null || !NOTIFICATION_METHODS.contains(method))) {
-            throw new ValidationException("Notification methods must contain Email or Whatsapp");
-        }
-    }
-
     private static void validateSignerSteps(List<SignerReference> signers) {
-        boolean anyStep = false;
-        boolean missingStep = false;
-        Set<Integer> steps = new HashSet<>();
-        Map<Integer, Integer> signersPerStep = new HashMap<>();
-        for (SignerReference signer : signers) {
-            Integer step = signer.getStep();
-            anyStep |= step != null;
-            missingStep |= step == null;
-            int effectiveStep = step != null ? step : 1;
-            signersPerStep.merge(effectiveStep, 1, Integer::sum);
-            if (step != null) steps.add(step);
-        }
-        if (anyStep && missingStep) {
-            throw new ValidationException("Every signer must provide a step when signing order is used");
-        }
-        for (int step = 1; step <= steps.size(); step++) {
-            if (!steps.contains(step)) {
-                throw new ValidationException("Signer steps must be contiguous starting at 1");
-            }
-        }
-        for (SignerReference signer : signers) {
-            if ("DigitalCertificate".equals(signer.getVerificationMethod())) {
-                int step = signer.getStep() != null ? signer.getStep() : 1;
-                if (signersPerStep.get(step) > 1) {
-                    throw new ValidationException("A DigitalCertificate signer must be alone in its step");
-                }
-            }
-        }
+        SigningRules.validateSigningOrder(signers.stream()
+                .map(ref -> new SigningRules.Placement(ref.getStep(), ref.getVerificationMethod()))
+                .toList(), "signer");
     }
 
     private static void validateSigningItems(List<Map<String, Object>> items) {

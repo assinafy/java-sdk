@@ -3,7 +3,6 @@ package com.assinafy.sdk.request;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.Map;
 
 /**
  * Request payload for creating a signer.
@@ -27,14 +26,6 @@ public class CreateSignerRequest {
      */
     @JsonProperty("cpf")
     private String cpf;
-
-    /**
-     * @deprecated Signers have no persisted metadata field. This value remains available for source
-     * compatibility but is not sent by {@code SignerResource.create}.
-     */
-    @Deprecated
-    @JsonProperty("metadata")
-    private Map<String, Object> metadata;
 
     /**
      * Creates an empty signer-creation request.
@@ -107,20 +98,6 @@ public class CreateSignerRequest {
     public void setCpf(String cpf) { this.cpf = cpf; }
 
     /**
-     * @deprecated Signer metadata is not sent or persisted.
-     * @return the retained local metadata value
-     */
-    @Deprecated
-    public Map<String, Object> getMetadata() { return metadata; }
-
-    /**
-     * @deprecated Signer metadata is not sent or persisted.
-     * @param metadata the local metadata value
-     */
-    @Deprecated
-    public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
-
-    /**
      * Builder for {@link CreateSignerRequest}.
      */
     public static final class Builder {
@@ -168,14 +145,6 @@ public class CreateSignerRequest {
          * @return this builder
          */
         public Builder cpf(String cpf) { req.setCpf(cpf); return this; }
-
-        /**
-         * @deprecated Signer metadata is not sent or persisted.
-         * @param metadata the local metadata value
-         * @return this builder
-         */
-        @Deprecated
-        public Builder metadata(Map<String, Object> metadata) { req.setMetadata(metadata); return this; }
 
         /**
          * Builds the configured signer-creation request.

@@ -3,7 +3,6 @@ package com.assinafy.sdk.models;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.Map;
 
 /**
  * Represents the signer in an Assinafy API response.
@@ -45,9 +44,6 @@ public class Signer {
      */
     @JsonProperty("is_signature_reusable")
     private Boolean isSignatureReusable;
-
-    @JsonProperty("metadata")
-    private Map<String, Object> metadata;
 
     /**
      * Creates an empty signer.
@@ -194,18 +190,4 @@ public class Signer {
      * @param isSignatureReusable the signature-reuse flag
      */
     public void setIsSignatureReusable(Boolean isSignatureReusable) { this.isSignatureReusable = isSignatureReusable; }
-
-    /**
-     * @deprecated Signer responses do not provide metadata.
-     * @return retained signer metadata, or {@code null}
-     */
-    @Deprecated
-    public Map<String, Object> getMetadata() { return metadata; }
-
-    /**
-     * @deprecated Retained for decoding older response payloads.
-     * @param metadata retained signer metadata
-     */
-    @Deprecated
-    public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
 }

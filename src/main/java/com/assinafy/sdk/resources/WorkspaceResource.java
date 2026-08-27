@@ -7,7 +7,6 @@ import com.assinafy.sdk.models.AccountTheme;
 import com.assinafy.sdk.models.DocumentStatsRow;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Workspace;
-import com.assinafy.sdk.models.WorkspaceListItem;
 import com.assinafy.sdk.request.CreateWorkspaceRequest;
 import com.assinafy.sdk.request.UpdateWorkspaceRequest;
 
@@ -65,8 +64,8 @@ public class WorkspaceResource extends BaseResource {
      *
      * @return paginated accessible accounts
      */
-    public PaginatedResult<WorkspaceListItem> list() {
-        return callList("Failed to list workspaces", () -> http.get("/accounts"), WorkspaceListItem.class);
+    public PaginatedResult<Workspace> list() {
+        return callList("Failed to list workspaces", () -> http.get("/accounts"), Workspace.class);
     }
 
     /**
@@ -192,7 +191,7 @@ public class WorkspaceResource extends BaseResource {
     public void uploadLogo(String accountId, byte[] imageData, String fileName) {
         String id = pathSegment(accountId, "Account ID");
         if (imageData == null || imageData.length == 0) {
-            throw new com.assinafy.sdk.exceptions.ValidationException("Logo image data is empty");
+            throw new ValidationException("Logo image data is empty");
         }
         String name = fileName != null ? fileName : "logo";
         String contentType = detectImageContentType(imageData);

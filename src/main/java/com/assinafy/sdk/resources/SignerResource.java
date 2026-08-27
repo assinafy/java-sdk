@@ -5,8 +5,7 @@ import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
-import com.assinafy.sdk.models.DocumentDetails;
-import com.assinafy.sdk.models.DocumentListItem;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.models.enums.DocumentArtifactName;
@@ -69,8 +68,7 @@ public class SignerResource extends BaseResource {
      * Create a signer ({@code POST /accounts/{id}/signers}). This method always issues the POST;
      * use {@link #findOrCreate(CreateSignerRequest, String)} when reuse by email is intended. A
      * supplied CPF/CNPJ is applied through the documented signer update after creation; if that
-     * update fails, the newly created signer is deleted. Request metadata is not sent because
-     * signer creation does not define a metadata field.
+     * update fails, the newly created signer is deleted.
      *
      * @param request signer profile; {@code full_name} is required
      * @param accountId explicit account ID, or {@code null} for the default
@@ -480,9 +478,9 @@ public class SignerResource extends BaseResource {
      * @param signerAccessCode signer query credential
      * @return document details
      */
-    public DocumentDetails getCurrentDocumentTyped(String signerId, String signerAccessCode) {
+    public Document getCurrentDocumentTyped(String signerId, String signerAccessCode) {
         return ResponseHandler.convert(
-                getCurrentDocument(signerId, signerAccessCode), DocumentDetails.class);
+                getCurrentDocument(signerId, signerAccessCode), Document.class);
     }
 
     /**
@@ -492,7 +490,7 @@ public class SignerResource extends BaseResource {
      * @param signerAccessCode signer query credential
      * @return paginated documents
      */
-    public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode) {
+    public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode) {
         return listDocuments(signerId, signerAccessCode, null);
     }
 
@@ -506,14 +504,14 @@ public class SignerResource extends BaseResource {
      * @param params paging options; {@code null} sends only the access code
      * @return paginated documents
      */
-    public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode, ListParams params) {
+    public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode, ListParams params) {
         String sid = pathSegment(signerId, "Signer ID");
         requireId(signerAccessCode, "Signer access code");
         Map<String, Object> query = params != null ? new HashMap<>(params.toQueryParams()) : new HashMap<>();
         query.put("signer-access-code", signerAccessCode);
         return callList("Failed to list signer's documents",
                 () -> http.get("/signers/" + sid + "/documents", query),
-                DocumentListItem.class);
+                Document.class);
     }
 
     /**
@@ -525,7 +523,7 @@ public class SignerResource extends BaseResource {
      * @param search free-text query matched against the signer's documents
      * @return paginated matching documents
      */
-    public PaginatedResult<DocumentListItem> searchDocuments(String signerId, String signerAccessCode, String search) {
+    public PaginatedResult<Document> searchDocuments(String signerId, String signerAccessCode, String search) {
         String sid = pathSegment(signerId, "Signer ID");
         requireId(signerAccessCode, "Signer access code");
         Map<String, Object> query = new HashMap<>();
@@ -533,7 +531,7 @@ public class SignerResource extends BaseResource {
         if (search != null && !search.isBlank()) query.put("search", search);
         return callList("Failed to search signer's documents",
                 () -> http.get("/signers/" + sid + "/documents/search", query),
-                DocumentListItem.class);
+                Document.class);
     }
 
     /**

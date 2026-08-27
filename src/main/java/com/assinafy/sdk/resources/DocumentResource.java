@@ -1,17 +1,15 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
-import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.NetworkException;
+import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.CostEstimate;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.DocumentActivity;
-import com.assinafy.sdk.models.DocumentDetails;
-import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.DocumentStatusInfo;
-import com.assinafy.sdk.models.DocumentUploadResponse;
 import com.assinafy.sdk.models.DocumentVerification;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.SigningProgress;
@@ -25,7 +23,6 @@ import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,10 +37,6 @@ public class DocumentResource extends BaseResource {
     /** Default artifact for {@link #download(String)} — the signed/certificated PDF. */
     private static final String DEFAULT_ARTIFACT = DocumentArtifactName.CERTIFICATED.getValue();
     private static final String CERTIFICATED = DocumentStatus.CERTIFICATED.getValue();
-    private static final Set<String> VERIFICATION_METHODS =
-            Set.of("Email", "Whatsapp", "DigitalCertificate");
-    private static final Set<String> NOTIFICATION_METHODS = Set.of("Email", "Whatsapp");
-
     private static final Set<String> READY_STATUSES = Set.of(
             "metadata_ready", "pending_signature", CERTIFICATED
     );
@@ -83,7 +76,7 @@ public class DocumentResource extends BaseResource {
      * @return the uploaded document summary
      * @throws com.assinafy.sdk.exceptions.ValidationException if the file is missing, not a PDF, or too large
      */
-    public DocumentUploadResponse upload(byte[] fileData, String fileName) {
+    public Document upload(byte[] fileData, String fileName) {
         return upload(fileData, fileName, null, null);
     }
 
@@ -97,7 +90,7 @@ public class DocumentResource extends BaseResource {
      * @return the uploaded document summary
      * @throws com.assinafy.sdk.exceptions.ValidationException if the file is invalid
      */
-    public DocumentUploadResponse upload(byte[] fileData, String fileName, Map<String, Object> metadata, String accountId) {
+    public Document upload(byte[] fileData, String fileName, Map<String, Object> metadata, String accountId) {
         validateUpload(fileData, fileName);
         String id = pathSegment(accountId(accountId), "Account ID");
         String metadataJson = null;
@@ -106,9 +99,9 @@ public class DocumentResource extends BaseResource {
         }
         logInfo("Uploading document", Map.of("size", fileData.length, "hasMetadata", metadata != null));
         String finalMetadata = metadataJson;
-        DocumentUploadResponse document = call("Document upload failed",
+        Document document = call("Document upload failed",
                 () -> http.postMultipart("/accounts/" + id + "/documents", fileName, fileData, fileName, finalMetadata),
-                DocumentUploadResponse.class);
+                Document.class);
         if (document == null || document.getId() == null) {
             throw new ValidationException("Upload succeeded but no document ID was returned");
         }
@@ -121,7 +114,7 @@ public class DocumentResource extends BaseResource {
      *
      * @return matching documents and pagination metadata
      */
-    public PaginatedResult<DocumentListItem> list() {
+    public PaginatedResult<Document> list() {
         return list(new ListParams(), null);
     }
 
@@ -131,7 +124,7 @@ public class DocumentResource extends BaseResource {
      * @param params paging and filtering parameters, or {@code null}
      * @return matching documents and pagination metadata
      */
-    public PaginatedResult<DocumentListItem> list(ListParams params) {
+    public PaginatedResult<Document> list(ListParams params) {
         return list(params, null);
     }
 
@@ -142,10 +135,10 @@ public class DocumentResource extends BaseResource {
      * @param accountId explicit account ID, or {@code null} for the default
      * @return matching documents and pagination metadata
      */
-    public PaginatedResult<DocumentListItem> list(ListParams params, String accountId) {
+    public PaginatedResult<Document> list(ListParams params, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         Map<String, Object> queryParams = params != null ? params.toQueryParams() : Map.of();
-        return callList("Failed to list documents", () -> http.get("/accounts/" + id + "/documents", queryParams), DocumentListItem.class);
+        return callList("Failed to list documents", () -> http.get("/accounts/" + id + "/documents", queryParams), Document.class);
     }
 
     /**
@@ -154,9 +147,9 @@ public class DocumentResource extends BaseResource {
      * @param documentId document ID
      * @return expanded document details
      */
-    public DocumentDetails details(String documentId) {
+    public Document details(String documentId) {
         String id = pathSegment(documentId, "Document ID");
-        return call("Failed to fetch document details", () -> http.get("/documents/" + id), DocumentDetails.class);
+        return call("Failed to fetch document details", () -> http.get("/documents/" + id), Document.class);
     }
 
     /**
@@ -165,7 +158,7 @@ public class DocumentResource extends BaseResource {
      * @param documentId document ID
      * @return expanded document details
      */
-    public DocumentDetails get(String documentId) {
+    public Document get(String documentId) {
         return details(documentId);
     }
 
@@ -178,11 +171,11 @@ public class DocumentResource extends BaseResource {
      * @return the updated document
      * @throws com.assinafy.sdk.exceptions.ValidationException if {@code newName} is blank
      */
-    public DocumentDetails rename(String documentId, String newName) {
+    public Document rename(String documentId, String newName) {
         String id = pathSegment(documentId, "Document ID");
         requireId(newName, "Document name");
         String json = serialise(Map.of("name", newName));
-        return call("Failed to rename document", () -> http.patch("/documents/" + id, json), DocumentDetails.class);
+        return call("Failed to rename document", () -> http.patch("/documents/" + id, json), Document.class);
     }
 
     /**
@@ -193,7 +186,7 @@ public class DocumentResource extends BaseResource {
      * @param params search, status, and paging parameters, or {@code null}
      * @return matching compact documents and pagination metadata
      */
-    public PaginatedResult<DocumentListItem> search(ListParams params) {
+    public PaginatedResult<Document> search(ListParams params) {
         return search(params, null);
     }
 
@@ -204,12 +197,12 @@ public class DocumentResource extends BaseResource {
      * @param accountId explicit account ID, or {@code null} for the default
      * @return matching compact documents and pagination metadata
      */
-    public PaginatedResult<DocumentListItem> search(ListParams params, String accountId) {
+    public PaginatedResult<Document> search(ListParams params, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         Map<String, Object> queryParams = params != null ? params.toQueryParams() : Map.of();
         return callList("Failed to search documents",
                 () -> http.get("/accounts/" + id + "/documents/search", queryParams),
-                DocumentListItem.class);
+                Document.class);
     }
 
     /**
@@ -218,7 +211,7 @@ public class DocumentResource extends BaseResource {
      * @param documentId document ID
      * @return the first ready document state
      */
-    public DocumentDetails waitUntilReady(String documentId) {
+    public Document waitUntilReady(String documentId) {
         return waitUntilReady(documentId, 30_000, 2_000);
     }
 
@@ -234,7 +227,7 @@ public class DocumentResource extends BaseResource {
      * @return the first ready document state
      * @throws com.assinafy.sdk.exceptions.ValidationException if the document enters a failed status or the wait times out
      */
-    public DocumentDetails waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs) {
+    public Document waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs) {
         String id = requireId(documentId, "Document ID");
         if (maxWaitMs <= 0) throw new ValidationException("Maximum wait must be greater than zero");
         if (pollIntervalMs <= 0) throw new ValidationException("Poll interval must be greater than zero");
@@ -246,7 +239,7 @@ public class DocumentResource extends BaseResource {
         while (true) {
             attempts++;
             try {
-                DocumentDetails details = this.details(id);
+                Document details = this.details(id);
                 String status = details.getStatus() != null ? details.getStatus() : "unknown";
                 logDebug("Document status check", Map.of("attempts", attempts, "status", status));
                 if (READY_STATUSES.contains(status)) return details;
@@ -358,7 +351,7 @@ public class DocumentResource extends BaseResource {
      * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
      *         invalid
      */
-    public DocumentDetails createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
+    public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return createFromTemplate(templateId, request, null);
     }
 
@@ -378,14 +371,14 @@ public class DocumentResource extends BaseResource {
      * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
      *         invalid
      */
-    public DocumentDetails createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
+    public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
         String accId = pathSegment(accountId(accountId), "Account ID");
         String json = serialise(templatePayload(request, false));
         logInfo("Creating document from template", Map.of("templateId", tmplId, "accountId", accId));
         return call("Failed to create document from template",
                 () -> http.post("/accounts/" + accId + "/templates/" + tmplId + "/documents", json),
-                DocumentDetails.class);
+                Document.class);
     }
 
     /**
@@ -484,7 +477,7 @@ public class DocumentResource extends BaseResource {
      * @return {@code true} when signing is complete
      */
     public boolean isFullySigned(String documentId) {
-        DocumentDetails details = this.details(documentId);
+        Document details = this.details(documentId);
         if (CERTIFICATED.equals(details.getStatus())) return true;
         var summary = details.getAssignment() != null ? details.getAssignment().getSummary() : null;
         if (summary != null && summary.getSignerCount() != null) {
@@ -500,7 +493,7 @@ public class DocumentResource extends BaseResource {
      * @return signing progress
      */
     public SigningProgress getSigningProgress(String documentId) {
-        DocumentDetails details = this.details(documentId);
+        Document details = this.details(documentId);
         var summary = details.getAssignment() != null ? details.getAssignment().getSummary() : null;
         int total = summary != null && summary.getSignerCount() != null ? summary.getSignerCount() : 0;
         int signed = summary != null && summary.getCompletedCount() != null ? summary.getCompletedCount() : 0;
@@ -518,26 +511,6 @@ public class DocumentResource extends BaseResource {
         return callList("Failed to fetch document statuses",
                 () -> http.get("/documents/statuses"),
                 DocumentStatusInfo.class).getData();
-    }
-
-    /**
-     * @deprecated This is a signer self-service operation; use
-     * {@link com.assinafy.sdk.resources.SignerResource#confirmSignerData(String, String, Map)}
-     * (via {@code client.signers().confirmSignerData(...)}) instead. Additional map keys pass
-     * through unchanged.
-     *
-     * @param documentId document ID
-     * @param signerAccessCode signer invitation access code
-     * @param data signer fields to confirm
-     */
-    @Deprecated
-    public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data) {
-        String docId = pathSegment(documentId, "Document ID");
-        requireId(signerAccessCode, "Signer access code");
-        Map<String, Object> body = data != null ? new HashMap<>(data) : new HashMap<>();
-        String json = serialise(body);
-        callVoid("Failed to confirm signer data",
-                () -> http.put("/documents/" + docId + "/signers/confirm-data?signer-access-code=" + encode(signerAccessCode), json));
     }
 
     /**
@@ -782,7 +755,10 @@ public class DocumentResource extends BaseResource {
         if (!estimate && (signer.getId() == null || signer.getId().isBlank())) {
             throw new ValidationException("Every template signer requires a signer ID");
         }
-        validateDeliveryMethods(signer.getVerificationMethod(), signer.getNotificationMethods(), estimate);
+        SigningRules.validateDeliveryMethods(signer.getVerificationMethod(), signer.getNotificationMethods());
+        if (!estimate && signer.getNotificationMethods() != null && signer.getNotificationMethods().size() > 1) {
+            throw new ValidationException("A template signer may use only one notification method");
+        }
         Map<String, Object> value = new HashMap<>();
         value.put("role_id", signer.getRoleId());
         if (!estimate) value.put("id", signer.getId());
@@ -799,49 +775,10 @@ public class DocumentResource extends BaseResource {
         return value;
     }
 
-    private static void validateDeliveryMethods(
-            String verificationMethod, List<String> notificationMethods, boolean estimate) {
-        if (verificationMethod != null && !VERIFICATION_METHODS.contains(verificationMethod)) {
-            throw new ValidationException("Verification method must be Email, Whatsapp, or DigitalCertificate");
-        }
-        if (notificationMethods != null && notificationMethods.stream().anyMatch(
-                method -> method == null || !NOTIFICATION_METHODS.contains(method))) {
-            throw new ValidationException("Notification methods must contain Email or Whatsapp");
-        }
-        if (!estimate && notificationMethods != null && notificationMethods.size() > 1) {
-            throw new ValidationException("A template signer may use only one notification method");
-        }
-    }
-
     private static void validateTemplateSignerSteps(List<TemplateSigner> signers) {
-        boolean anyStep = false;
-        boolean missingStep = false;
-        Set<Integer> steps = new HashSet<>();
-        Map<Integer, Integer> signersPerStep = new HashMap<>();
-        for (TemplateSigner signer : signers) {
-            Integer step = signer.getStep();
-            anyStep |= step != null;
-            missingStep |= step == null;
-            int effectiveStep = step != null ? step : 1;
-            signersPerStep.merge(effectiveStep, 1, Integer::sum);
-            if (step != null) steps.add(step);
-        }
-        if (anyStep && missingStep) {
-            throw new ValidationException("Every template signer must provide a step when signing order is used");
-        }
-        for (int step = 1; step <= steps.size(); step++) {
-            if (!steps.contains(step)) {
-                throw new ValidationException("Template signer steps must be contiguous starting at 1");
-            }
-        }
-        for (TemplateSigner signer : signers) {
-            if ("DigitalCertificate".equals(signer.getVerificationMethod())) {
-                int step = signer.getStep() != null ? signer.getStep() : 1;
-                if (signersPerStep.get(step) > 1) {
-                    throw new ValidationException("A DigitalCertificate signer must be alone in its step");
-                }
-            }
-        }
+        SigningRules.validateSigningOrder(signers.stream()
+                .map(signer -> new SigningRules.Placement(signer.getStep(), signer.getVerificationMethod()))
+                .toList(), "template signer");
     }
 
     private static void sleep(long nanos) {

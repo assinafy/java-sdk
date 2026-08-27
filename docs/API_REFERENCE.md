@@ -267,7 +267,7 @@ Documented statuses: `200` The generated API key (shown in full only once); `401
 
 ### 10. List my accounts
 
-- **Java:** `client.workspaces()` — `WorkspaceResource: public PaginatedResult<WorkspaceListItem> list()`
+- **Java:** `client.workspaces()` — `WorkspaceResource: public PaginatedResult<Workspace> list()`
 - **HTTP:** `GET /v1/accounts`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
@@ -670,7 +670,7 @@ Documented statuses: `200` The updated signer; `400` One or more fields failed v
 
 ### 25. List documents
 
-- **Java:** `client.documents()` — `DocumentResource: public PaginatedResult<DocumentListItem> list()`; `client.documents()` — `DocumentResource: public PaginatedResult<DocumentListItem> list(ListParams params)`; `client.documents()` — `DocumentResource: public PaginatedResult<DocumentListItem> list(ListParams params, String accountId)`
+- **Java:** `client.documents()` — `DocumentResource: public PaginatedResult<Document> list()`; `client.documents()` — `DocumentResource: public PaginatedResult<Document> list(ListParams params)`; `client.documents()` — `DocumentResource: public PaginatedResult<Document> list(ListParams params, String accountId)`
 - **HTTP:** `GET /v1/accounts/{accountId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
@@ -701,7 +701,7 @@ Documented statuses: `200` A page of documents; `401` Missing or invalid credent
 
 ### 26. Upload and create document
 
-- **Java:** `client.documents()` — `DocumentResource: public DocumentUploadResponse upload(byte[] fileData, String fileName)`; `client.documents()` — `DocumentResource: public DocumentUploadResponse upload(byte[] fileData, String fileName, Map<String, Object> metadata, String accountId)`
+- **Java:** `client.documents()` — `DocumentResource: public Document upload(byte[] fileData, String fileName)`; `client.documents()` — `DocumentResource: public Document upload(byte[] fileData, String fileName, Map<String, Object> metadata, String accountId)`
 - **HTTP:** `POST /v1/accounts/{accountId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Creates a document and starts asynchronous processing.
@@ -847,7 +847,7 @@ Documented statuses: `200` Tag detached; `401` Missing or invalid credentials; `
 
 ### 31. Search documents (lightweight)
 
-- **Java:** `client.documents()` — `DocumentResource: public PaginatedResult<DocumentListItem> search(ListParams params)`; `client.documents()` — `DocumentResource: public PaginatedResult<DocumentListItem> search(ListParams params, String accountId)`
+- **Java:** `client.documents()` — `DocumentResource: public PaginatedResult<Document> search(ListParams params)`; `client.documents()` — `DocumentResource: public PaginatedResult<Document> search(ListParams params, String accountId)`
 - **HTTP:** `GET /v1/accounts/{accountId}/documents/search`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
@@ -875,7 +875,7 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 
 ### 32. Create document from template
 
-- **Java:** `client.documents()` — `DocumentResource: public DocumentDetails createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request)`; `client.documents()` — `DocumentResource: public DocumentDetails createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId)`
+- **Java:** `client.documents()` — `DocumentResource: public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request)`; `client.documents()` — `DocumentResource: public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId)`
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create document from template.
@@ -966,7 +966,7 @@ Documented statuses: `200` Document deleted; `401` Missing or invalid credential
 
 ### 35. Get document
 
-- **Java:** `client.documents()` — `DocumentResource: public DocumentDetails details(String documentId)`
+- **Java:** `client.documents()` — `DocumentResource: public Document details(String documentId)`
 - **HTTP:** `GET /v1/documents/{documentId}`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
@@ -990,7 +990,7 @@ Documented statuses: `200` The document; `401` Missing or invalid credentials; `
 
 ### 36. Rename document
 
-- **Java:** `client.documents()` — `DocumentResource: public DocumentDetails rename(String documentId, String newName)`
+- **Java:** `client.documents()` — `DocumentResource: public Document rename(String documentId, String newName)`
 - **HTTP:** `PATCH /v1/documents/{documentId}`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: rename document.
@@ -1468,7 +1468,7 @@ Documented statuses: `200` Data confirmed; `401` Missing or invalid credentials;
 
 ### 53. View public document
 
-- **Java:** `client.publicDocuments()` — `PublicDocumentResource: public DocumentDetails getBasicInfo(String documentId)`
+- **Java:** `client.publicDocuments()` — `PublicDocumentResource: public Document getBasicInfo(String documentId)`
 - **HTTP:** `GET /v1/public/documents/{documentId}`
 - **Auth:** Public (no SDK credential)
 - **Side effects:** None; read-only.
@@ -1521,7 +1521,7 @@ Documented statuses: `200` Token sent; `500` Unexpected server error.
 
 ### 55. View document to sign
 
-- **Java:** `client.assignments()` — `AssignmentResource: public Map<String, Object> getForSigner(String signerAccessCode)`; `client.assignments()` — `AssignmentResource: public Map<String, Object> getForSigner(String signerAccessCode, Boolean hasAcceptedTerms)`; `client.assignments()` — `AssignmentResource: public DocumentDetails getForSignerTyped(String signerAccessCode)`; `client.assignments()` — `AssignmentResource: public DocumentDetails getForSignerTyped(String signerAccessCode, Boolean hasAcceptedTerms)`
+- **Java:** `client.assignments()` — `AssignmentResource: public Map<String, Object> getForSigner(String signerAccessCode)`; `client.assignments()` — `AssignmentResource: public Map<String, Object> getForSigner(String signerAccessCode, Boolean hasAcceptedTerms)`; `client.assignments()` — `AssignmentResource: public Document getForSignerTyped(String signerAccessCode)`; `client.assignments()` — `AssignmentResource: public Document getForSignerTyped(String signerAccessCode, Boolean hasAcceptedTerms)`
 - **HTTP:** `GET /v1/sign`
 - **Auth:** `signer-access-code` query credential
 - **Side effects:** Marks the signer document as viewed; otherwise read-only.
@@ -1589,7 +1589,7 @@ Documented statuses: `200` The signature image; `401` Missing or invalid credent
 
 ### 58. Get signer's document
 
-- **Java:** `client.signers()` — `SignerResource: public Map<String, Object> getCurrentDocument(String signerId, String signerAccessCode)`; `client.signers()` — `SignerResource: public DocumentDetails getCurrentDocumentTyped(String signerId, String signerAccessCode)`
+- **Java:** `client.signers()` — `SignerResource: public Map<String, Object> getCurrentDocument(String signerId, String signerAccessCode)`; `client.signers()` — `SignerResource: public Document getCurrentDocumentTyped(String signerId, String signerAccessCode)`
 - **HTTP:** `GET /v1/signers/{signerId}/document`
 - **Auth:** `signer-access-code` query credential
 - **Side effects:** None; read-only.
@@ -1613,7 +1613,7 @@ Documented statuses: `200` The document with the signer's items; `401` Missing o
 
 ### 59. List signer's documents
 
-- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode)`; `client.signers()` — `SignerResource: public PaginatedResult<DocumentListItem> listDocuments(String signerId, String signerAccessCode, ListParams params)`
+- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode)`; `client.signers()` — `SignerResource: public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode, ListParams params)`
 - **HTTP:** `GET /v1/signers/{signerId}/documents`
 - **Auth:** `signer-access-code` query credential
 - **Side effects:** None; read-only.
@@ -1659,7 +1659,7 @@ Documented statuses: `200` The artifact binary; `404` The requested resource doe
 
 ### 61. Search signer's documents
 
-- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<DocumentListItem> searchDocuments(String signerId, String signerAccessCode, String search)`
+- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<Document> searchDocuments(String signerId, String signerAccessCode, String search)`
 - **HTTP:** `GET /v1/signers/{signerId}/documents/search`
 - **Auth:** `signer-access-code` query credential
 - **Side effects:** None; read-only.
@@ -1813,7 +1813,7 @@ Documented statuses: `200` Code verified; `400` One or more fields failed valida
 
 ### 67. List templates
 
-- **Java:** `client.templates()` — `TemplateResource: public PaginatedResult<TemplateListItem> list()`; `client.templates()` — `TemplateResource: public PaginatedResult<TemplateListItem> list(ListParams params)`; `client.templates()` — `TemplateResource: public PaginatedResult<TemplateListItem> list(ListParams params, String accountId)`
+- **Java:** `client.templates()` — `TemplateResource: public PaginatedResult<Template> list()`; `client.templates()` — `TemplateResource: public PaginatedResult<Template> list(ListParams params)`; `client.templates()` — `TemplateResource: public PaginatedResult<Template> list(ListParams params, String accountId)`
 - **HTTP:** `GET /v1/accounts/{accountId}/templates`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
@@ -2971,17 +2971,17 @@ Owner-facing document notifications, keyed by notification type. `true` means th
 
 ## Java convenience APIs
 
-- `DocumentResource: public DocumentDetails get(String documentId)` aliases `details`. `public DocumentDetails waitUntilReady(String documentId)`, `public DocumentDetails waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs)`, `public boolean isFullySigned(String documentId)`, and `public SigningProgress getSigningProgress(String documentId)` compose documented document reads locally.
+- `DocumentResource: public Document get(String documentId)` aliases `details`. `public Document waitUntilReady(String documentId)`, `public Document waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs)`, `public boolean isFullySigned(String documentId)`, and `public SigningProgress getSigningProgress(String documentId)` compose documented document reads locally.
 - `DocumentResource.download(String)` and `SignerResource.downloadDocument(...)` supply the `certificated` artifact default; signer-download overloads also accept an access code for deployments that require it.
 - `DocumentResource.upload(byte[], String, Map<String,Object>, String)` sends multipart `file`, `name`, and optional `metadata` parts.
 - `DocumentResource.appendTagIds(...)` and `replaceTagIds(...)` resolve workspace tag IDs before
   changing a document. The existing `appendTags(...)` and `replaceTags(...)` methods accept tag
   names. Returned `Tag` records carry the attached-tag IDs accepted by `detachTag(...)`.
 - `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer resolution, and assignment creation. On an ordinary later-step failure, it attempts to delete the uploaded document and signer records whose create responses returned valid IDs; cleanup failures are suppressed on the original exception. Signers recovered after an indeterminate create response are not updated or deleted. A recovered entry containing CPF/CNPJ fails before assignment creation. If assignment creation has an indeterminate result and reconciliation cannot find it, the resources are retained to avoid deleting a potentially active request.
-- `SignerResource.create(...)` always sends the create POST. A supplied `CreateSignerRequest.cpf` (CPF or CNPJ) is persisted through a follow-up `government_id` update; if that update fails, the new signer is deleted. `CreateSignerRequest.metadata` is deprecated and is not sent. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
+- `SignerResource.create(...)` always sends the create POST. A supplied `CreateSignerRequest.cpf` (CPF or CNPJ) is persisted through a follow-up `government_id` update; if that update fails, the new signer is deleted. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
 - `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call the deployment extension `GET /accounts/{accountId}/templates/{templateId}`. Confirm endpoint support before using it.
 - `WebhookResource: public void delete()` and `public void delete(String accountId)` call an optional DELETE subscription route and are deprecated; use `inactivate`.
-- `DocumentResource: public void confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data)` is a deprecated alias; use `SignerResource.confirmSignerData`. `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`; use this form only where clearing expiration is supported.
+- `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`; use this form only where clearing expiration is supported.
 - `PublicDocumentResource.sendToken(String)` follows the optional/bodyless form, and `sendToken(String, String)` sends only `email`. The deployment-specific `sendToken(String, String, String)` sends `email`, `recipient`, and `channel` for the email channel, and `recipient` plus `channel` for other channels.
 - `AssignmentResource.list(..., accountId)` adds optional `accountId` query context.
 - `CreateFieldRequest` exposes optional deployment fields `is_active`, `is_read_only`, and `is_visible`. `UpdateFieldRequest` also exposes `type`, `is_required`, `is_read_only`, and `is_visible` for deployments that accept them.
@@ -3013,21 +3013,20 @@ signer, and assignment requests.
 | `copyReceivers` | `List<String>` | optional | Assignment copy recipients. |
 | `accountId` | `String` | client default | Explicit workspace account ID. |
 
-`SignerEntry` fields are `name` (required), `email`, `whatsappPhoneNumber`, `cpf`, and the deprecated
-local-only `metadata`. Each entry requires an email or WhatsApp number. Email entries reuse an exact
+`SignerEntry` fields are `name` (required), `email`, `whatsappPhoneNumber`, and `cpf`. Each entry
+requires an email or WhatsApp number. Email entries reuse an exact
 case-insensitive match without replacing its name, phone, or CPF/CNPJ. When a signer create response
 returns a valid ID, a supplied CPF/CNPJ is persisted through the signer's `government_id` update.
 A signer recovered after an indeterminate create response is not updated or deleted; if the entry
 contains CPF/CNPJ, the workflow fails before assignment creation. Email-bearing entries
 must have unique addresses (case-insensitive); WhatsApp-only entries must have unique phone numbers
 (exact match). WhatsApp-only entries use `Whatsapp` verification and notification.
-Signer metadata is not sent.
 
 ### `UploadAndRequestSignaturesResult`
 
 | Getter | Type | Meaning |
 |---|---|---|
-| `getDocument()` | `DocumentUploadResponse` | Uploaded document response. |
+| `getDocument()` | `Document` | Uploaded document. |
 | `getAssignment()` | `Assignment` | Created virtual assignment. |
 | `getSignerIds()` | `List<String>` | Resolved signer IDs in request order, whether created, reused, or recovered after an indeterminate response. |
 
@@ -3071,10 +3070,43 @@ Parsed by `WebhookVerifier.extractEvent(...)`. Unknown top-level fields remain a
 | `object` | `Map<String,Object>` | Entity affected by the event, including its `type` discriminator. |
 | `account_id` | `String` | Workspace account ID. |
 
+### `WebhookVerifier`
+
+Reached through `AssinafyClient: public WebhookVerifier webhookVerifier()`, configured with
+`AssinafyClientOptions.webhookSecret`. Assinafy publishes no webhook signature header or shared-secret
+scheme, so `verify` implements the conventional HMAC-SHA256-over-raw-body pattern for tenants with a
+separate signing arrangement. It returns `false` when no secret is configured, when no signature is
+supplied, and when the signature does not match, so a `false` result is not on its own evidence of
+forgery.
+
+| Java method | Returns | Behavior |
+|---|---|---|
+| `verify(String payload, String signature)` | `boolean` | Constant-time compare of lowercase hex HMAC-SHA256 over the UTF-8 body. Pass the header value with any `algo=` prefix already stripped. |
+| `verify(byte[] payload, String signature)` | `boolean` | Same check over raw bytes, for frameworks that expose the body unparsed. |
+| `extractEvent(String payload)` | `WebhookPayload` | Parses the delivery envelope; `null` for blank, malformed, or non-object JSON. |
+| `extractEvent(byte[] payload)` | `WebhookPayload` | Byte-array form of the same parse. |
+| `getEventType(WebhookPayload event)` | `String` | The envelope's `event` code, or `null`. |
+| `getEventData(WebhookPayload event)` | `Map<String,Object>` | The envelope's `object` field, falling back to `payload`, else an empty map. |
+
+A delivery body has the shape documented under [`WebhookPayload`](#webhookpayload):
+
+```json
+{
+  "id": 918273,
+  "event": "signer_signed_document",
+  "message": "Signer signed the document",
+  "created_at": 1787000000,
+  "account_id": "0a1b2c3d4e5f60718293a4b5c6d7",
+  "subject": { "type": "signer", "id": "signer_123", "full_name": "John Doe" },
+  "object": { "type": "document", "id": "doc_123", "status": "pending_signature" },
+  "origin": { "ip": "203.0.113.10", "user-agent": "Mozilla/5.0" },
+  "payload": {}
+}
+```
+
 ### `DocumentArtifacts`
 
-Document payloads expose available artifact URLs through `DocumentDetails.getArtifacts()` and
-`DocumentUploadResponse.getArtifacts()`.
+Document payloads expose available artifact URLs through `Document.getArtifacts()`.
 
 | JSON field | Getter | Availability |
 |---|---|---|

@@ -247,7 +247,6 @@ class SignerResourceTest {
     }
 
     @Test
-    @SuppressWarnings("deprecation")
     void createNormalisesCpfByStrippingNonDigits() {
         mock.enqueue(200, SIGNER_123).enqueue(200, SIGNER_123);
 
@@ -255,7 +254,6 @@ class SignerResourceTest {
                 .fullName("John")
                 .email("john@example.com")
                 .cpf("123.456.789-00")
-                .metadata(Map.of("source", "test"))
                 .build());
 
         assertThat(mock.capturedAt(0).getJsonBody())

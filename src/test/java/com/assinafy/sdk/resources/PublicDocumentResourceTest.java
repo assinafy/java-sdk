@@ -21,7 +21,7 @@ class PublicDocumentResourceTest {
     @Test
     void getBasicInfoGetsPublicDocumentsPathAndReturnsTypedDetails() {
         mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\",\"name\":\"x.pdf\",\"status\":\"metadata_ready\"}}");
-        com.assinafy.sdk.models.DocumentDetails d = resource.getBasicInfo("doc1");
+        com.assinafy.sdk.models.Document d = resource.getBasicInfo("doc1");
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1");
         assertThat(d.getId()).isEqualTo("doc1");

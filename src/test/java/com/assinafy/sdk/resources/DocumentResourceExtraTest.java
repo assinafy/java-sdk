@@ -5,7 +5,7 @@ import com.assinafy.sdk.exceptions.NetworkException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.CostEstimate;
-import com.assinafy.sdk.models.DocumentDetails;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.DocumentVerification;
 import com.assinafy.sdk.models.SigningProgress;
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest;
@@ -13,8 +13,8 @@ import com.assinafy.sdk.request.TemplateSigner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -33,7 +33,7 @@ class DocumentResourceExtraTest {
     @Test
     void renameSendsPatchWithNameBody() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"name\":\"New.pdf\"}}");
-        DocumentDetails d = documents.rename("d1", "New.pdf");
+        Document d = documents.rename("d1", "New.pdf");
         assertThat(http.lastCaptured().getMethod()).isEqualTo("PATCH");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/documents/d1");
         assertThat(http.lastCaptured().getJsonBody()).isEqualTo("{\"name\":\"New.pdf\"}");
@@ -145,7 +145,7 @@ class DocumentResourceExtraTest {
     @Test
     void waitUntilReadyReturnsWhenStatusReady() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"certificated\"}}");
-        DocumentDetails details = documents.waitUntilReady("d1", 5_000, 10);
+        Document details = documents.waitUntilReady("d1", 5_000, 10);
         assertThat(details.getStatus()).isEqualTo("certificated");
     }
 
@@ -153,7 +153,7 @@ class DocumentResourceExtraTest {
     void waitUntilReadyPollsImmediatelyForTinyPositiveBudget() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"certificated\"}}");
 
-        DocumentDetails details = documents.waitUntilReady("d1", 1, 1_000);
+        Document details = documents.waitUntilReady("d1", 1, 1_000);
 
         assertThat(details.getStatus()).isEqualTo("certificated");
         assertThat(http.capturedCount()).isEqualTo(1);
@@ -165,7 +165,7 @@ class DocumentResourceExtraTest {
         http.enqueue(503, "{\"status\":503,\"message\":\"try again\"}");
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"metadata_ready\"}}");
 
-        DocumentDetails details = documents.waitUntilReady("d1", 1_000, 1);
+        Document details = documents.waitUntilReady("d1", 1_000, 1);
 
         assertThat(details.getStatus()).isEqualTo("metadata_ready");
         assertThat(http.capturedCount()).isEqualTo(3);
@@ -259,7 +259,7 @@ class DocumentResourceExtraTest {
     @Test
     void createFromTemplatePostsToTemplateDocumentsPath() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\",\"template_id\":\"tmpl\"}}");
-        DocumentDetails doc = documents.createFromTemplate("tmpl",
+        Document doc = documents.createFromTemplate("tmpl",
                 CreateDocumentFromTemplateRequest.builder().name("c.pdf")
                         .signers(List.of(TemplateSigner.builder().roleId("r1").id("s1").build()))
                         .build());
@@ -392,10 +392,20 @@ class DocumentResourceExtraTest {
     }
 
     @Test
+    void templateCreationAllowsOnlyOneNotificationMethodPerSigner() {
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").id("s1")
+                                .notificationMethods(List.of("Email", "Whatsapp")).build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("only one notification method");
+    }
+
+    @Test
     void templateCreationAllowsDigitalCertificateInAnIsolatedStep() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\"}}");
 
-        DocumentDetails document = documents.createFromTemplate("tmpl",
+        Document document = documents.createFromTemplate("tmpl",
                 CreateDocumentFromTemplateRequest.builder().signers(List.of(
                         TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
                         TemplateSigner.builder().roleId("r2").id("s2").step(2)

@@ -7,7 +7,7 @@ import java.util.List;
  */
 public class UploadAndRequestSignaturesResult {
 
-    private final DocumentUploadResponse document;
+    private final Document document;
     private final Assignment assignment;
     private final List<String> signerIds;
 
@@ -18,7 +18,7 @@ public class UploadAndRequestSignaturesResult {
      * @param assignment the created assignment
      * @param signerIds IDs of the resolved signers, whether created or reused
      */
-    public UploadAndRequestSignaturesResult(DocumentUploadResponse document, Assignment assignment, List<String> signerIds) {
+    public UploadAndRequestSignaturesResult(Document document, Assignment assignment, List<String> signerIds) {
         this.document = document;
         this.assignment = assignment;
         this.signerIds = signerIds != null ? List.copyOf(signerIds) : List.of();
@@ -29,7 +29,7 @@ public class UploadAndRequestSignaturesResult {
      *
      * @return the document
      */
-    public DocumentUploadResponse getDocument() { return document; }
+    public Document getDocument() { return document; }
 
     /**
      * Returns the assignment.

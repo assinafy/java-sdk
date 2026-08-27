@@ -1,7 +1,5 @@
 package com.assinafy.sdk.models;
 
-import com.assinafy.sdk.util.ResponseHandler;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -49,7 +47,7 @@ public class AssignmentSigner {
     private Boolean completed;
 
     @JsonProperty("notification_history")
-    private List<Object> notificationHistory;
+    private List<NotificationHistoryEntry> notificationHistory;
 
     /**
      * Creates an empty assignment signer.
@@ -211,41 +209,18 @@ public class AssignmentSigner {
     public void setCompleted(Boolean completed) { this.completed = completed; }
 
     /**
-     * Returns the notification history.
+     * Returns the per-signer notification delivery history.
      *
      * @return the notification history
      */
-    public List<Object> getNotificationHistory() { return notificationHistory; }
+    public List<NotificationHistoryEntry> getNotificationHistory() { return notificationHistory; }
 
     /**
-     * Sets the notification history.
+     * Sets the per-signer notification delivery history.
      *
      * @param notificationHistory the notification history
      */
-    public void setNotificationHistory(List<Object> notificationHistory) { this.notificationHistory = notificationHistory; }
-
-    /**
-     * Typed view of {@link #getNotificationHistory()} that preserves the legacy accessor.
-     *
-     * @return the typed notification history
-     */
-    @JsonIgnore
-    public List<NotificationHistoryEntry> getNotificationHistoryEntries() {
-        if (notificationHistory == null) return null;
-        return notificationHistory.stream()
-                .map(entry -> entry instanceof NotificationHistoryEntry typed
-                        ? typed
-                        : ResponseHandler.convert(entry, NotificationHistoryEntry.class))
-                .toList();
-    }
-
-    /**
-     * Sets the typed notification history.
-     *
-     * @param entries the entries
-     */
-    @JsonIgnore
-    public void setNotificationHistoryEntries(List<NotificationHistoryEntry> entries) {
-        notificationHistory = entries == null ? null : new java.util.ArrayList<Object>(entries);
+    public void setNotificationHistory(List<NotificationHistoryEntry> notificationHistory) {
+        this.notificationHistory = notificationHistory;
     }
 }

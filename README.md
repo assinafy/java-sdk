@@ -1,19 +1,58 @@
 # Assinafy Java SDK
 
-Java client SDK for the [Assinafy API](https://api.assinafy.com.br/v1/docs) — a Brazilian digital signature platform.
+A Java client for the [Assinafy API](https://api.assinafy.com.br/v1/docs), the Brazilian digital
+signature platform. It covers all 89 documented operations — document upload and certification,
+signer management, signature requests, templates, field definitions, tags, workspaces, webhooks,
+and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
+thread-safe client.
 
-See the [complete Java API reference](docs/API_REFERENCE.md) for all 89 official operations,
-payload fields, response schemas, status codes, authentication requirements, and Java convenience APIs.
+This README is written to be read top to bottom: install the SDK, understand how it is organized,
+walk the signing lifecycle end to end, then reach the surfaces around it. For the per-operation
+contract — every parameter, every request and response field, every documented status code — see
+the [complete Java API reference](docs/API_REFERENCE.md).
+
+## Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [How the SDK is organized](#how-the-sdk-is-organized)
+- [Authentication](#authentication)
+- [Configuration](#configuration)
+- [The signing lifecycle](#the-signing-lifecycle)
+  - [1. Upload the document](#1-upload-the-document)
+  - [2. Wait for processing](#2-wait-for-processing)
+  - [3. Resolve the signers](#3-resolve-the-signers)
+  - [4. Estimate the cost and request signatures](#4-estimate-the-cost-and-request-signatures)
+  - [5. Track progress](#5-track-progress)
+  - [6. Download the artifacts](#6-download-the-artifacts)
+  - [7. Delete when finished](#7-delete-when-finished)
+- [The one-call workflow helper](#the-one-call-workflow-helper)
+- [Signer self-service](#signer-self-service)
+- [Templates and field definitions](#templates-and-field-definitions)
+- [Tags](#tags)
+- [Workspaces and branding](#workspaces-and-branding)
+- [Users, sessions, and API keys](#users-sessions-and-api-keys)
+- [Webhooks](#webhooks)
+- [Error handling](#error-handling)
+- [Pagination](#pagination)
+- [Request and response payloads](#request-and-response-payloads)
+- [Development](#development)
+- [Releasing](#releasing)
+- [License](#license)
 
 ## Requirements
 
-- JDK 25 (LTS). The build intentionally enforces Java `>=25,<26`.
+- JDK 25 (LTS). The build enforces Java `>=25,<26`.
 - Maven Wrapper pinned to Maven 3.9.16; a system Maven installation is not required.
+
+Runtime dependencies are OkHttp and Jackson. The published jar declares
+`Automatic-Module-Name: com.assinafy.sdk`.
 
 ## Installation
 
-Release tags publish to GitHub Packages. GitHub requires authentication to install public Maven
-packages, so export your GitHub username and a classic personal access token with `read:packages`:
+Release tags publish to GitHub Packages, and GitHub requires authentication even for public Maven
+packages. Export a GitHub username and a classic personal access token with `read:packages`:
 
 ```bash
 export GITHUB_ACTOR=your-github-username
@@ -34,7 +73,7 @@ Reference those variables from `~/.m2/settings.xml`:
 </settings>
 ```
 
-Then add the GitHub Packages repository and SDK dependency to your project:
+Then add the repository and the dependency to your project:
 
 ```xml
 <repositories>
@@ -47,23 +86,25 @@ Then add the GitHub Packages repository and SDK dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.5.2</version>
+    <version>1.6.0</version>
 </dependency>
 ```
 
-For a source checkout, install the artifact into your local Maven repository first:
+Working from a source checkout instead? Install the artifact into your local repository first:
 
 ```bash
 ./mvnw install
 ```
 
-## Quick Start
+## Quick start
+
+The shortest path from a PDF on disk to a dispatched signature request:
 
 ```java
 import com.assinafy.sdk.AssinafyClient;
 import com.assinafy.sdk.AssinafyClientOptions;
 import com.assinafy.sdk.models.Assignment;
-import com.assinafy.sdk.models.DocumentUploadResponse;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.CreateSignerRequest;
@@ -91,7 +132,7 @@ public final class QuickStart {
         );
 
         byte[] fileData = Files.readAllBytes(Path.of("contract.pdf"));
-        DocumentUploadResponse document = client.documents().upload(fileData, "contract.pdf");
+        Document document = client.documents().upload(fileData, "contract.pdf");
         client.documents().waitUntilReady(document.getId());
 
         Signer signer = client.signers().findOrCreate(
@@ -114,29 +155,38 @@ public final class QuickStart {
 }
 ```
 
-## Document signing lifecycle
+## How the SDK is organized
 
-1. Upload a PDF with `documents().upload(...)`, then retain the returned document ID.
-2. Wait for initial processing with `documents().waitUntilReady(id)`. A new upload normally reaches
-   `metadata_ready` and exposes pages and its thumbnail artifact; the helper also accepts already
-   assigned or certificated documents.
-3. Resolve each signer. `signers().create(...)` always creates a new signer; use
-   `signers().findOrCreate(...)` when an existing exact case-insensitive email match should be
-   reused.
-4. Optionally call `assignments().estimateCost(...)`, then create the assignment. Assignment
-   creation starts the signing process and sends the configured notifications.
-5. Track `documents().details(id)`, `documents().getSigningProgress(id)`, and
-   `documents().activities(id)`. Signers complete the signer-code flows exposed by
-   `signers()` and `assignments()`.
-6. After the document reaches `certificated`, download the required artifact: `certificated`,
-   `certificate-page`, `bundle`, or `pades` for a digital-certificate process. The original and
-   thumbnail remain available through their dedicated helpers.
-7. Delete documents only in a deletable status. `documents().getStatuses()` returns the status
-   rules published by the API.
+**One client, many resources.** `AssinafyClient` owns the HTTP transport and exposes one accessor
+per API area: `documents()`, `signers()`, `assignments()`, `templates()`, `fields()`, `tags()`,
+`workspaces()`, `webhooks()`, `users()`, `apiKeys()`, `authentication()`, and
+`publicDocuments()`. The accessors return the instances the client owns, so holding a resource
+reference is equivalent to holding the client.
+
+**The client is thread-safe** with its default OkHttp transport and is designed to be created once
+and shared. OkHttp releases idle connections and threads on its own, so no explicit shutdown is
+required.
+
+**One Java type per API resource.** The API returns the same `Document` schema from upload, list,
+search, get, rename, and create-from-template, and the SDK mirrors that: every one of those methods
+returns `Document`. A field a particular response does not populate is `null` — a freshly uploaded
+document has no `assignment` and no `pages` until processing reaches `metadata_ready`. `Workspace`,
+`Template`, `Signer`, and `Assignment` work the same way.
+
+**Envelopes are unwrapped for you.** JSON success bodies are
+`{ "status": integer, "message": string, "data": ... }`; SDK methods return the `data` payload. A
+`void` method discards a success envelope and also accepts an empty 2xx body. Binary methods return
+raw `byte[]` without JSON decoding. A non-2xx HTTP status — or a non-2xx numeric status inside a
+200 envelope — raises `ApiException`.
+
+**Account scoping.** Account-scoped operations use the `accountId` configured on the client. Every
+one of them also has an overload taking an explicit account ID, so a single client can serve several
+workspaces. `workspaces()` always takes the account ID explicitly, because its operations are about
+the workspace rather than inside it.
 
 ## Authentication
 
-The API supports two authentication methods:
+The API accepts two credentials. Prefer the API key for server integrations:
 
 ```java
 // Preferred: X-Api-Key header
@@ -147,7 +197,7 @@ AssinafyClient apiKeyClient = new AssinafyClient(
         .build()
 );
 
-// Authorization: Bearer access token
+// Authorization: Bearer access token, from authentication().login(...)
 AssinafyClient bearerClient = new AssinafyClient(
     AssinafyClientOptions.builder()
         .token("jwt-token")
@@ -156,444 +206,225 @@ AssinafyClient bearerClient = new AssinafyClient(
 );
 ```
 
+When both are configured the API key wins. Signer-facing operations use a third credential, the
+signer access code, passed per call rather than configured on the client — see
+[Signer self-service](#signer-self-service). Public operations require no credential at all, so
+build a credential-free client for them.
+
 ## Configuration
 
-| Option          | Type     | Default                              | Description                              |
-|-----------------|----------|--------------------------------------|------------------------------------------|
-| `apiKey`        | String   | —                                    | Preferred credential (X-Api-Key header).  |
-| `token`         | String   | —                                    | Bearer access token (Authorization header). |
-| `accountId`     | String   | —                                    | Default workspace/account ID.             |
-| `baseUrl`       | String   | `https://api.assinafy.com.br/v1`     | HTTPS API base URL. Plain HTTP is rejected except for loopback testing; use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
-| `webhookSecret`  | String   | —                                    | Optional secret for an out-of-band HMAC arrangement; the official API publishes no webhook-signature scheme. |
-| `timeoutMs`      | long     | 30000                                | Request timeout in milliseconds.          |
-| `logger`        | Logger   | No-op                                | Optional logger instance.                |
+| Option          | Type   | Default                          | Description |
+|-----------------|--------|----------------------------------|-------------|
+| `apiKey`        | String | —                                | Preferred credential, sent as `X-Api-Key`. |
+| `token`         | String | —                                | Bearer access token, used when no API key is set. |
+| `accountId`     | String | —                                | Default workspace for account-scoped operations. |
+| `baseUrl`       | String | `https://api.assinafy.com.br/v1` | HTTPS API base URL. Plain HTTP is rejected except for loopback testing; use `AssinafyClientOptions.SANDBOX_BASE_URL` for the sandbox. |
+| `webhookSecret` | String | —                                | Secret for an out-of-band HMAC arrangement; the API publishes no webhook-signature scheme. |
+| `timeoutMs`     | long   | `30000`                          | Call, connect, read, and write timeout in milliseconds. |
+| `logger`        | Logger | No-op                            | Structured diagnostic callback. A logger that throws never affects an API call. |
 
-### Factory Methods
+Two factory methods cover the common cases:
 
 ```java
-// Positional factory
-AssinafyClient factoryClient = AssinafyClient.create("api-key", "account-id");
+AssinafyClient client = AssinafyClient.create("api-key", "account-id");
 
-// With additional options
 AssinafyClientOptions extras = AssinafyClientOptions.builder()
-    .webhookSecret("secret")
-    .timeoutMs(60000)
+    .baseUrl(AssinafyClientOptions.SANDBOX_BASE_URL)
+    .timeoutMs(60_000)
     .build();
-AssinafyClient customClient = AssinafyClient.create("api-key", "account-id", extras);
+AssinafyClient sandboxClient = AssinafyClient.create("api-key", "account-id", extras);
 ```
 
-## Resources
+## The signing lifecycle
 
-### Documents
+A document travels from an uploaded PDF to a certificated file through a fixed sequence. The rest of
+this section follows it step by step.
+
+### 1. Upload the document
+
+Upload a PDF (non-empty, name ending in `.pdf`, at most 25 MB) into a workspace. The response
+carries the document ID everything else keys off.
 
 ```java
-// Upload
-DocumentUploadResponse doc = client.documents().upload(fileData, "document.pdf");
+byte[] fileData = Files.readAllBytes(Path.of("contract.pdf"));
+Document document = client.documents().upload(fileData, "contract.pdf");
 
-// List with pagination
-PaginatedResult<DocumentListItem> result = client.documents().list(
-    ListParams.builder().page(1).perPage(20).build()
+// With optional metadata and an explicit workspace
+Document scoped = client.documents().upload(
+    fileData, "contract.pdf", Map.of("origin", "crm"), accountId);
+```
+
+### 2. Wait for processing
+
+Upload is asynchronous. The document moves through `metadata_processing` to `metadata_ready`, at
+which point its pages and thumbnail exist. `waitUntilReady` polls `details` until the document
+reaches a ready status, throwing `ValidationException` if it enters a failed status or the budget
+expires.
+
+```java
+Document ready = client.documents().waitUntilReady(document.getId());          // 30s / 2s poll
+Document slower = client.documents().waitUntilReady(document.getId(), 120_000, 5_000);
+```
+
+Reading and reshaping the document at any point:
+
+```java
+Document details = client.documents().details(documentId);   // get(...) is an alias
+Document renamed = client.documents().rename(documentId, "signed-contract.pdf");
+
+PaginatedResult<Document> page = client.documents().list(
+    ListParams.builder().page(1).perPage(20).status("pending_signature").build()
 );
 
-// Get details
-DocumentDetails details = client.documents().details(documentId);
-
-// Rename (PATCH /documents/{id})
-DocumentDetails renamed = client.documents().rename(documentId, "signed-contract.pdf");
-
-// Lightweight search (compact representation without expanded assignment/pages)
-PaginatedResult<DocumentListItem> found = client.documents().search(
-    ListParams.builder().search("contract").status("metadata_ready").build()
+// Lightweight search: compact records without the expanded assignment and pages
+PaginatedResult<Document> found = client.documents().search(
+    ListParams.builder().search("contract").build()
 );
 
-// Download
-byte[] pdf = client.documents().download(documentId);
-byte[] thumbnail = client.documents().thumbnail(documentId);
-
-// Delete
-client.documents().delete(documentId);
-
-// Create from template
-DocumentDetails templateDocument = client.documents().createFromTemplate(
-    templateId,
-    CreateDocumentFromTemplateRequest.builder()
-        .name("contract.pdf")
-        .signers(List.of(
-            TemplateSigner.builder().roleId("role-id").id(signerId).build()
-        ))
-        .build(),
-    accountId
-);
-
-// Estimate the credit cost before creating
-Map<String, Object> cost = client.documents().estimateCostFromTemplate(templateId, request, accountId);
-
-// Get document statuses
-List<DocumentStatusInfo> statuses = client.documents().getStatuses();
-
-// Wait for processing to finish, then download raw binary artifact bytes.
-// Download throws ApiException if the artifact is unavailable (e.g. not yet signed).
-client.documents().waitUntilReady(documentId);
-byte[] page = client.documents().downloadPage(documentId, pageId);
-String thumbUrl = details.getArtifacts().getThumbnail(); // inline URL, no extra round-trip
-
-// Activity log, verification and signing-progress helpers
 List<DocumentActivity> activity = client.documents().activities(documentId);
-Map<String, Object> verification = client.documents().verify(signatureHash); // { is_valid, ... }
-boolean done = client.documents().isFullySigned(documentId);
-SigningProgress progress = client.documents().getSigningProgress(documentId); // signed/total/pending/%
+List<DocumentStatusInfo> statuses = client.documents().getStatuses();  // which statuses are deletable
 ```
 
-### Signers
+### 3. Resolve the signers
 
-`create(...)` never performs an email lookup. A supplied CPF/CNPJ is persisted after creation through
-the signer's `government_id` update. Signer metadata is deprecated and is not sent. Use
-`findOrCreate(...)` only when reusing an exact case-insensitive email match is intended; an existing
-match is returned unchanged.
+`create` always issues the create request. Use `findOrCreate` when reusing an existing signer with
+the same email address is what you want; it returns an exact case-insensitive match unchanged,
+without overwriting the stored name, phone, or CPF/CNPJ. A supplied `cpf` (CPF or CNPJ) is persisted
+after creation through the signer's `government_id` update, with non-digits stripped; if that update
+fails, the new signer is deleted.
 
 ```java
-// Always create a new signer (POST /accounts/{accountId}/signers)
-Signer signer = client.signers().create(
+Signer created = client.signers().create(
     CreateSignerRequest.builder()
         .fullName("John Doe")
         .email("john@example.invalid")
         .whatsappPhoneNumber("+5548999990000")
+        .cpf("123.456.789-00")
         .build()
 );
 
-// Reuse an exact case-insensitive email match, or create when none exists
-Signer reusableSigner = client.signers().findOrCreate(
+Signer reused = client.signers().findOrCreate(
     CreateSignerRequest.builder()
         .fullName("Jane Doe")
         .email("jane@example.invalid")
         .build()
 );
 
-// Get
-Signer fetchedSigner = client.signers().get(signerId);
-
-// List
-PaginatedResult<Signer> signers = client.signers().list(
-    ListParams.builder().search("john").build()
-);
-
-// Update
-client.signers().update(signerId,
-    UpdateSignerRequest.builder().fullName("John Updated").build()
-);
-
-// Delete
-client.signers().delete(signerId);
-
-// Find by email
-Signer emailMatch = client.signers().findByEmail("john@example.invalid");
-
-// Create a WhatsApp-only signer (email is optional; full_name is required)
-Signer waSigner = client.signers().create(
+// Email is optional — a signer may have only a name and a WhatsApp number
+Signer whatsappOnly = client.signers().create(
     CreateSignerRequest.builder()
         .fullName("Maria Silva")
         .whatsappPhoneNumber("+5548999990000")
         .build()
 );
 
-// Self-service (signer-access-code based; the code is sent as the signer-access-code query param)
-Signer selfInfo = client.signers().getSelf(signerAccessCode);
-client.signers().acceptTerms(signerAccessCode);   // no body, no return payload
-Map<String, Object> verifyResult = client.signers().verifyEmail(signerAccessCode, "123456");
-
-// Confirm/update signer data before signing; returns the server-normalised signer.
-// Documented body fields: full_name, email, government_id.
-Signer confirmed = client.signers().confirmSignerData(documentId, signerAccessCode,
-    Map.of("full_name", "Maria Silva", "email", "maria@example.invalid"));
+Signer fetched = client.signers().get(signerId);
+Signer byEmail = client.signers().findByEmail("john@example.invalid");   // null when absent
+PaginatedResult<Signer> signers = client.signers().list(ListParams.builder().search("john").build());
+client.signers().update(signerId, UpdateSignerRequest.builder().fullName("John Updated").build());
+client.signers().delete(signerId);
 ```
 
-### Assignments
+### 4. Estimate the cost and request signatures
+
+Creating an assignment starts the signing process and dispatches the notifications, so estimate
+first when credit balance matters.
 
 ```java
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+    .method("virtual")                                    // or "collect" for placed input fields
+    .signers(List.of(SignerReference.ofId(signerId)))
+    .message("Please sign")
+    .expiresAt(Instant.now().plus(30, ChronoUnit.DAYS)
+            .truncatedTo(ChronoUnit.SECONDS).toString())
+    .copyReceivers(List.of("watcher@example.invalid"))
+    .build();
 
-// Create
-Assignment assignment = client.assignments().create(
-    documentId,
-    CreateAssignmentRequest.builder()
-        .method("virtual")
-        .signers(List.of(SignerReference.ofId(signerId)))
-        .message("Please sign")
-        .expiresAt(Instant.now().plus(30, ChronoUnit.DAYS)
-                .truncatedTo(ChronoUnit.SECONDS).toString())
-        .build()
-);
-
-// Estimate cost
-Map<String, Object> cost = client.assignments().estimateCost(documentId, request);
-CostEstimate typedCost = client.assignments().estimateCostTyped(documentId, request);
-
-// List assignments. The account-aware overload includes accountId for deployments that require
-// explicit workspace context.
-PaginatedResult<Assignment> assignments = client.assignments().list(
-    ListParams.builder().page(1).perPage(20).build()
-);
-
-// Reset expiration
-Assignment updated = client.assignments().resetExpiration(
-    documentId, assignmentId, Instant.now().plus(60, ChronoUnit.DAYS)
-            .truncatedTo(ChronoUnit.SECONDS).toString());
-
-// Resend notification (and estimate its cost first)
-Map<String, Object> resendCost = client.assignments().estimateResendCost(documentId, assignmentId, signerId);
-ResendNotificationResponse res = client.assignments().resendNotification(documentId, assignmentId, signerId);
-
-// Signer-side decline (requires signer-access-code and a non-blank reason)
-Map<String, Object> declined = client.assignments().decline(
-        documentId, assignmentId, signerAccessCode, "Unfavorable terms");
-
-// Inspect WhatsApp notification delivery state (one entry per tracked notification)
-List<Map<String, Object>> waState = client.assignments().getWhatsappNotifications(documentId, assignmentId);
-
-// Optional deployment extension: clear expiration by sending expires_at:null.
-client.assignments().resetExpiration(documentId, assignmentId, null);
-
-// Signer-side flows (signer-access-code based)
-Map<String, Object> toSign = client.assignments().getForSigner(signerAccessCode);
-client.assignments().sign(documentId, assignmentId, signerAccessCode,
-        List.of(Map.of("itemId", "i1", "fieldId", "f1", "pageId", "p1", "value", "text")));
-```
-
-### Webhooks
-
-```java
-// Register
-WebhookSubscription sub = client.webhooks().register(
-    RegisterWebhookRequest.builder()
-        .url("https://example.invalid/webhook")
-        .email("admin@example.invalid")
-        .events(List.of("document_ready", "signer_signed_document"))
-        .build()
-);
-
-// Get current subscription
-WebhookSubscription current = client.webhooks().get();
-
-// Stop delivery. delete() is deprecated; use the documented inactivation operation.
-client.webhooks().inactivate();
-
-// List event types
-List<WebhookEventTypeInfo> types = client.webhooks().listEventTypes();
-
-// List dispatches
-PaginatedResult<WebhookDispatch> dispatches = client.webhooks().listDispatches(
-    ListParams.builder().page(1).perPage(20).build()
-);
-
-// Retry dispatch
-client.webhooks().retryDispatch(dispatchId);
-```
-
-### Templates
-
-```java
-// List
-PaginatedResult<TemplateListItem> templates = client.templates().list();
-
-// Optional single-template deployment endpoint; confirm support before use
-Template template = client.templates().get(templateId);
-```
-
-### Field Definitions
-
-Field definitions describe the typed inputs that signers fill in during a
-`collect`-method assignment. The SDK exposes the full CRUD surface plus the
-validation helpers.
-
-```java
-// Create
-FieldDefinition field = client.fields().create(
-    CreateFieldRequest.builder()
-        .type("text")
-        .name("Address")
-        .isRequired(true)
-        .build()
-);
-
-// List / Get / Update / Delete
-PaginatedResult<FieldDefinition> fields = client.fields().list();
-FieldDefinition one = client.fields().get(fieldId);
-client.fields().update(fieldId, UpdateFieldRequest.builder().isRequired(false).build());
-client.fields().delete(fieldId);
-
-// Validate a value (omit signer-access-code when calling as an authenticated user)
-FieldValidationResult result = client.fields().validate(fieldId, "400.676.228-36", null);
-if (!Boolean.TRUE.equals(result.getSuccess())) {
-    System.err.println(result.getErrorMessage());
-}
-
-// Validate multiple in one round-trip
-List<FieldValidationResult> bulk = client.fields().validateMultiple(
-    List.of(Map.of("field_id", fieldId, "value", "12345")),
-    null
-);
-
-// Discover supported types
-List<FieldType> types = client.fields().listTypes();
-```
-
-### Tags
-
-Workspace tags can be created, renamed, and deleted, and attached to documents.
-
-```java
-// Workspace-level tag CRUD
-Tag tag = client.tags().create(CreateTagRequest.builder().name("Contracts").color("FF0000").build());
-PaginatedResult<Tag> tags = client.tags().list();
-client.tags().rename(tag.getId(), RenameTagRequest.builder().name("2026 Contracts").build());
-client.tags().rename(tag.getId(), RenameTagRequest.builder().clearColor().build()); // sends color:null to clear
-client.tags().delete(tag.getId());          // 409 if the tag is still attached…
-client.tags().delete(tag.getId(), true);    // …pass force=true to detach + delete
-
-// ID-based methods resolve the workspace IDs before changing the document.
-// appendTags/replaceTags remain available for tag-name inputs and create unknown names.
-List<Tag> attached = client.documents().appendTagIds(documentId, List.of(tag.getId()));
-client.documents().replaceTagIds(documentId, List.of(tag.getId()));
-client.documents().appendTags(documentId, List.of("2026 Contracts"));
-List<Tag> docTags = client.documents().listTags(documentId);
-client.documents().detachTag(documentId, attached.getFirst().getId());
-```
-
-### API Key Management
-
-Manage the API key for the authenticated user (`/users/api-keys`). The
-generated key is shown in full only once — store it securely and never expose
-it to a frontend.
-
-```java
-ApiKey current = client.apiKeys().get();          // masked (last 4 chars only), or null
-ApiKey rotated = client.apiKeys().create("password");  // full key; invalidates the previous one
-client.apiKeys().delete();
-```
-
-### Authentication and Users
-
-Login, social-login, password, authenticated-user, user-statistics, and notification-preference
-methods are available through `client.authentication()` and `client.users()`. Their complete
-signatures and payloads are in the [API reference](docs/API_REFERENCE.md).
-
-Notification preferences use the exact case-sensitive codes published by the API. Updates merge,
-so omitted switches keep their current values:
-
-```java
-NotificationPreferences preferences = client.users().getNotificationPreferences();
-NotificationPreferences updated = client.users().updateNotificationPreferences(Map.of(
-    "DocumentCompleted", true,
-    "SignerWhatsappFailed", false
-));
-```
-
-Request: `PUT /users/self/notification-preferences`
-
-```json
-{ "DocumentCompleted": true, "SignerWhatsappFailed": false }
-```
-
-Response `data` (the API always returns all nine switches):
-
-```json
-{
-  "DocumentCompleted": true,
-  "SignerDeclined": true,
-  "DocumentCancelled": true,
-  "DocumentAboutToExpire": true,
-  "DocumentExpired": true,
-  "DocumentExpirationReset": true,
-  "DocumentProcessingFailed": true,
-  "TemplateProcessingFailed": true,
-  "SignerWhatsappFailed": false
+CostEstimate estimate = client.assignments().estimateCostTyped(documentId, request);
+if (Boolean.TRUE.equals(estimate.getHasSufficientResources())) {
+    Assignment assignment = client.assignments().create(documentId, request);
 }
 ```
 
-### Public Documents
-
-Endpoints that do not require auth (useful for embedded signer flows).
-
-```java
-// Basic info — anyone can call (returns the same typed DocumentDetails as documents().details())
-DocumentDetails basic = client.publicDocuments().getBasicInfo(documentId);
-
-// Send a one-time access token by email so the recipient can view/sign the document.
-// This overload sends exactly { "email": "..." }.
-Map<String, Object> sent = client.publicDocuments().sendToken(documentId, "signer@example.invalid");
-
-// Deployment-specific channel form. Email sends { email, recipient, channel };
-// other channels send { recipient, channel }.
-client.publicDocuments().sendToken(documentId, recipient, channel);
-```
-
-### Signer Self-Service
-
-These endpoints are used by the signer's browser/app (signer-access-code based).
+Per-signer delivery and ordering live on `SignerReference`. Verification methods are `Email`,
+`Whatsapp`, or `DigitalCertificate`; notification methods are `Email` or `Whatsapp`. `step` controls
+signing order: signers sharing a step sign in parallel, and the next step is notified only once the
+previous one completes. If any signer supplies a step, all must, and the values must be contiguous
+from 1. A `DigitalCertificate` signer must be alone in its step.
 
 ```java
-// Get a signer's own info (includes has_signature/has_initial/is_signature_reusable)
-Signer me = client.signers().getSelf(signerAccessCode);
-
-// Accept terms (no body, no return)
-client.signers().acceptTerms(signerAccessCode);
-
-// OTP verification (body carries only verification-code)
-client.signers().verifyEmail(signerAccessCode, "123456");
-
-// Signature image. The official upload contract accepts image/png only.
-// type and reuse are optional documented query inputs; reuse sets is_signature_reusable.
-client.signers().uploadSignature(signerAccessCode, "signature", pngBytes);
-client.signers().uploadSignature(signerAccessCode, "signature", pngBytes, true); // opt into reuse
-byte[] image = client.signers().downloadSignature(signerAccessCode, "signature");
-
-// Documents assigned to the signer
-Map<String, Object> current = client.signers().getCurrentDocument(signerId, signerAccessCode);
-PaginatedResult<DocumentListItem> mine = client.signers().listDocuments(signerId, signerAccessCode);
-PaginatedResult<DocumentListItem> hits =
-    client.signers().searchDocuments(signerId, signerAccessCode, "invoice"); // compact search
-byte[] pdf = client.signers().downloadDocument(signerId, docId, "certificated", signerAccessCode);
-
-// Bulk sign / decline
-client.signers().signMultiple(signerAccessCode, List.of(docId1, docId2));
-client.signers().declineMultiple(signerAccessCode, List.of(docId1), "Reason");
+SignerReference ordered = SignerReference.builder()
+    .id(signerId)
+    .verificationMethod("Whatsapp")
+    .notificationMethods(List.of("Whatsapp"))
+    .step(1)
+    .build();
 ```
 
-### Workspaces
+Managing a live assignment:
 
 ```java
-// Create (notification_sender_type: "User" (default) or "Account")
-Workspace workspace = client.workspaces().create(
-    CreateWorkspaceRequest.builder().name("My Workspace").notificationSenderType("Account").build()
-);
+Assignment extended = client.assignments().resetExpiration(
+    documentId, assignmentId,
+    Instant.now().plus(60, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString());
 
-// List
-PaginatedResult<WorkspaceListItem> workspaces = client.workspaces().list();
+CostEstimate resendCost = client.assignments().estimateResendCostTyped(documentId, assignmentId, signerId);
+ResendNotificationResponse resent = client.assignments().resendNotification(documentId, assignmentId, signerId);
 
-// Get
-Workspace currentWorkspace = client.workspaces().get(accountId);
-
-// Update
-Workspace updated = client.workspaces().update(accountId,
-    UpdateWorkspaceRequest.builder().name("New Name").build()
-);
-
-// Delete (pass force=true to also cancel an active paid subscription that would block deletion)
-client.workspaces().delete(accountId);
-client.workspaces().delete(accountId, true);
-
-// Branding: theme + logo
-AccountTheme theme = client.workspaces().getTheme(accountId); // account_name, colors, logo URL
-byte[] logo = client.workspaces().downloadLogo(accountId);    // throws ApiException(404) if none set
-client.workspaces().uploadLogo(accountId, pngBytes, "logo.png"); // content type auto-detected
-client.workspaces().deleteLogo(accountId);
+List<WhatsappNotification> delivery =
+    client.assignments().getWhatsappNotificationsTyped(documentId, assignmentId);
 ```
 
-## High-Level Helper
+`assignments().list(...)` maps `GET /assignments`, which resolves the workspace from an interactive
+session. It is not reachable with API-key authentication; use a bearer token.
 
-The SDK provides a convenience method that uploads the PDF, optionally waits for processing,
-resolves signers, and creates a virtual assignment:
+### 5. Track progress
+
+```java
+Document current = client.documents().details(documentId);
+SigningProgress progress = client.documents().getSigningProgress(documentId); // signed/total/pending/%
+boolean done = client.documents().isFullySigned(documentId);
+List<DocumentActivity> log = client.documents().activities(documentId);
+```
+
+For continuous tracking, prefer [webhooks](#webhooks) over polling.
+
+### 6. Download the artifacts
+
+Artifact URLs are inline on the document, and the binary itself is one call away. `download`
+defaults to the `certificated` artifact; the alternatives are `original`, `certificate-page`,
+`pades` (digital-certificate processes), and `bundle` (a ZIP of the available finals).
+
+```java
+String thumbUrl = current.getArtifacts().getThumbnail();      // inline URL, no round-trip
+
+byte[] certificated = client.documents().download(documentId);
+byte[] original     = client.documents().download(documentId, "original");
+byte[] thumbnail    = client.documents().thumbnail(documentId);
+byte[] pageImage    = client.documents().downloadPage(documentId, pageId);
+```
+
+A download of an artifact that does not exist yet — the `certificated` file of an unsigned
+document, for example — throws `ApiException` rather than returning the error body as file bytes.
+
+Anyone holding the signature hash can verify a finished document without credentials:
+
+```java
+DocumentVerification verification = client.documents().verifyTyped(signatureHash);
+```
+
+### 7. Delete when finished
+
+Deletion is allowed only in a deletable status; `documents().getStatuses()` returns the rules.
+
+```java
+client.documents().delete(documentId);
+```
+
+## The one-call workflow helper
+
+`uploadAndRequestSignatures` composes steps 1 through 4: it uploads the PDF, waits for processing
+(unless `waitForReady(false)`), resolves each signer, and creates a `virtual` assignment.
 
 ```java
 UploadAndRequestSignaturesResult result = client.uploadAndRequestSignatures(
@@ -611,127 +442,333 @@ UploadAndRequestSignaturesResult result = client.uploadAndRequestSignatures(
         .build()
 );
 
-// Result contains:
-result.getDocument();      // DocumentUploadResponse
+result.getDocument();      // Document
 result.getAssignment();    // Assignment
-result.getSignerIds();     // List<String>
+result.getSignerIds();     // List<String>, in request order
 ```
 
-Email entries reuse an existing exact case-insensitive email match; their requested name, phone, and
-CPF/CNPJ do not replace the stored profile. For a signer whose create response returns a valid ID,
-the CPF/CNPJ is persisted through a `government_id` update. A signer recovered after an
-indeterminate create response is not updated or deleted; an entry containing CPF/CNPJ fails before
-assignment creation when ownership cannot be established. Email-bearing entries must have unique addresses
-(case-insensitive), and WhatsApp-only entries must have unique phone numbers (exact match).
-WhatsApp-only entries
-automatically use `Whatsapp` verification and notification methods. Signer-entry metadata is
-deprecated and is not sent. On an ordinary post-upload failure, the helper attempts to delete the
-uploaded document and every signer it created; cleanup failures are attached to the original
-exception. If assignment creation has an indeterminate result and reconciliation cannot find the
-assignment, the helper retains the workflow resources to avoid deleting a potentially active
-request. Existing and indeterminate-ownership signers are never modified or deleted by this
-workflow.
+It has externally visible side effects — it creates signer records and dispatches notifications —
+and blocks by default. Each entry needs a name plus an email or a WhatsApp number; email-bearing
+entries must have unique addresses (case-insensitive) and WhatsApp-only entries unique numbers.
+WhatsApp-only entries use `Whatsapp` verification and notification automatically. An entry whose
+email matches an existing signer reuses that profile unchanged.
 
-See [SDK convenience payloads](docs/API_REFERENCE.md#sdk-convenience-payloads) for every request,
-result, progress, pagination, webhook, and artifact field used by Java-only helpers.
+Rollback is deliberately conservative. On an ordinary post-upload failure the helper deletes the
+uploaded document and every signer it created, attaching cleanup failures to the original exception
+as suppressed exceptions. When a create response is indeterminate — a transport failure after the
+server may have committed — it reconciles before rolling back, and if the outcome still cannot be
+established it retains the resources rather than deleting a request that may already be live,
+attaching the identifiers as suppressed diagnostic context. Signers that were reused or recovered
+are never modified or deleted.
 
-## Webhook Verification
+See [SDK convenience payloads](docs/API_REFERENCE.md#sdk-convenience-payloads) for every field of
+the request, the result, and the other Java-only helper types.
 
-> **Caution:** the Assinafy webhook contract does **not** currently publish a signature header or a
-> signing scheme, and the subscription has no place to register a shared secret. `verify(...)`
-> implements the conventional `HMAC-SHA256(raw body)` pattern for tenants that have an out-of-band
-> signing arrangement — it is not a documented platform guarantee. A `verify() == false` result does
-> **not** by itself mean a request is forged (it is also `false` when no secret/signature is present).
-> Do **not** reject deliveries on `verify() == false` unless you have confirmed your tenant signs with
-> this exact scheme; otherwise apply authentication at a trusted network boundary and only parse
-> requests accepted by that boundary.
+## Signer self-service
+
+These operations are what a signer's browser or app calls. They authenticate with the signer access
+code from the invitation, which the SDK sends as the `signer-access-code` query parameter — pass it
+per call rather than configuring it on the client.
+
+```java
+// Who am I, and what am I being asked to sign?
+Signer me = client.signers().getSelf(signerAccessCode);
+Document toSign = client.assignments().getForSignerTyped(signerAccessCode);
+
+// Terms, identity confirmation, and the one-time code
+client.signers().acceptTerms(signerAccessCode);
+Signer confirmed = client.signers().confirmSignerData(documentId, signerAccessCode,
+    Map.of("full_name", "Maria Silva", "email", "maria@example.invalid"));
+client.signers().verifyEmail(signerAccessCode, "123456");
+
+// Signature image. The documented upload contract is image/png; type and reuse are optional,
+// and reuse sets the signer's is_signature_reusable flag.
+client.signers().uploadSignature(signerAccessCode, "signature", pngBytes);
+client.signers().uploadSignature(signerAccessCode, "signature", pngBytes, true);
+byte[] stored = client.signers().downloadSignature(signerAccessCode, "signature");
+
+// Sign, or decline with a reason
+client.assignments().sign(documentId, assignmentId, signerAccessCode,
+    List.of(Map.of("itemId", "i1", "fieldId", "f1", "pageId", "p1", "value", "text")));
+client.assignments().decline(documentId, assignmentId, signerAccessCode, "Unfavorable terms");
+
+// The signer's own queue
+Document currentDoc = client.signers().getCurrentDocumentTyped(signerId, signerAccessCode);
+PaginatedResult<Document> mine = client.signers().listDocuments(signerId, signerAccessCode);
+PaginatedResult<Document> hits = client.signers().searchDocuments(signerId, signerAccessCode, "invoice");
+byte[] pdf = client.signers().downloadDocument(signerId, documentId, "certificated", signerAccessCode);
+
+// Bulk actions across several pending documents
+client.signers().signMultiple(signerAccessCode, List.of(documentId1, documentId2));
+client.signers().declineMultiple(signerAccessCode, List.of(documentId1), "Reason");
+```
+
+Two operations need no credential at all, which is what makes an embedded signing page possible:
+
+```java
+Document basic = client.publicDocuments().getBasicInfo(documentId);
+client.publicDocuments().sendToken(documentId, "signer@example.invalid");  // sends { "email": ... }
+```
+
+## Templates and field definitions
+
+A template is a prepared document with named roles and pre-placed fields. Creating a document from
+one skips upload and processing entirely.
+
+```java
+PaginatedResult<Template> templates = client.templates().list();
+Template template = client.templates().get(templateId);   // deployment extension; confirm support
+
+CreateDocumentFromTemplateRequest request = CreateDocumentFromTemplateRequest.builder()
+    .name("contract.pdf")
+    .signers(List.of(TemplateSigner.builder().roleId("role-id").id(signerId).build()))
+    .message("Please sign")
+    .build();
+
+CostEstimate cost = client.documents().estimateCostFromTemplateTyped(templateId, request);
+Document fromTemplate = client.documents().createFromTemplate(templateId, request);
+```
+
+Template signers follow the same delivery and ordering rules as assignment signers, with one extra
+restriction: a template signer may use only one notification method.
+
+Field definitions describe the typed inputs a signer fills in during a `collect` assignment:
+
+```java
+FieldDefinition field = client.fields().create(
+    CreateFieldRequest.builder().type("text").name("Address").isRequired(true).build()
+);
+
+PaginatedResult<FieldDefinition> fields = client.fields().list(
+    ListParams.builder().includeInactive(true).includeStandard(true).build()
+);
+FieldDefinition one = client.fields().get(fieldId);
+client.fields().update(fieldId, UpdateFieldRequest.builder().isRequired(false).build());
+client.fields().delete(fieldId);
+
+List<FieldType> types = client.fields().listTypes();
+
+// Validate before submitting. Omit the access code when calling as an authenticated user.
+FieldValidationResult result = client.fields().validate(fieldId, "400.676.228-36", null);
+List<FieldValidationResult> bulk = client.fields().validateMultiple(
+    List.of(Map.of("field_id", fieldId, "value", "12345")), null);
+```
+
+## Tags
+
+Tags are workspace-level labels that can be attached to documents.
+
+```java
+Tag tag = client.tags().create(CreateTagRequest.builder().name("Contracts").color("FF0000").build());
+PaginatedResult<Tag> tags = client.tags().list();
+client.tags().rename(tag.getId(), RenameTagRequest.builder().name("2026 Contracts").build());
+client.tags().rename(tag.getId(), RenameTagRequest.builder().clearColor().build());  // sends color:null
+client.tags().delete(tag.getId());          // 409 while the tag is still attached…
+client.tags().delete(tag.getId(), true);    // …force detaches, then deletes
+```
+
+Attaching to a document comes in two forms. The ID-based methods resolve workspace tag IDs before
+changing the document; the name-based methods send names, and the API creates any name it does not
+already know.
+
+```java
+List<Tag> attached = client.documents().appendTagIds(documentId, List.of(tag.getId()));
+client.documents().replaceTagIds(documentId, List.of(tag.getId()));
+client.documents().appendTags(documentId, List.of("2026 Contracts"));
+List<Tag> docTags = client.documents().listTags(documentId);
+client.documents().detachTag(documentId, attached.getFirst().getId());
+```
+
+## Workspaces and branding
+
+Workspace operations always take the account ID explicitly.
+
+```java
+Workspace workspace = client.workspaces().create(
+    CreateWorkspaceRequest.builder().name("My Workspace")
+        .notificationSenderType("Account")     // "User" (default) or "Account"
+        .build()
+);
+
+PaginatedResult<Workspace> workspaces = client.workspaces().list();
+Workspace one = client.workspaces().get(accountId);
+client.workspaces().update(accountId, UpdateWorkspaceRequest.builder().name("New Name").build());
+
+client.workspaces().delete(accountId);        // 400 listing blockers if a paid subscription is active
+client.workspaces().delete(accountId, true);  // cancels the subscription, then deletes
+
+AccountTheme theme = client.workspaces().getTheme(accountId);
+byte[] logo = client.workspaces().downloadLogo(accountId);      // ApiException(404) when unset
+client.workspaces().uploadLogo(accountId, pngBytes, "logo.png"); // content type auto-detected
+client.workspaces().deleteLogo(accountId);
+
+List<DocumentStatsRow> monthly = client.workspaces().stats(accountId);
+List<DocumentStatsRow> daily = client.workspaces().stats(accountId, "daily", "2026-08");
+```
+
+## Users, sessions, and API keys
+
+```java
+AuthSession session = client.authentication().login("user@example.invalid", "password");
+client.authentication().changePassword("user@example.invalid", "old", "new");
+client.authentication().requestPasswordReset("user@example.invalid");
+client.authentication().resetPassword("user@example.invalid", "token", "new");
+
+AuthUser user = client.users().get();
+List<DocumentStatsRow> crossAccount = client.users().stats();   // every accessible workspace
+```
+
+Notification preferences use the exact case-sensitive codes the API publishes. Updates merge, so
+omitted switches keep their current values, and the response always returns all nine.
+
+```java
+NotificationPreferences preferences = client.users().getNotificationPreferences();
+NotificationPreferences updated = client.users().updateNotificationPreferences(Map.of(
+    "DocumentCompleted", true,
+    "SignerWhatsappFailed", false
+));
+```
+
+An API key is shown in full only once. Store it securely and never expose it to a frontend.
+
+```java
+ApiKey current = client.apiKeys().get();              // masked, or null when none exists
+ApiKey rotated = client.apiKeys().create("password"); // full key; invalidates the previous one
+client.apiKeys().delete();
+```
+
+## Webhooks
+
+Register one subscription per workspace, then receive deliveries at your endpoint.
+
+```java
+WebhookSubscription sub = client.webhooks().register(
+    RegisterWebhookRequest.builder()
+        .url("https://example.invalid/webhook")
+        .email("admin@example.invalid")
+        .events(List.of("document_ready", "signer_signed_document"))
+        .build()
+);
+
+List<WebhookEventTypeInfo> types = client.webhooks().listEventTypes();
+WebhookSubscription active = client.webhooks().get();   // null when none is registered
+client.webhooks().inactivate();                         // stop delivery
+```
+
+When `events` is null or empty the SDK subscribes to `document_ready`, `document_prepared`,
+`signer_signed_document`, `signer_rejected_document`, and `document_processing_failed`; `isActive`
+defaults to `true`. Pass explicit values to override either default.
+
+Deliveries are recorded and can be inspected or replayed:
+
+```java
+PaginatedResult<WebhookDispatch> dispatches = client.webhooks().listDispatches(
+    ListParams.builder().page(1).perPage(20).build()
+);
+client.webhooks().retryDispatch(dispatchId);
+```
+
+On the receiving side, parse the envelope and read the event:
 
 ```java
 WebhookVerifier verifier = client.webhookVerifier();
 
-// Parse the event (always safe):
 WebhookPayload event = verifier.extractEvent(payload);
-String eventType = verifier.getEventType(event);
-Map<String, Object> eventData = verifier.getEventData(event);
+String eventType = verifier.getEventType(event);              // e.g. "signer_signed_document"
+Map<String, Object> eventData = verifier.getEventData(event); // the affected entity
+```
 
+> **Caution:** the Assinafy webhook contract does **not** publish a signature header or a signing
+> scheme, and the subscription has nowhere to register a shared secret. `verify(...)` implements the
+> conventional `HMAC-SHA256(raw body)` pattern for tenants with an out-of-band signing arrangement —
+> it is not a platform guarantee. `verify() == false` is also what you get when no secret or no
+> signature is present, so it is not on its own evidence of forgery. Do **not** reject deliveries on
+> `verify() == false` unless you have confirmed your tenant signs with this exact scheme; otherwise
+> authenticate at a trusted network boundary and parse only what that boundary accepted.
+
+```java
 // Only gate on verify() if your tenant uses the HMAC-SHA256(raw-body) scheme:
 if (!verifier.verify(payload, signatureHeader)) {
     return Response.status(401).build();
 }
 ```
 
-## Error Handling
+## Error handling
 
-The SDK throws typed exceptions:
+Every failure is an unchecked `AssinafyException` or a subtype, so one catch can cover the SDK while
+more specific handlers react to particular conditions.
+
+| Exception                 | Raised when |
+|---------------------------|-------------|
+| `ValidationException`     | Local argument validation failed before any request was sent. |
+| `AuthenticationException` | HTTP 401 or 403. Subtype of `ApiException`. |
+| `RateLimitException`      | HTTP 429. Subtype of `ApiException`; back off and retry. |
+| `ApiException`            | Any other non-2xx status, or a non-2xx status inside a 200 envelope. |
+| `NetworkException`        | Transport or I/O failure, including an interrupted poll. |
+| `AssinafyException`       | Base type: serialization, decoding, and everything above. |
 
 ```java
 try {
     client.documents().upload(fileData, "document.pdf");
 } catch (ValidationException e) {
-    // Invalid input (e.g., file too large, invalid format)
-    System.err.println("Validation failed: " + e.getMessage());
-    System.err.println("Errors: " + e.getErrors());
+    System.err.println("Invalid input: " + e.getMessage() + " " + e.getContext());
 } catch (AuthenticationException e) {
-    // 401/403 — missing, invalid, or insufficiently-privileged credential (subtype of ApiException)
     System.err.println("Auth error " + e.getStatusCode() + ": " + e.getMessage());
 } catch (RateLimitException e) {
-    // 429 — back off and retry (subtype of ApiException)
-    System.err.println("Rate limited: " + e.getMessage());
+    System.err.println("Rate limited: " + e.getResponseHeader("retry-after"));
 } catch (ApiException e) {
-    // Any other API error
     System.err.println("API error " + e.getStatusCode() + ": " + e.getMessage());
     System.err.println("Response data: " + e.getResponseData());
 } catch (NetworkException e) {
-    // Network connectivity issue
     System.err.println("Network error: " + e.getMessage());
 } catch (AssinafyException e) {
-    // General SDK error
-    System.err.println("SDK error: " + e.getMessage());
-    System.err.println("Context: " + e.getContext());
+    System.err.println("SDK error: " + e.getMessage() + " " + e.getContext());
 }
 ```
 
+`ApiException` exposes the decoded body through `getResponseData()` and the response headers through
+`getResponseHeaders()` / `getResponseHeader(name)`, both as immutable snapshots with case-insensitive
+header lookup. `getContext()` on any `AssinafyException` carries structured diagnostic fields.
+
+The SDK does not retry automatically; retry policy belongs to the caller, who knows whether an
+operation is safe to repeat.
+
 ## Pagination
 
-Use `ListParams` for paginated requests:
+`ListParams` builds the query for every list endpoint. `page` must be at least 1 and `perPage` must
+be between 1 and 100; both are validated locally.
 
 ```java
 ListParams params = ListParams.builder()
     .page(1)
     .perPage(25)
-    .search("document name")
-    .sort("-created_at")  // Descending order
+    .search("contract")
+    .sort("updated_at")
+    .status("pending_signature")
+    .extra("custom", "value")       // anything the endpoint accepts that has no typed setter
     .build();
 
-PaginatedResult<DocumentListItem> result = client.documents().list(params);
-PaginationMeta meta = result.getMeta();
-// meta.getCurrentPage()
-// meta.getTotal()
-// meta.getLastPage()
-// meta.getPerPage()
+PaginatedResult<Document> result = client.documents().list(params);
+List<Document> data = result.getData();
+PaginationMeta meta = result.getMeta();   // null when the response exposes no pagination headers
 ```
 
-The SDK maps response headers to `PaginationMeta` as follows:
+`PaginationMeta` comes from response headers:
 
-| Response header | Getter |
-|---|---|
-| `X-Pagination-Current-Page` | `getCurrentPage()` |
-| `X-Pagination-Page-Count` | `getLastPage()` |
-| `X-Pagination-Per-Page` | `getPerPage()` |
-| `X-Pagination-Total-Count` | `getTotal()` |
+| Response header             | Getter             | Meaning |
+|-----------------------------|--------------------|---------|
+| `X-Pagination-Current-Page` | `getCurrentPage()` | Current page number. |
+| `X-Pagination-Page-Count`   | `getLastPage()`    | Total number of pages. |
+| `X-Pagination-Per-Page`     | `getPerPage()`     | Requested page size. |
+| `X-Pagination-Total-Count`  | `getTotal()`       | Total matching items across all pages, not the current page size. |
 
-`getTotal()` is the total number of matching items across all pages, not the current page size.
+## Request and response payloads
 
-## Request / Response Payloads
+The wire shapes below cover the core operations. The
+[complete Java API reference](docs/API_REFERENCE.md) documents every operation and every field.
 
-JSON success responses normally use `{ "status", "message", "data" }`; the SDK returns `data` and
-also accepts compatible bare JSON where applicable. A `void` method discards a success envelope and
-accepts an empty 2xx body. Binary methods return raw `byte[]` without JSON decoding. A non-2xx HTTP
-status or non-2xx numeric envelope status raises `ApiException`. See the
-[complete Java API reference](docs/API_REFERENCE.md) for every operation and payload field.
-
-**Upload document** — `documents().upload(...)` → `DocumentUploadResponse` (multipart `file`,
-`name`, and optional `metadata` parts):
+**Upload document** — `documents().upload(...)` → `Document` (multipart `file`, `name`, and
+optional `metadata` parts):
 
 ```json
 { "data": {
@@ -740,12 +777,12 @@ status or non-2xx numeric envelope status raises `ApiException`. See the
   "artifacts": { "original": "https://example.invalid/download/original" },
   "is_closed": false, "signing_url": "https://example.invalid/sign/doc_123",
   "decline_reason": null, "declined_by": null, "tags": [],
-  "created_at": "2026-07-18T19:03:38Z", "updated_at": "2026-07-18T19:03:38Z", "pages": []
+  "created_at": "2026-08-27T19:03:38Z", "updated_at": "2026-08-27T19:03:38Z", "pages": []
 }, "status": 200, "message": "" }
 ```
 
-Once processing finishes (`status: "metadata_ready"`), `documents().details(id)` also returns a
-`thumbnail` artifact and a populated `pages` array (`{ id, number, height, width, download_url }`).
+Once processing finishes (`status: "metadata_ready"`), the same shape also carries a `thumbnail`
+artifact and a populated `pages` array of `{ id, number, height, width, download_url }`.
 
 **Create signer** — `signers().create(...)` → `Signer`:
 
@@ -774,8 +811,8 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
   "signing_urls": [ { "signer_id": "signer_123", "url": "https://example.invalid/sign/document_123" } ] }
 ```
 
-**Estimate cost** — the map-returning methods return `Map<String,Object>`; the corresponding
-`estimateCostTyped(...)` methods return `CostEstimate`:
+**Estimate cost** — the map-returning methods return `Map<String,Object>`; each has a
+`...Typed(...)` counterpart returning `CostEstimate`:
 
 ```json
 { "documents": 1, "credits": 0, "needs_extra_document": false, "extra_document_cost": 0,
@@ -791,7 +828,8 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
   "is_read_only": false, "is_visible": true }
 ```
 
-**Tag** — `tags().create(...)` → `Tag` · **Account theme** — `workspaces().getTheme(...)` → `AccountTheme`:
+**Tag** — `tags().create(...)` → `Tag` · **Account theme** — `workspaces().getTheme(...)` →
+`AccountTheme`:
 
 ```jsonc
 // Tag
@@ -806,25 +844,40 @@ Once processing finishes (`status: "metadata_ready"`), `documents().details(id)`
 ```json
 { "events": ["document_ready","signer_signed_document"], "is_active": true,
   "url": "https://example.invalid/webhook", "email": "admin@example.invalid",
-  "updated_at": "2026-07-18T02:36:02Z" }
+  "updated_at": "2026-08-27T02:36:02Z" }
+```
+
+**Notification preferences** — `users().updateNotificationPreferences(...)` →
+`NotificationPreferences`:
+
+```jsonc
+// request: only the switches you want to change
+{ "DocumentCompleted": true, "SignerWhatsappFailed": false }
+// response data: always all nine
+{ "DocumentCompleted": true, "SignerDeclined": true, "DocumentCancelled": true,
+  "DocumentAboutToExpire": true, "DocumentExpired": true, "DocumentExpirationReset": true,
+  "DocumentProcessingFailed": true, "TemplateProcessingFailed": true, "SignerWhatsappFailed": false }
 ```
 
 ## Development
 
 ```bash
-# Unit tests (no live API calls)
+# Unit tests, no live API calls
 ./mvnw test
 
-# Full build, Javadocs, and package verification
+# Full build: tests, Javadoc, jar, sources, and Javadoc jars
 ./mvnw clean verify
 
-# The same verification after dependencies and plugins are cached
+# The same verification offline, after dependencies and plugins are cached
 ./mvnw -o verify
 ```
 
 The unit suite makes no live Assinafy calls and includes wire-level HTTP tests backed by
-MockWebServer. The opt-in `LiveApiSmokeIT` suite performs real sandbox reads and writes. Inject its
-credentials through your shell or CI secret store, then run:
+MockWebServer. Compilation runs with `-Xlint:all -Werror`, and Javadoc with `doclint:all` and
+`failOnWarnings`, so a warning fails the build.
+
+The opt-in `LiveApiSmokeIT` suite performs real sandbox reads and writes. Inject its credentials
+from your shell or CI secret store, then run:
 
 ```bash
 # ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID must already be set from a secret store.
@@ -835,15 +888,27 @@ export ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1
 ```
 
 The live profile rejects any base URL other than the exact sandbox URL. GitHub Actions runs it
-weekly and on manual dispatch through the protected `sandbox` environment. Only
-`ASSINAFY_API_KEY` and `ASSINAFY_ACCOUNT_ID` are required environment secrets. The
-assignment-notification case
-requires both `ASSINAFY_TEST_EMAIL_PRIMARY` and `ASSINAFY_TEST_EMAIL_SECONDARY`; the password-reset
-case requires only `ASSINAFY_TEST_EMAIL_PRIMARY`. Leave them unset to skip those cases, or set them
-to controlled sandbox recipients—the cases send real messages. Writes use unique fixture names,
+weekly and on manual dispatch through the protected `sandbox` environment. Only `ASSINAFY_API_KEY`
+and `ASSINAFY_ACCOUNT_ID` are required. The assignment-notification case additionally needs
+`ASSINAFY_TEST_EMAIL_PRIMARY` and `ASSINAFY_TEST_EMAIL_SECONDARY`, and the password-reset case needs
+`ASSINAFY_TEST_EMAIL_PRIMARY`; leave them unset to skip those cases, or point them at controlled
+sandbox recipients, because the cases send real messages. Writes use unique fixture names,
 reverse-order cleanup, and retries for transient cleanup failures. Inspect the sandbox account after
-an interrupted run because a process termination or service outage can still prevent cleanup.
+an interrupted run, since a process termination or service outage can still prevent cleanup.
+
+## Releasing
+
+Versions follow the minor line: breaking changes are documented in
+[`CHANGELOG.md`](CHANGELOG.md) rather than signalled by a major bump.
+
+1. Update the version in `pom.xml` and the dependency snippet in this README.
+2. Add the release section to `CHANGELOG.md`.
+3. Run `./mvnw clean verify`.
+4. Tag the release `v<version>`; the tag must match the project version or the release job fails.
+
+Pushing the tag runs the full verification, publishes the jar, sources, and Javadoc to GitHub
+Packages, attests build provenance, and creates the GitHub release with the artifacts attached.
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE).

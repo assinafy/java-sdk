@@ -307,7 +307,7 @@ public abstract class BaseResource {
      * @return a mutable wire-field map
      */
     protected Map<String, Object> toMap(Object dto) {
-        if (dto == null) return new java.util.HashMap<>();
+        if (dto == null) return new HashMap<>();
         return ResponseHandler.convertToMap(dto);
     }
 

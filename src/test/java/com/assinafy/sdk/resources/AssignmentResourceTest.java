@@ -4,6 +4,7 @@ import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
+import com.assinafy.sdk.models.enums.AssignmentMethod;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.SignerReference;
 import org.junit.jupiter.api.Test;
@@ -313,6 +314,39 @@ class AssignmentResourceTest {
                         SignerReference.builder().id("s1").step(0).build())).build(), false))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("positive");
+    }
+
+    @Test
+    void buildPayloadAcceptsOnlyTheDocumentedMethodVocabulary() {
+        for (AssignmentMethod method : AssignmentMethod.values()) {
+            CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+                    .method(method.getValue())
+                    .signers(List.of(SignerReference.ofId("s1")))
+                    .entries(List.of(Map.of("field_id", "f1")))
+                    .build();
+            assertThat(AssignmentResource.buildAssignmentPayload(request, false))
+                    .containsEntry("method", method.getValue());
+        }
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().method("Virtual")
+                        .signers(List.of(SignerReference.ofId("s1"))).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("virtual or collect");
+    }
+
+    @Test
+    void buildPayloadRejectsUndocumentedDeliveryMethods() {
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(
+                        SignerReference.builder().id("s1").verificationMethod("Sms").build())).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Verification method");
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().signers(List.of(
+                        SignerReference.builder().id("s1")
+                                .notificationMethods(List.of("Sms")).build())).build(), false))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Notification methods");
     }
 
     @Test

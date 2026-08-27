@@ -2,9 +2,8 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
-import com.assinafy.sdk.models.DocumentDetails;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.PaginatedResult;
-import com.assinafy.sdk.models.DocumentListItem;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +28,7 @@ class SignerResourceExtraTest {
     @Test
     void searchDocumentsHitsSearchPathWithAccessCode() {
         http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"d1\"}]}");
-        PaginatedResult<DocumentListItem> res = signers.searchDocuments("s1", "code1", "invoice");
+        PaginatedResult<Document> res = signers.searchDocuments("s1", "code1", "invoice");
         assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/signers/s1/documents/search");
         assertThat(http.lastCaptured().getQueryParams())
@@ -127,11 +126,11 @@ class SignerResourceExtraTest {
     }
 
     @Test
-    void getCurrentDocumentTypedReturnsDocumentDetails() {
+    void getCurrentDocumentTypedReturnsTypedDocument() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"," +
                 "\"status\":\"pending_signature\",\"assignment\":{\"id\":\"a1\"}}}");
 
-        DocumentDetails document = signers.getCurrentDocumentTyped("s1", "code 1");
+        Document document = signers.getCurrentDocumentTyped("s1", "code 1");
 
         assertThat(document.getId()).isEqualTo("d1");
         assertThat(document.getStatus()).isEqualTo("pending_signature");
@@ -144,7 +143,7 @@ class SignerResourceExtraTest {
     void listDocumentsMergesAccessCodeIntoQuery() {
         http.enqueue(200, "{\"status\":200,\"data\":[]}",
                 Map.of("x-pagination-total-count", "0"));
-        PaginatedResult<DocumentListItem> result = signers.listDocuments("s1", "code1");
+        PaginatedResult<Document> result = signers.listDocuments("s1", "code1");
         assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
         assertThat(http.lastCaptured().getPath()).isEqualTo("/signers/s1/documents");
         assertThat(http.lastCaptured().getQueryParams()).containsEntry("signer-access-code", "code1");

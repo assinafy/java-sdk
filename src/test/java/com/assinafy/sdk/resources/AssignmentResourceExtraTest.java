@@ -3,7 +3,7 @@ package com.assinafy.sdk.resources;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
 import com.assinafy.sdk.models.CostEstimate;
-import com.assinafy.sdk.models.DocumentDetails;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.ResendNotificationResponse;
 import com.assinafy.sdk.models.WhatsappNotification;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
@@ -148,7 +148,7 @@ class AssignmentResourceExtraTest {
 
         List<WhatsappNotification> notifications =
                 assignments.getWhatsappNotificationsTyped("d1", "a1");
-        DocumentDetails document = assignments.getForSignerTyped("code 1", true);
+        Document document = assignments.getForSignerTyped("code 1", true);
 
         assertThat(notifications).singleElement().satisfies(notification -> {
             assertThat(notification.getSentAt()).isEqualTo(1_710_000_000L);

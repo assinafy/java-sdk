@@ -5,16 +5,97 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-08-27
+
+Supersedes the unreleased 1.5.2 source; every change below is relative to the published 1.5.1
+artifact. One Java type now models each API resource, signer/assignment placement rules are
+single-sourced, request fields the API never accepted are gone, and the release pipeline publishes
+signed build provenance. 299 unit tests pass and the opt-in `LiveApiSmokeIT` runs 25 flows.
+
+### Removed
+
+- **`DocumentListItem`, `DocumentUploadResponse`, and `DocumentDetails` are replaced by a single
+  `Document`.** The API returns one document schema from upload, list, search, get, rename, and
+  create-from-template, so the SDK now returns one type from all of them. `Document` carries the
+  union of the previous three field sets; a field a given response does not populate is `null`.
+  Migration: replace all three type names with `Document`. `Document.getAssignment()` is typed
+  `Assignment` everywhere, so `DocumentUploadResponse.getAssignmentDetails()` is gone — call
+  `getAssignment()`.
+- **`WorkspaceListItem` is replaced by `Workspace`; `TemplateListItem` is replaced by `Template`.**
+  Each pair carried identical fields. `workspaces().list()` now returns `PaginatedResult<Workspace>`
+  and `templates().list()` returns `PaginatedResult<Template>`.
+- **`DocumentResource.confirmSignerData(...)`**, deprecated in 1.5.1, is removed. Use
+  `signers().confirmSignerData(...)`, which returns the server-normalized `Signer`.
+- **`CreateSignerRequest.metadata` and `UploadAndRequestSignaturesRequest.SignerEntry.metadata`.**
+  Signer creation has no metadata field, so these values were accepted and then dropped. Removing
+  them turns a silent no-op into a compile error.
+- **`Signer.metadata`.** The signer payload has no metadata field, so the accessor always returned
+  `null`.
+- **`AssignmentSigner.getNotificationHistoryEntries()` / `setNotificationHistoryEntries(...)`.**
+  `getNotificationHistory()` is now typed `List<NotificationHistoryEntry>` directly, so the
+  converting accessors have no purpose. Migration: rename `getNotificationHistoryEntries()` to
+  `getNotificationHistory()`.
+
+### Changed
+
+- **`signers().create(...)` always issues the create request.** In 1.5.1 it silently returned an
+  existing signer when the email matched. Use `signers().findOrCreate(...)` for the reusing
+  behavior; it returns an exact case-insensitive email match unchanged.
+- **`publicDocuments().getBasicInfo(...)`** returns `Document` instead of `Map<String,Object>`.
+- **`users().get()`** accepts both the `{user, accounts}` and the flat user response shapes.
+- Statistics field names follow the API: `signature_requests_notification_email`,
+  `..._notification_whatsapp`, `..._notification_bypass`, `..._verification_email`,
+  `..._verification_whatsapp`, `..._verification_bypass`, and
+  `..._verification_digital_certificate`, plus `signature_requests_viewed`. The former
+  `getSignatureRequestsEmail()` and `getSignatureRequestsWhatsapp()` remain as deprecated aliases.
+- A supplied `CreateSignerRequest.cpf` is persisted through the signer `government_id` update after
+  creation; if that update fails, the new signer is deleted.
+- `uploadAndRequestSignatures(...)` reconciles an indeterminate assignment or signer create response
+  before rolling back, and retains resources whose outcome cannot be established rather than
+  deleting a request that may already have been dispatched.
+
+### Added
+
+- **`documents().appendTagIds(...)` and `replaceTagIds(...)`** resolve workspace tag IDs before
+  changing a document. `appendTags(...)` and `replaceTags(...)` continue to take tag names.
+- **`signers().findOrCreate(...)`** — reuse-by-email creation, split out of `create`.
+- **`authentication().changePasswordResult(...)`, `requestPasswordResetResult(...)`, and
+  `resetPasswordResult(...)`** return the response payload; the `void` forms remain.
+- `AssignmentMethod` is the source of the accepted `method` vocabulary, so the enum and the
+  validation cannot drift apart.
+
+### Fixed
+
+- Signer-facing assignment calls (`sign`, `decline`, `getForSigner`) build the `signer-access-code`
+  query through the same helper as every other signer route, so encoding is identical everywhere.
+- Assignment and template signer placement share one implementation of the delivery-method
+  vocabulary and the signing-order rules (all-or-nothing steps, contiguous from 1, a
+  `DigitalCertificate` signer alone in its step), removing two divergent copies.
+
+### Build and documentation
+
+- Releases publish to GitHub Packages with `actions/attest-build-provenance` and create a GitHub
+  release carrying the jars, so every published artifact has verifiable provenance.
+- The release job runs only after the verification job succeeds; pull-request runs supersede each
+  other while pushes, tags, and the scheduled sandbox run always finish.
+- `README.md` is reorganized as a single read-through guide, and `docs/API_REFERENCE.md` documents
+  every operation with its full request and response payload.
+
+## [1.5.1] - 2026-08-20
+
+### Build and documentation
+
+- Tagged releases publish the jar, sources, and Javadoc to GitHub Packages. `README.md` documents
+  the `~/.m2/settings.xml` credentials and the repository entry consumers need.
+- The release job verifies that the pushed tag matches the project version before deploying.
+
 ## [1.5.0] - 2026-07-18
 
-Fourth full audit pass — every SDK file verified against the 86 official operation docs at
-`https://api.assinafy.com.br/v1/docs` **and** exercised against the live sandbox
-(`https://sandbox.assinafy.com.br/v1`). Fixes three non-functional signer/public endpoints, fills
-the remaining documented endpoint gaps, and adds request/response payload documentation. The unit
-suite grew from 175 to **195 tests**; the opt-in `LiveApiSmokeIT` now runs **18 flows** (adds
-rename, lightweight search and account theme).
+Fixes three non-functional signer/public endpoints, fills the remaining documented endpoint gaps,
+and adds request/response payload documentation. 195 unit tests pass; the opt-in `LiveApiSmokeIT`
+runs 18 flows.
 
-### Fixed (conformance — these methods were non-functional as written)
+### Fixed
 
 - **`SignerResource.acceptTerms`** put the access code in the JSON body and PUT to a bare path, so
   the endpoint (which authenticates via the `signer-access-code` **query** parameter) rejected the
@@ -33,7 +114,7 @@ rename, lightweight search and account theme).
   the signer-scoped download).
 - `FieldResource.validate`/`validateMultiple` now reuse the shared `withAccessCode` helper.
 
-### Added (documented endpoints that were missing)
+### Added
 
 - **`DocumentResource.rename(documentId, name)`** — `PATCH /documents/{id}` (rename).
 - **`DocumentResource.search(ListParams)`** — `GET /accounts/{id}/documents/search` (lightweight
@@ -64,10 +145,9 @@ rename, lightweight search and account theme).
   and `FieldResource` CRUD methods, and the new methods above all gained Javadoc conveying their
   route, defaults and request/response contract.
 
-### Verified against the live API (intentionally NOT changed)
+### Behavior that intentionally differs from the written docs
 
-The audit surfaced several apparent discrepancies against the written docs that live testing proved
-were the docs being incomplete — the SDK is correct and was left as-is:
+Live behavior is authoritative in these places; the SDK follows it:
 
 - **Document tag attach/replace take tag _names_ (auto-created), not IDs.** The API reference labels
   the `tags` array "Tag IDs", but attaching by name links the existing tag while an ID string
@@ -79,7 +159,7 @@ were the docs being incomplete — the SDK is correct and was left as-is:
 - **Deleting a tag still attached to a document returns 409** unless `force=true` — the Javadoc
   claim is accurate.
 
-### CI / docs
+### Build and documentation
 
 - Bumped `actions/checkout` to `v7` (`setup-java@v5`, `upload-artifact@v7` already current); build
   targets Java 25 (current LTS).
@@ -88,12 +168,10 @@ were the docs being incomplete — the SDK is correct and was left as-is:
 
 ## [1.4.1] - 2026-06-05
 
-Third full audit pass, verified file-by-file against the documentation at
-`https://api.assinafy.com.br/v1/docs` **and** the live sandbox API. This is a
-non-breaking release focused on correctness, robustness and test coverage. The
-unit suite grew from 111 to **175 tests** (now including wire-level
-`OkHttpApiClient` tests backed by MockWebServer); the opt-in `LiveApiSmokeIT`
-still runs 16 flows and now also exercises binary downloads.
+A non-breaking release focused on correctness, robustness, and test coverage.
+175 unit tests pass, now including wire-level `OkHttpApiClient` tests backed by
+MockWebServer; the opt-in `LiveApiSmokeIT` runs 16 flows and also exercises
+binary downloads.
 
 ### Fixed
 
@@ -160,11 +238,9 @@ still runs 16 flows and now also exercises binary downloads.
 
 ## [1.4.0] - 2026-05-27
 
-Second full audit pass, verified file-by-file against the documentation at
-`https://api.assinafy.com.br/v1/docs` **and** the live API. Adds the missing Tag
-and document-tag surfaces and API-key management, fixes several response-parsing
-bugs, and tightens model conformance. 111 unit tests pass and the opt-in
-`LiveApiSmokeIT` now exercises 16 read/write flows against the real API.
+Adds the missing Tag and document-tag surfaces and API-key management, fixes
+several response-parsing bugs, and tightens model conformance. 111 unit tests
+pass and the opt-in `LiveApiSmokeIT` exercises 16 read/write flows.
 
 This release contains source-breaking changes (corrected public types). See
 **Changed** below for migration notes.
@@ -263,11 +339,10 @@ This release contains source-breaking changes (corrected public types). See
 
 ## [1.3.0] - 2026-05-11
 
-Full audit pass against the live API at `https://api.assinafy.com.br/v1/docs`.
 Fixes a pagination bug, removes a broken endpoint, and adds the missing
 Field Definition, Public Document, signer-self-service, and assignment
 decline / WhatsApp-notification endpoints. 82 unit tests pass and a new
-`LiveApiSmokeIT` exercises 12 read/write flows against the real API.
+`LiveApiSmokeIT` exercises 12 read/write flows.
 
 ### Added
 

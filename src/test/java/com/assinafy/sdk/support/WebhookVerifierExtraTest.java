@@ -4,7 +4,6 @@ import com.assinafy.sdk.models.WebhookPayload;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 

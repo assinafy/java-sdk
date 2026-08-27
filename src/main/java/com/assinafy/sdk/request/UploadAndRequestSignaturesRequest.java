@@ -166,7 +166,6 @@ public class UploadAndRequestSignaturesRequest {
         private String email;
         private String whatsappPhoneNumber;
         private String cpf;
-        private Map<String, Object> metadata;
 
         /**
          * Creates an empty signer entry.
@@ -237,20 +236,6 @@ public class UploadAndRequestSignaturesRequest {
         public void setCpf(String cpf) { this.cpf = cpf; }
 
         /**
-         * @deprecated Signers have no persisted metadata field; this value is not sent.
-         * @return the retained local metadata value
-         */
-        @Deprecated
-        public Map<String, Object> getMetadata() { return metadata; }
-
-        /**
-         * @deprecated Signers have no persisted metadata field; this value is not sent.
-         * @param metadata the local metadata value
-         */
-        @Deprecated
-        public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
-
-        /**
          * Builder for {@link SignerEntry}.
          */
         public static final class Builder {
@@ -290,14 +275,6 @@ public class UploadAndRequestSignaturesRequest {
              * @return this builder
              */
             public Builder cpf(String cpf) { entry.setCpf(cpf); return this; }
-
-            /**
-             * @deprecated Signers have no persisted metadata field; this value is not sent.
-             * @param metadata the local metadata value
-             * @return this builder
-             */
-            @Deprecated
-            public Builder metadata(Map<String, Object> metadata) { entry.setMetadata(metadata); return this; }
 
             /**
              * Builds the configured signer entry.

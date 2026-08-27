@@ -8,10 +8,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Represents the document upload response in an Assinafy API response.
+ * A document resource. The API returns this one shape from upload, list, search, get, rename, and
+ * create-from-template, so a field that a given response does not populate is {@code null} rather
+ * than a different Java type. Newly uploaded documents, for example, carry no {@code assignment}
+ * and no {@code pages} until processing reaches {@code metadata_ready}.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class DocumentUploadResponse {
+public class Document {
 
     @JsonProperty("resource")
     private String resource;
@@ -32,13 +35,20 @@ public class DocumentUploadResponse {
     private String status;
 
     @JsonProperty("assignment")
-    private Object assignment;
+    private Assignment assignment;
 
-    @JsonProperty("artifacts")
-    private DocumentArtifacts artifacts;
+    // Deprecated top-level download links; use artifacts for link discovery.
+    @JsonProperty("download_url")
+    private String downloadUrl;
+
+    @JsonProperty("download_final_url")
+    private String downloadFinalUrl;
 
     @JsonProperty("signing_url")
     private String signingUrl;
+
+    @JsonProperty("artifacts")
+    private DocumentArtifacts artifacts;
 
     @JsonProperty("pages")
     private List<DocumentPage> pages;
@@ -58,13 +68,17 @@ public class DocumentUploadResponse {
     @JsonProperty("decline_reason")
     private String declineReason;
 
+    /** Legacy raw view of the signer who declined the document. */
     @JsonProperty("declined_by")
     private Object declinedBy;
 
+    @JsonProperty("activities")
+    private List<DocumentActivity> activities;
+
     /**
-     * Creates an empty document upload response.
+     * Creates an empty document.
      */
-    public DocumentUploadResponse() {}
+    public Document() {}
 
     /**
      * Returns the resource type.
@@ -155,41 +169,45 @@ public class DocumentUploadResponse {
      *
      * @return the assignment
      */
-    public Object getAssignment() { return assignment; }
+    public Assignment getAssignment() { return assignment; }
 
     /**
      * Sets the assignment.
      *
      * @param assignment the assignment
      */
-    public void setAssignment(Object assignment) { this.assignment = assignment; }
+    public void setAssignment(Assignment assignment) { this.assignment = assignment; }
 
     /**
-     * Typed view of {@link #getAssignment()} that preserves the legacy raw accessor.
+     * @deprecated Use {@link #getArtifacts()} for {@code original}, {@code thumbnail},
+     * {@code certificated}, and other download links.
      *
-     * @return the assignment details
+     * @return the download URL
      */
-    @JsonIgnore
-    public Assignment getAssignmentDetails() {
-        if (assignment == null) return null;
-        return assignment instanceof Assignment typed
-                ? typed
-                : ResponseHandler.convert(assignment, Assignment.class);
-    }
+    @Deprecated
+    public String getDownloadUrl() { return downloadUrl; }
 
     /**
-     * Returns the artifacts.
+     * Sets the download URL.
      *
-     * @return the artifacts
+     * @param downloadUrl the download URL
      */
-    public DocumentArtifacts getArtifacts() { return artifacts; }
+    public void setDownloadUrl(String downloadUrl) { this.downloadUrl = downloadUrl; }
 
     /**
-     * Sets the artifacts.
+     * @deprecated Use {@link #getArtifacts()} for download links.
      *
-     * @param artifacts the artifacts
+     * @return the final-download URL
      */
-    public void setArtifacts(DocumentArtifacts artifacts) { this.artifacts = artifacts; }
+    @Deprecated
+    public String getDownloadFinalUrl() { return downloadFinalUrl; }
+
+    /**
+     * Sets the final-download URL.
+     *
+     * @param downloadFinalUrl the final-download URL
+     */
+    public void setDownloadFinalUrl(String downloadFinalUrl) { this.downloadFinalUrl = downloadFinalUrl; }
 
     /**
      * Returns the signing URL.
@@ -204,6 +222,20 @@ public class DocumentUploadResponse {
      * @param signingUrl the signing URL
      */
     public void setSigningUrl(String signingUrl) { this.signingUrl = signingUrl; }
+
+    /**
+     * Returns the artifacts.
+     *
+     * @return the artifacts
+     */
+    public DocumentArtifacts getArtifacts() { return artifacts; }
+
+    /**
+     * Sets the artifacts.
+     *
+     * @param artifacts the artifacts
+     */
+    public void setArtifacts(DocumentArtifacts artifacts) { this.artifacts = artifacts; }
 
     /**
      * Returns the pages.
@@ -315,4 +347,18 @@ public class DocumentUploadResponse {
                 ? signer
                 : ResponseHandler.convert(declinedBy, Signer.class);
     }
+
+    /**
+     * Returns the activities.
+     *
+     * @return the activities
+     */
+    public List<DocumentActivity> getActivities() { return activities; }
+
+    /**
+     * Sets the activities.
+     *
+     * @param activities the activities
+     */
+    public void setActivities(List<DocumentActivity> activities) { this.activities = activities; }
 }

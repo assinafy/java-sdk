@@ -7,7 +7,7 @@ import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.http.OkHttpApiClient;
 import com.assinafy.sdk.models.Assignment;
-import com.assinafy.sdk.models.DocumentUploadResponse;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.models.UploadAndRequestSignaturesResult;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
@@ -215,7 +215,7 @@ public class AssinafyClient {
 
         logInfo("Starting upload + signature workflow", Map.of("signerCount", request.getSigners().size()));
 
-        DocumentUploadResponse document = documents.upload(
+        Document document = documents.upload(
                 request.getFileData(),
                 request.getFileName(),
                 request.getMetadata(),

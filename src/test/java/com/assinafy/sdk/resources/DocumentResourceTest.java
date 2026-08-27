@@ -2,8 +2,8 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
+import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.DocumentActivity;
-import com.assinafy.sdk.models.DocumentUploadResponse;
 import com.assinafy.sdk.models.Tag;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ class DocumentResourceTest {
     @Test
     void uploadPostsMultipartToAccountDocuments() {
         mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\",\"status\":\"uploaded\"}}");
-        DocumentUploadResponse doc = resource.upload("%PDF-1.4 data".getBytes(), "contract.pdf");
+        Document doc = resource.upload("%PDF-1.4 data".getBytes(), "contract.pdf");
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST_MULTIPART");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/documents");
@@ -49,7 +49,7 @@ class DocumentResourceTest {
     void uploadIgnoresDiagnosticLoggerFailures() {
         mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\",\"status\":\"uploaded\"}}");
 
-        DocumentUploadResponse document = new DocumentResource(mock, "acc", throwingLogger())
+        Document document = new DocumentResource(mock, "acc", throwingLogger())
                 .upload("%PDF-1.4 data".getBytes(), "contract.pdf");
 
         assertThat(document.getId()).isEqualTo("doc-1");

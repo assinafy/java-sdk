@@ -1,6 +1,7 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Tag;
@@ -8,6 +9,7 @@ import com.assinafy.sdk.request.CreateTagRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RenameTagRequest;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -93,7 +95,7 @@ public class TagResource extends BaseResource {
     public Tag create(CreateTagRequest request, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         if (request == null || request.getName() == null || request.getName().isBlank()) {
-            throw new com.assinafy.sdk.exceptions.ValidationException("Tag name is required");
+            throw new ValidationException("Tag name is required");
         }
         String body = serialise(request);
         logInfo("Creating tag", Map.of());
@@ -126,7 +128,7 @@ public class TagResource extends BaseResource {
         String tid = pathSegment(tagId, "Tag ID");
         // Build the body explicitly so the documented tri-state for `color` is honoured:
         // omit = leave unchanged, value = set, explicit null (clearColor) = clear.
-        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        Map<String, Object> payload = new LinkedHashMap<>();
         if (request != null) {
             if (request.getName() != null) payload.put("name", request.getName());
             if (request.getColor() != null) {

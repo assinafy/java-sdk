@@ -4,7 +4,6 @@ import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Template;
-import com.assinafy.sdk.models.TemplateListItem;
 import com.assinafy.sdk.request.ListParams;
 
 import java.util.Map;
@@ -38,7 +37,7 @@ public class TemplateResource extends BaseResource {
      *
      * @return paginated templates
      */
-    public PaginatedResult<TemplateListItem> list() {
+    public PaginatedResult<Template> list() {
         return list(new ListParams(), null);
     }
 
@@ -48,7 +47,7 @@ public class TemplateResource extends BaseResource {
      * @param params paging and filter options; {@code null} sends no query parameters
      * @return paginated templates
      */
-    public PaginatedResult<TemplateListItem> list(ListParams params) {
+    public PaginatedResult<Template> list(ListParams params) {
         return list(params, null);
     }
 
@@ -59,12 +58,12 @@ public class TemplateResource extends BaseResource {
      * @param accountId explicit account ID, or {@code null} for the default
      * @return paginated templates
      */
-    public PaginatedResult<TemplateListItem> list(ListParams params, String accountId) {
+    public PaginatedResult<Template> list(ListParams params, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         Map<String, Object> queryParams = params != null ? params.toQueryParams() : Map.of();
         return callList("Failed to list templates",
                 () -> http.get("/accounts/" + id + "/templates", queryParams),
-                TemplateListItem.class);
+                Template.class);
     }
 
     /**

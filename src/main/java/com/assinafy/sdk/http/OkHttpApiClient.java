@@ -3,9 +3,17 @@ package com.assinafy.sdk.http;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import okhttp3.*;
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -204,7 +212,7 @@ public class OkHttpApiClient implements ApiHttpClient {
             boolean declaredJson = contentType != null && (contentType.subtype().equalsIgnoreCase("json")
                     || contentType.subtype().toLowerCase(Locale.ROOT).endsWith("+json"));
             Object parsed = declaredJson
-                    ? parseErrorBody(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+                    ? parseErrorBody(new String(bytes, StandardCharsets.UTF_8))
                     : parseJsonObject(bytes);
             if (parsed instanceof Map<?, ?> map && map.get("status") instanceof Number status
                     && (status.intValue() < 200 || status.intValue() >= 300)) {
@@ -219,7 +227,7 @@ public class OkHttpApiClient implements ApiHttpClient {
         while (index < bytes.length && (bytes[index] == ' ' || bytes[index] == '\t'
                 || bytes[index] == '\r' || bytes[index] == '\n')) index++;
         if (index >= bytes.length || bytes[index] != '{') return null;
-        return parseErrorBody(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        return parseErrorBody(new String(bytes, StandardCharsets.UTF_8));
     }
 
     /** Parse a binary-endpoint error body into a Map (for a useful message), falling back to the raw text. */

@@ -2,7 +2,7 @@ package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.http.ApiHttpClient;
-import com.assinafy.sdk.models.DocumentDetails;
+import com.assinafy.sdk.models.Document;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,11 +39,11 @@ public class PublicDocumentResource extends BaseResource {
      * @param documentId document ID
      * @return public document details
      */
-    public DocumentDetails getBasicInfo(String documentId) {
+    public Document getBasicInfo(String documentId) {
         String id = pathSegment(documentId, "Document ID");
         return call("Failed to fetch public document info",
                 () -> http.get("/public/documents/" + id),
-                DocumentDetails.class);
+                Document.class);
     }
 
     /**

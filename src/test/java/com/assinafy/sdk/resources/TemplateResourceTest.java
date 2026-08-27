@@ -1,10 +1,9 @@
 package com.assinafy.sdk.resources;
 
-import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.helper.MockApiHttpClient.CapturedRequest;
+import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Template;
-import com.assinafy.sdk.models.TemplateListItem;
 import com.assinafy.sdk.request.ListParams;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,7 +30,7 @@ class TemplateResourceTest {
                 "{\"status\":200,\"data\":[{\"id\":\"t1\",\"name\":\"NDA.pdf\",\"status\":\"Ready\"}]}",
                 Map.of("x-pagination-total-count", "1", "x-pagination-per-page", "20"));
 
-        PaginatedResult<TemplateListItem> result =
+        PaginatedResult<Template> result =
                 templates.list(ListParams.builder().perPage(20).build());
 
         assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
