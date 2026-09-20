@@ -15,6 +15,7 @@ import com.assinafy.sdk.request.UpdateSignerRequest;
 import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -400,6 +401,90 @@ public class SignerResource extends BaseResource {
         String json = serialise(Map.of("verification-code", verificationCode));
         return callMap("Failed to verify email",
                 () -> http.post(withAccessCode("/verify", signerAccessCode), json));
+    }
+
+    /**
+     * Begin an ICP-Brasil digital-certificate signature and return the Web PKI operation token
+     * ({@code POST /signers/certificate/start?signer-access-code={code}}).
+     *
+     * <p>Required for a signer whose {@code verification_method} is {@code DigitalCertificate}:
+     * the ordinary {@link AssignmentResource#sign(String, String, String, java.util.List) sign}
+     * endpoint rejects those signers with {@code 400}. The signer must have confirmed their data
+     * and accepted the terms first.
+     *
+     * <p>The returned token is signed in the browser by the signer's own A1 or A3 certificate
+     * through the Web PKI extension, and the signed value is handed back to
+     * {@link #completeCertificateSignature(String, String)}.
+     *
+     * <p>Request body — the access code travels in both the query and the body:
+     * <pre>{@code
+     * { "signer-access-code": "access-code" }
+     * }</pre>
+     *
+     * <p>Response:
+     * <pre>{@code
+     * { "status": 200, "message": "", "data": { "token": "web-pki-token" } }
+     * }</pre>
+     *
+     * <p><b>Deployment note.</b> This route is a production-only extension: the sandbox does not
+     * expose it and it is absent from the published OpenAPI document.
+     *
+     * @param signerAccessCode signer query credential
+     * @return the Web PKI operation token the browser must sign
+     * @throws ValidationException if the access code is blank, or the response carries no token
+     */
+    public String startCertificateSignature(String signerAccessCode) {
+        requireId(signerAccessCode, "Signer access code");
+        String json = serialise(Map.of("signer-access-code", signerAccessCode));
+        Map<String, Object> data = callMap("Failed to start certificate signature",
+                () -> http.post(withAccessCode("/signers/certificate/start", signerAccessCode), json));
+        return requireStringField(data, "token", "Certificate signature start");
+    }
+
+    /**
+     * Complete an ICP-Brasil digital-certificate signature with the browser-signed Web PKI token
+     * ({@code POST /signers/certificate/complete?signer-access-code={code}}).
+     *
+     * <p>Once this succeeds, downloading the document's {@code pades} artifact yields the qualified
+     * PAdES signature.
+     *
+     * <p>Request body:
+     * <pre>{@code
+     * { "signer-access-code": "access-code", "token": "signed-web-pki-token" }
+     * }</pre>
+     *
+     * <p>Response:
+     * <pre>{@code
+     * { "status": 200, "message": "", "data": { "signerName": "Certificate Signer" } }
+     * }</pre>
+     *
+     * <p><b>Deployment note.</b> This route is a production-only extension: the sandbox does not
+     * expose it and it is absent from the published OpenAPI document.
+     *
+     * @param signerAccessCode signer query credential
+     * @param token the Web PKI token from {@link #startCertificateSignature(String)}, after the
+     *              browser has signed it with the signer's certificate
+     * @return the certificate holder's name as reported by the signature
+     * @throws ValidationException if the access code or token is blank, or the response carries no
+     *         signer name
+     */
+    public String completeCertificateSignature(String signerAccessCode, String token) {
+        requireId(signerAccessCode, "Signer access code");
+        requireId(token, "Certificate token");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("signer-access-code", signerAccessCode);
+        body.put("token", token);
+        String json = serialise(body);
+        Map<String, Object> data = callMap("Failed to complete certificate signature",
+                () -> http.post(withAccessCode("/signers/certificate/complete", signerAccessCode), json));
+        return requireStringField(data, "signerName", "Certificate signature completion");
+    }
+
+    private static String requireStringField(Map<String, Object> data, String field, String label) {
+        if (data != null && data.get(field) instanceof String value && !value.isBlank()) {
+            return value;
+        }
+        throw new ValidationException(label + " response did not include " + field);
     }
 
     /**

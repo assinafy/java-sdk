@@ -3,7 +3,7 @@
 *[Leia em português](README.md) · English*
 
 A Java client for the [Assinafy API](https://api.assinafy.com.br/v1/docs), the Brazilian digital
-signature platform. It covers all 89 documented operations — document upload and certification,
+signature platform. It covers all 93 documented operations — document upload and certification,
 signer management, signature requests, templates, field definitions, tags, workspaces, webhooks,
 and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
 thread-safe client.
@@ -30,6 +30,9 @@ the [complete Java API reference](docs/API_REFERENCE.md).
   - [6. Download the artifacts](#6-download-the-artifacts)
   - [7. Delete when finished](#7-delete-when-finished)
 - [The one-call workflow helper](#the-one-call-workflow-helper)
+- [Verification and notification methods](#verification-and-notification-methods)
+- [ICP-Brasil digital certificates (A1 and A3)](#icp-brasil-digital-certificates-a1-and-a3)
+- [OAuth 2.1 and OpenID Connect](#oauth-21-and-openid-connect)
 - [Signer self-service](#signer-self-service)
 - [Templates and field definitions](#templates-and-field-definitions)
 - [Tags](#tags)
@@ -88,7 +91,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.7.0</version>
+    <version>1.8.0</version>
 </dependency>
 ```
 
@@ -161,7 +164,7 @@ public final class QuickStart {
 
 **One client, many resources.** `AssinafyClient` owns the HTTP transport and exposes one accessor
 per API area: `documents()`, `signers()`, `assignments()`, `templates()`, `fields()`, `tags()`,
-`workspaces()`, `webhooks()`, `users()`, `apiKeys()`, `authentication()`, and
+`workspaces()`, `webhooks()`, `users()`, `apiKeys()`, `authentication()`, `oauth()`, and
 `publicDocuments()`. The accessors return the instances the client owns, so holding a resource
 reference is equivalent to holding the client.
 
@@ -188,7 +191,15 @@ the workspace rather than inside it.
 
 ## Authentication
 
-The API accepts two credentials. Prefer the API key for server integrations:
+The API accepts three credentials, and the choice follows from **whose workspace your code acts in**.
+
+| Credential | Acts on | Use when |
+| --- | --- | --- |
+| API key (`X-Api-Key`) | **Your own** workspace | You automate your own account. The recommended option for server integrations. |
+| Access token (`Authorization: Bearer`) | The session's workspace | You already hold a token from an interactive session, or an OAuth token. |
+| OAuth 2.1 token | **Someone else's** workspace, with their permission | You build a product other Assinafy customers connect. See [OAuth 2.1](#oauth-21-and-openid-connect). |
+
+Prefer the API key for server integrations:
 
 ```java
 // Preferred: X-Api-Key header
@@ -208,7 +219,7 @@ AssinafyClient bearerClient = new AssinafyClient(
 );
 ```
 
-When both are configured the API key wins. Signer-facing operations use a third credential, the
+When both are configured the API key wins. Signer-facing operations use a fourth credential, the
 signer access code, passed per call rather than configured on the client — see
 [Signer self-service](#signer-self-service). Public operations require no credential at all, so
 build a credential-free client for them.
@@ -465,6 +476,227 @@ are never modified or deleted.
 See [SDK convenience payloads](docs/API_REFERENCE.md#sdk-convenience-payloads) for every field of
 the request, the result, and the other Java-only helper types.
 
+## Verification and notification methods
+
+Set per signer when the assignment is created. The **verification** method (how a signer proves who
+they are before signing) and the **notification** method (how they are told) are **coupled**: send
+one, both, or neither, and the missing side is inferred. With neither, both default to `Email`.
+
+| Verification | How it works | Requirements | Cost per signer |
+| --- | --- | --- | --- |
+| `Email` *(default)* | A one-time code by email, required before signing | Signer has an email address | 0 credits |
+| `Whatsapp` | A one-time code over WhatsApp | Signer has a `whatsappPhoneNumber`; paid plans only | 0.45 credits (the WhatsApp notification this method requires) |
+| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | The account has the Digital Certificate feature; the signer has a CPF in `governmentId`; one certificate signer per step | 2 credits plus its notification |
+
+| Notification | Delivers | Requirements | Cost per signer |
+| --- | --- | --- | --- |
+| `Email` | An email invitation with a link to sign | Signer has an email address | 0 credits |
+| `Whatsapp` | A WhatsApp message with a link to sign | Signer has a `whatsappPhoneNumber`; paid plans only | 0.45 credits |
+
+Only matching pairs are accepted; anything else returns `400`:
+
+| Verification method | Allowed notification methods |
+| --- | --- |
+| `Email` | `Email` |
+| `Whatsapp` | `Whatsapp` |
+| `DigitalCertificate` | `Email` **or** `Whatsapp` |
+
+One notification method per signer. No verification method carries a price of its own — you are
+billed for the notification it travels with, plus, for a digital certificate, the signature itself.
+Call `assignments().estimateCostTyped(...)` for the exact total before creating anything.
+
+By default every signer is notified as soon as the assignment is created. With `step` set, each
+signer's notification is held until their step is activated.
+
+## ICP-Brasil digital certificates (A1 and A3)
+
+A digital-certificate signer needs the **Digital Certificate** feature on the account (Standard and
+Pro plans), a CPF or CNPJ in the signer's `governmentId`, and must be **alone in their signing
+step** — the SDK enforces that last rule before sending. A CPF requires that person's own
+certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ requires the
+company's e-CNPJ.
+
+Before the assignment opens, the signer must confirm their identity data
+(`signers().confirmSignerData(...)`) and accept the terms (`signers().acceptTerms(...)`). The
+ordinary signing endpoint **rejects** certificate signers with `400`: their signature is produced by
+a two-step handshake with the Web PKI extension.
+
+```java
+// 1. Open the operation and receive the token the browser must sign
+String token = client.signers().startCertificateSignature(signerAccessCode);
+
+// 2. The browser signs that token with the signer's A1/A3 certificate through the Web PKI
+//    extension and returns the signed value to your backend
+
+// 3. Complete the signature
+String certificateHolder =
+    client.signers().completeCertificateSignature(signerAccessCode, signedToken);
+```
+
+> These two routes are production-only deployed extensions: the sandbox does not expose them and
+> they are absent from the published OpenAPI document.
+
+Once the flow completes, downloading the `pades` artifact returns the qualified PAdES signature.
+
+## OAuth 2.1 and OpenID Connect
+
+Use OAuth when your product is **connected by its users** and acts inside *their* workspace, without
+you ever handling their password or API key. Automating your own workspace? Keep using an API key;
+nothing here applies.
+
+|  | API key | OAuth |
+| --- | --- | --- |
+| Acts on | **Your own** workspace | **Someone else's** workspace, with their permission |
+| Can do | Everything your account can do | Only what the user approved |
+| The user can switch it off | No | Yes, at any time |
+
+Two hosts, on purpose: the consent page lives on the authorization server
+(`https://auth.assinafy.com.br`) while the token, revocation, and userinfo endpoints live on this
+API. The SDK reads those URLs from the published metadata documents rather than hardcoding them.
+
+Register the application in the Assinafy app under **Settings → OAuth applications → New
+application**. You must be an owner of the workspace, and the plan must include OAuth applications.
+Redirect URIs must be `https://`, carry no fragment, and are matched character for character.
+A **Confidential** application (server-side) receives a `client_secret`, shown once; a **Public**
+one (running on the user's device) never does and authenticates with PKCE alone.
+
+### Scopes
+
+`OAuthScope` covers the published set:
+
+| Scope | Lets your app |
+| --- | --- |
+| `DOCUMENTS_READ` | Read documents, their pages, tags, signers, assignments, and activity |
+| `DOCUMENTS_WRITE` | Create, update, and delete documents and send them for signature |
+| `TEMPLATES_READ` | Read templates, their pages, roles, fields, and tags |
+| `TEMPLATES_WRITE` | Create, update, and delete templates |
+| `ACCOUNT_READ` | Read the workspace's profile, theme, and logo |
+| `OPENID` | Receive an `id_token` identifying the user, and enable userinfo |
+| `PROFILE` | Read the user's name |
+| `EMAIL` | Read the user's email and whether it is verified |
+| `OFFLINE_ACCESS` | Receive a refresh token, to keep working while the user is away |
+
+Request the minimum: the user approves everything you asked for, or nothing. `DOCUMENTS_WRITE` can
+spend the workspace's notification credits. Billing, subscriptions, workspace membership,
+credentials, and administration are **never** reachable with an OAuth token, whatever its scopes.
+
+### Connecting a user
+
+```java
+import com.assinafy.sdk.models.OAuthAuthorizationRequest;
+import com.assinafy.sdk.models.OAuthTokens;
+import com.assinafy.sdk.models.OAuthUserInfo;
+import com.assinafy.sdk.models.enums.OAuthScope;
+import com.assinafy.sdk.request.AuthorizationUrlRequest;
+import com.assinafy.sdk.request.OAuthClient;
+
+// A credential-free client is all the OAuth flow needs.
+AssinafyClient client = new AssinafyClient(new AssinafyClientOptions());
+
+OAuthClient app = OAuthClient.confidential(
+    System.getenv("ASSINAFY_CLIENT_ID"),
+    System.getenv("ASSINAFY_CLIENT_SECRET"));
+// Public application: OAuthClient.publicClient(System.getenv("ASSINAFY_CLIENT_ID"))
+
+// 1. Before redirecting the browser
+OAuthAuthorizationRequest request = client.oauth().createAuthorizationUrl(
+    AuthorizationUrlRequest.builder()
+        .clientId(app.clientId())
+        .redirectUri("https://myapp.com/oauth/callback")
+        .scopes(OAuthScope.DOCUMENTS_READ, OAuthScope.DOCUMENTS_WRITE, OAuthScope.OFFLINE_ACCESS)
+        .build());
+session.setAttribute("assinafy.oauth", request);   // state + codeVerifier + issuer
+response.sendRedirect(request.url());              // a full page load, never AJAX
+
+// 2 and 3. On your redirect URI
+OAuthAuthorizationRequest stored =
+    (OAuthAuthorizationRequest) session.getAttribute("assinafy.oauth");
+String code = client.oauth().readAuthorizationCallback(httpRequest.getQueryString(), stored);
+
+// 4. Exchange the code, server-side. It is single-use and expires 60 seconds after approval.
+OAuthTokens tokens = client.oauth().exchangeCode(
+    app, code, stored.codeVerifier(), "https://myapp.com/oauth/callback");
+
+// 5. The token covers exactly one workspace — find out which
+AssinafyClient connected = new AssinafyClient(
+    AssinafyClientOptions.builder().token(tokens.getAccessToken()).build());
+String accountId = connected.workspaces().list().getData().get(0).getId();
+```
+
+`createAuthorizationUrl` mints the PKCE pair (`S256`, mandatory for confidential applications too),
+the `state`, and — when `OPENID` is requested — the `nonce`. Create a new one per connection attempt:
+reusing a verifier or a `state` defeats PKCE and CSRF protection respectively. Pass
+`authorizationEndpoint` and `issuer` to skip discovery and its network round trip.
+
+`readAuthorizationCallback` checks, before anything else is trusted, that `state` matches (compared
+in constant time) and that `iss` is the expected issuer, and only then whether the server reported an
+error. A declined consent arrives as `?error=access_denied` and surfaces as `OAuthException`, not a
+failed HTTP request. A missing `iss` is treated exactly like a wrong one, because the server always
+sends it (RFC 9207).
+
+Read `tokens.getScope()` rather than assuming every requested permission was granted, and store the
+workspace id alongside the tokens.
+
+### Refreshing, identifying, and disconnecting
+
+```java
+// Access tokens last one hour. With OFFLINE_ACCESS, renew without the user:
+OAuthTokens renewed = client.oauth().refreshToken(app, connection.getRefreshToken());
+connection.save(renewed.getRefreshToken());   // BEFORE doing anything else with the response
+
+// Who approved? Needs OPENID; name needs PROFILE and email needs EMAIL.
+OAuthUserInfo who = connected.oauth().userInfo();
+
+// On disconnect, revoke rather than only deleting your copy
+client.oauth().revokeToken(app, connection.getRefreshToken(), "refresh_token");
+```
+
+> **Refresh tokens rotate.** Every call returns a new one and retires the one you sent. A replayed
+> refresh token cannot be told apart from a stolen one, so it ends the **entire connection** and the
+> user must reconnect. Persist the new refresh token before doing anything else with the response,
+> treat a timeout as "it may have succeeded" and re-read your stored token instead of retrying
+> blindly, and never run two refreshes concurrently for one connection.
+
+Two facts behind most integration bugs: **a token works for exactly one workspace** (any other
+answers `403`, even one the same user belongs to — connect each workspace separately), and **a
+connection lasts 30 days from approval**, which refreshing does not extend.
+
+### Discovery
+
+```java
+OAuthProtectedResourceMetadata resource = client.oauth().protectedResourceMetadata();
+OAuthAuthorizationServerMetadata server = client.oauth().authorizationServerMetadata();
+```
+
+Both documents are served bare, without the `{status, message, data}` envelope, and the
+protected-resource one sits at the API host root rather than under `/v1`. The SDK verifies that the
+authorization-server document's own `issuer` matches where it was fetched from (RFC 8414 §3.3) and
+rejects one that disagrees.
+
+Requests to the token and revocation endpoints deliberately carry no `X-Api-Key` or `Authorization`
+header: they authenticate the *application* through its `client_id`/`client_secret`, and sending a
+workspace credential to a route with no use for it would leak it.
+
+### OAuth errors
+
+`OAuthException` (a subtype of `ApiException`) exposes the machine-readable code through
+`getError()` and the server's explanation through `getErrorDescription()`.
+
+| Code | Usual cause |
+| --- | --- |
+| `access_denied` | The user declined |
+| `invalid_grant` | Code expired or already used, wrong `code_verifier` or `redirect_uri`; refresh token already used, or the user reconnected with different permissions |
+| `invalid_client` | Wrong `client_id` or secret, or the application is disabled |
+| `invalid_scope` | A scope the application is not registered for |
+| `invalid_target` | `resource` does not match what was authorized |
+| `unsupported_grant_type` | Only `authorization_code` and `refresh_token` exist |
+
+On ordinary API calls made with an OAuth token, `401` means the token expired, was revoked, or was
+not sent as `Bearer` — refresh, and if that fails ask the user to reconnect. A `403` carrying
+`WWW-Authenticate: Bearer error="insufficient_scope"` names the missing permission: treat it as a
+prompt to reconnect with that scope, not as something to retry. A `403` without that header has
+another cause: a different workspace, the user's own role, or an area OAuth tokens never reach.
+
 ## Signer self-service
 
 These operations are what a signer's browser or app calls. They authenticate with the signer access
@@ -701,6 +933,7 @@ more specific handlers react to particular conditions.
 | `ValidationException`     | Local argument validation failed before any request was sent. |
 | `AuthenticationException` | HTTP 401 or 403. Subtype of `ApiException`. |
 | `RateLimitException`      | HTTP 429. Subtype of `ApiException`; back off and retry. |
+| `OAuthException`          | An OAuth endpoint returned an RFC 6749 `{error, error_description}` body, or an authorization response carried `?error=`. Subtype of `ApiException`; read `getError()`. |
 | `ApiException`            | Any other non-2xx status, or a non-2xx status inside a 200 envelope. |
 | `NetworkException`        | Transport or I/O failure, including an interrupted poll. |
 | `AssinafyException`       | Base type: serialization, decoding, and everything above. |
@@ -714,6 +947,8 @@ try {
     System.err.println("Auth error " + e.getStatusCode() + ": " + e.getMessage());
 } catch (RateLimitException e) {
     System.err.println("Rate limited: " + e.getResponseHeader("retry-after"));
+} catch (OAuthException e) {
+    System.err.println("OAuth error " + e.getError() + ": " + e.getErrorDescription());
 } catch (ApiException e) {
     System.err.println("API error " + e.getStatusCode() + ": " + e.getMessage());
     System.err.println("Response data: " + e.getResponseData());
@@ -855,6 +1090,75 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
 { "DocumentCompleted": true, "SignerDeclined": true, "DocumentCancelled": true,
   "DocumentAboutToExpire": true, "DocumentExpired": true, "DocumentExpirationReset": true,
   "DocumentProcessingFailed": true, "TemplateProcessingFailed": true, "SignerWhatsappFailed": false }
+```
+
+**OAuth tokens** — `oauth().exchangeCode(...)` / `refreshToken(...)` → `OAuthTokens`. Flat, not
+enveloped, per RFC 6749 §5.1:
+
+```jsonc
+// request
+{ "grant_type": "authorization_code", "code": "def50200a1b2c3...",
+  "redirect_uri": "https://myapp.com/oauth/callback",
+  "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+  "client_id": "cli_1a2b3c", "client_secret": "...", "resource": "https://api.assinafy.com.br" }
+// response — refresh_token only with offline_access, id_token only with openid
+{ "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...", "token_type": "Bearer",
+  "expires_in": 3600, "scope": "documents:read documents:write",
+  "refresh_token": "def5020088c2...", "id_token": "eyJraWQiOiJEQlR0S0..." }
+// error — flat as well, and surfaced as OAuthException
+{ "error": "invalid_grant", "error_description": "Authorization code expired." }
+```
+
+**OAuth revocation** — `oauth().revokeToken(...)` → `void`. Always `200`, whatever the token's
+state; only failed client authentication returns `401`:
+
+```json
+{ "token": "def50200f1e2...", "token_type_hint": "refresh_token",
+  "client_id": "cli_1a2b3c", "client_secret": "..." }
+```
+
+**OAuth userinfo** — `oauth().userInfo()` → `OAuthUserInfo`. Flat claims per OIDC Core §5.3.2;
+an ungranted claim is `null`:
+
+```json
+{ "sub": "d6zqpbyog2v3xvxerwn8la94", "name": "Maria Silva",
+  "email": "maria@example.invalid", "email_verified": true }
+```
+
+**OAuth metadata** — `oauth().protectedResourceMetadata()` /
+`authorizationServerMetadata()`. Both bare, and the first is served at the API host root:
+
+```jsonc
+// GET {apiOrigin}/.well-known/oauth-protected-resource  (RFC 9728)
+{ "resource": "https://api.assinafy.com.br",
+  "authorization_servers": ["https://auth.assinafy.com.br"],
+  "scopes_supported": ["documents:read","documents:write","templates:read","templates:write",
+                       "account:read","openid","profile","email"],
+  "bearer_methods_supported": ["header"] }
+// GET {issuer}/.well-known/oauth-authorization-server  (RFC 8414)
+{ "issuer": "https://auth.assinafy.com.br",
+  "authorization_endpoint": "https://auth.assinafy.com.br/oauth/authorize",
+  "token_endpoint": "https://api.assinafy.com.br/v1/oauth/token",
+  "revocation_endpoint": "https://api.assinafy.com.br/v1/oauth/revoke",
+  "userinfo_endpoint": "https://api.assinafy.com.br/v1/oauth/userinfo",
+  "jwks_uri": "https://auth.assinafy.com.br/.well-known/jwks.json",
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code","refresh_token"],
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": ["client_secret_post","none"] }
+```
+
+**Certificate signature** — `signers().startCertificateSignature(...)` /
+`completeCertificateSignature(...)` → `String`. Production-only routes; the access code travels in
+both the query and the body:
+
+```jsonc
+// POST /signers/certificate/start?signer-access-code=...
+{ "signer-access-code": "access-code" }
+{ "status": 200, "message": "", "data": { "token": "web-pki-token" } }
+// POST /signers/certificate/complete?signer-access-code=...
+{ "signer-access-code": "access-code", "token": "signed-web-pki-token" }
+{ "status": 200, "message": "", "data": { "signerName": "Maria Silva" } }
 ```
 
 ## Development

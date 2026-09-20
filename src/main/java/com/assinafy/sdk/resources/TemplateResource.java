@@ -67,10 +67,7 @@ public class TemplateResource extends BaseResource {
     }
 
     /**
-     * Fetch a single template by ID.
-     *
-     * <p>The single-template deployment route may be unavailable; confirm support before relying
-     * on it.
+     * Fetch a single template by ID from the default account.
      *
      * @param templateId template ID
      * @return the template
@@ -80,7 +77,12 @@ public class TemplateResource extends BaseResource {
     }
 
     /**
-     * Fetch one template through an optional deployment route.
+     * Fetch one template ({@code GET /accounts/{accountId}/templates/{templateId}}).
+     *
+     * <p><b>Deployment note.</b> This route is live on production and sandbox but is absent from
+     * the published OpenAPI document, so it carries no compatibility promise. Use
+     * {@link #list(com.assinafy.sdk.request.ListParams, String)} when you need a contract the
+     * reference guarantees.
      *
      * @param templateId template ID
      * @param accountId explicit account ID, or {@code null} for the default

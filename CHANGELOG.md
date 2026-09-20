@@ -5,6 +5,68 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-09-20
+
+OAuth 2.1 with mandatory PKCE, so an application can act inside a customer's workspace with that
+customer's permission instead of their API key. ICP-Brasil A1/A3 certificate signing is now
+reachable from the SDK rather than only described in the README. 315 unit tests pass.
+
+### Added
+
+- **`AssinafyClient.oauth()` — OAuth 2.1 and OpenID Connect.** `OAuthResource` covers the whole
+  connection lifecycle:
+  - `createAuthorizationUrl(AuthorizationUrlRequest)` mints an RFC 7636 verifier and its `S256`
+    challenge, a `state`, and an OIDC `nonce` when `openid` is requested, and returns the consent
+    URL together with the values to keep in the user's session.
+  - `readAuthorizationCallback(...)` validates the response on your redirect URI: `state` in
+    constant time, then RFC 9207 `iss`, and only then the server's own `error`. Accepts a full
+    callback URL, a bare query string, or a parameter map.
+  - `exchangeCode(...)` and `refreshToken(...)` call `POST /oauth/token`; `revokeToken(...)` calls
+    `POST /oauth/revoke`; `userInfo()` calls `GET /oauth/userinfo`.
+  - `protectedResourceMetadata()` and `authorizationServerMetadata(...)` read the RFC 9728 and
+    RFC 8414 documents, so endpoint URLs are discovered rather than hardcoded. The
+    authorization-server document is rejected when its own `issuer` disagrees with where it was
+    fetched from (RFC 8414 §3.3).
+  - `createCodeVerifier()` and `codeChallengeFor(String)` are public statics for callers minting
+    PKCE themselves.
+- **`OAuthScope`**, the nine published permissions, and **`OAuthClient`**, which carries a
+  `client_id` with an optional `client_secret` (`OAuthClient.confidential(...)` /
+  `OAuthClient.publicClient(...)`). Its `toString()` never discloses the secret.
+- **`OAuthException`**, a subtype of `ApiException` exposing the RFC 6749 `getError()` and
+  `getErrorDescription()`. Raised for a flat `{error, error_description}` token or revocation body
+  and for an `?error=` authorization response, so a declined consent is a typed outcome rather than
+  a generic HTTP failure.
+- **`OAuthTokens`, `OAuthUserInfo`, `OAuthAuthorizationRequest`, `OAuthProtectedResourceMetadata`,
+  and `OAuthAuthorizationServerMetadata`** model the flat, un-enveloped payloads that RFC 6749 §5.1,
+  OIDC Core §5.3.2 and RFC 8615 require.
+- **`SignerResource.startCertificateSignature(String)` and
+  `completeCertificateSignature(String, String)`** drive the two-step Web PKI handshake that
+  produces an ICP-Brasil A1/A3 signature. Signers whose verification method is
+  `DigitalCertificate` are rejected by the ordinary signing endpoint, so these were the one
+  documented flow the SDK could not complete. Both routes are production-only deployed extensions.
+
+### Changed
+
+- **The OAuth token and revocation endpoints are called over a credential-free transport.** They
+  authenticate the application through `client_id`/`client_secret`, so the client's own
+  `X-Api-Key`/`Authorization` header is no longer attached to them; sending a workspace credential
+  to a route with no use for it would leak it.
+- **`TemplateResource.get(...)` documents its route accurately.** `GET
+  /accounts/{accountId}/templates/{templateId}` is live on production and sandbox but absent from
+  the published OpenAPI document, so the Javadoc now says exactly that instead of suggesting the
+  route may not exist.
+- Build: `maven-compiler-plugin` 3.16.0, `maven-surefire-plugin` and `maven-failsafe-plugin` 3.6.0,
+  `maven-deploy-plugin` and `maven-install-plugin` 3.2.0, `actions/setup-java` v6.0.1.
+- CI: dropped a `queue` key from the sandbox job's `concurrency` block. GitHub Actions defines only
+  `group` and `cancel-in-progress` there, so the key never did anything.
+
+### Removed
+
+- **`WebhookResource.delete()` and `delete(String accountId)`**, deprecated since 1.6.0. `DELETE
+  /v1/accounts/{accountId}/webhooks/subscriptions` answers `404` on production, exactly as an
+  unrouted path does, so the methods could only ever fail. Migration: call `inactivate()`, which
+  stops delivery through the documented `PUT /v1/accounts/{accountId}/webhooks/inactivate`.
+
 ## [1.7.0] - 2026-08-27
 
 ### Removed

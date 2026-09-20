@@ -62,17 +62,17 @@ class WebhookResourceExtraTest {
         assertThat(sub.getIsActive()).isFalse();
     }
 
-    @SuppressWarnings("deprecation")
     @Test
-    void deprecatedDeleteOverloadsUseExactSubscriptionPath() {
-        http.enqueue(200, "{}").enqueue(200, "{}");
+    void inactivateOverloadsUseTheDocumentedInactivatePath() {
+        String body = "{\"status\":200,\"data\":{\"url\":\"https://example.com\",\"is_active\":false}}";
+        http.enqueue(200, body).enqueue(200, body);
 
-        webhooks.delete();
-        webhooks.delete("other");
+        assertThat(webhooks.inactivate().getIsActive()).isFalse();
+        assertThat(webhooks.inactivate("other").getIsActive()).isFalse();
 
-        assertThat(http.capturedAt(0).getMethod()).isEqualTo("DELETE");
-        assertThat(http.capturedAt(0).getPath()).isEqualTo("/accounts/acc/webhooks/subscriptions");
-        assertThat(http.capturedAt(1).getMethod()).isEqualTo("DELETE");
-        assertThat(http.capturedAt(1).getPath()).isEqualTo("/accounts/other/webhooks/subscriptions");
+        assertThat(http.capturedAt(0).getMethod()).isEqualTo("PUT");
+        assertThat(http.capturedAt(0).getPath()).isEqualTo("/accounts/acc/webhooks/inactivate");
+        assertThat(http.capturedAt(1).getMethod()).isEqualTo("PUT");
+        assertThat(http.capturedAt(1).getPath()).isEqualTo("/accounts/other/webhooks/inactivate");
     }
 }

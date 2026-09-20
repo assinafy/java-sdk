@@ -13,3 +13,7 @@ target/
 .env*
 !.env.example
 .claude/
+
+# Agent guides: local working notes, not part of the published SDK
+AGENTS.md
+CLAUDE.md

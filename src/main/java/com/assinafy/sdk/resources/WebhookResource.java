@@ -127,27 +127,6 @@ public class WebhookResource extends BaseResource {
     }
 
     /**
-     * @deprecated This deployment-specific route may be unavailable. Use {@link #inactivate()}
-     * to stop webhook delivery.
-     */
-    @Deprecated
-    public void delete() {
-        delete(null);
-    }
-
-    /**
-     * @deprecated see {@link #delete()} — prefer {@link #inactivate(String)}.
-     *
-     * @param accountId explicit account ID, or {@code null} for the default
-     */
-    @Deprecated
-    public void delete(String accountId) {
-        String id = pathSegment(accountId(accountId), "Account ID");
-        logInfo("Deleting webhook subscription", Map.of());
-        callVoid("Failed to delete webhook subscription", () -> http.delete("/accounts/" + id + "/webhooks/subscriptions"));
-    }
-
-    /**
      * Inactivate the default account's subscription without deleting it.
      *
      * @return the inactive subscription

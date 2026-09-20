@@ -21,6 +21,7 @@ import com.assinafy.sdk.resources.AuthenticationResource;
 import com.assinafy.sdk.resources.BaseResource;
 import com.assinafy.sdk.resources.DocumentResource;
 import com.assinafy.sdk.resources.FieldResource;
+import com.assinafy.sdk.resources.OAuthResource;
 import com.assinafy.sdk.resources.PublicDocumentResource;
 import com.assinafy.sdk.resources.SignerResource;
 import com.assinafy.sdk.resources.TagResource;
@@ -63,6 +64,7 @@ public class AssinafyClient {
     private final ApiKeyResource apiKeys;
     private final AuthenticationResource authentication;
     private final UserResource users;
+    private final OAuthResource oauth;
     private final Logger logger;
     private final String defaultAccountId;
 
@@ -75,15 +77,25 @@ public class AssinafyClient {
      * @throws IllegalArgumentException if the configured base URL is invalid
      */
     public AssinafyClient(AssinafyClientOptions options) {
-        this(buildHttp(options), options);
+        this(buildHttp(options), buildPublicHttp(options), options);
     }
 
     /**
      * Build a client over a caller-supplied transport. Used for testing with a stub
-     * {@link ApiHttpClient}.
+     * {@link ApiHttpClient}; the same transport serves the credential-free OAuth routes.
      */
     AssinafyClient(ApiHttpClient http, AssinafyClientOptions options) {
+        this(http, http, options);
+    }
+
+    /**
+     * Build a client over a caller-supplied transport pair. {@code publicHttp} carries no SDK
+     * credential and serves the OAuth token and revocation endpoints, which authenticate the
+     * application through its own {@code client_id}/{@code client_secret}.
+     */
+    AssinafyClient(ApiHttpClient http, ApiHttpClient publicHttp, AssinafyClientOptions options) {
         Objects.requireNonNull(http, "http");
+        Objects.requireNonNull(publicHttp, "publicHttp");
         Objects.requireNonNull(options, "options");
 
         this.defaultAccountId = options.getAccountId();
@@ -102,6 +114,9 @@ public class AssinafyClient {
         this.apiKeys = new ApiKeyResource(http, this.logger);
         this.authentication = new AuthenticationResource(http, this.logger);
         this.users = new UserResource(http, this.logger);
+        this.oauth = new OAuthResource(http, publicHttp,
+                options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL,
+                options.getTimeoutMs(), this.logger);
     }
 
     /**
@@ -148,6 +163,20 @@ public class AssinafyClient {
         // OkHttpApiClient normalises the base URL in its constructor (single source of truth).
         String baseUrl = options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL;
         return new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
+    }
+
+    /**
+     * Transport for endpoints that must not receive an SDK credential: the OAuth token and
+     * revocation routes authenticate the application itself, so sending the integrator's own API
+     * key or bearer token would leak a workspace credential to a route with no use for it.
+     */
+    private static ApiHttpClient buildPublicHttp(AssinafyClientOptions options) {
+        Objects.requireNonNull(options, "options");
+        if (options.getTimeoutMs() <= 0) {
+            throw new ValidationException("Timeout must be greater than zero");
+        }
+        String baseUrl = options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL;
+        return new OkHttpApiClient(baseUrl, null, null, options.getTimeoutMs());
     }
 
     /**
@@ -514,4 +543,7 @@ public class AssinafyClient {
 
     /** {@return authenticated-user settings and notification preferences} */
     public UserResource users() { return users; }
+
+    /** {@return OAuth 2.1 and OpenID Connect operations for apps acting in other people's workspaces} */
+    public OAuthResource oauth() { return oauth; }
 }

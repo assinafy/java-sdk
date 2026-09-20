@@ -1,6 +1,6 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **89** documented operations.
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **93** documented operations, plus the production-only routes listed under [Deployed extensions](#deployed-extensions).
 
 ## Conventions
 
@@ -12,7 +12,8 @@ This is the Java mapping of the official production OpenAPI document published a
 - Linked component schemas are part of the operation payload; follow the link for every nested field. List methods return `PaginatedResult<T>` when pagination headers are exposed.
 - Raw `Map<String,Object>` methods expose object-valued `data` fields directly. A scalar or array `data` value is returned as `{ "data": value }`; missing data or an empty success body becomes an empty map. Typed alternatives are listed beside their map-returning methods.
 - Operation request tables describe the production OpenAPI wire contract. Additional Java helpers are identified at the end of this reference.
-- Non-2xx responses and non-2xx numeric envelope statuses throw `ApiException`; 401/403 use `AuthenticationException`, 429 uses `RateLimitException`, I/O failures use `NetworkException`, and local argument failures use `ValidationException`.
+- Non-2xx responses and non-2xx numeric envelope statuses throw `ApiException`; 401/403 use `AuthenticationException`, 429 uses `RateLimitException`, I/O failures use `NetworkException`, and local argument failures use `ValidationException`. An RFC 6749 `{error, error_description}` body from an OAuth endpoint throws `OAuthException`, a subtype of `ApiException`.
+- The OAuth endpoints are the deliberate exception to the envelope rule. RFC 6749 §5.1/§5.2, OIDC Core §5.3.2 and RFC 8615 all require flat JSON, so `/oauth/token`, `/oauth/revoke`, `/oauth/userinfo` and the `.well-known` documents are neither wrapped nor unwrapped — the SDK decodes them as-is.
 
 ## Authentication
 
@@ -2190,6 +2191,164 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [T
 
 Documented statuses: `200` The updated tag; `400` One or more fields failed validation; `401` Missing or invalid credentials; `404` The requested resource does not exist; `500` Unexpected server error.
 
+## OAuth
+
+The token, revocation and userinfo endpoints an OAuth application calls, plus this API's
+protected-resource metadata. Applications acting in *other people's* workspaces use these instead of
+`X-Api-Key`/`Authorization: Bearer`, which authenticate the workspace or user directly.
+
+The authorization server's own metadata is served at
+`https://auth.assinafy.com.br/.well-known/oauth-authorization-server`, not on this API. Read endpoint
+URLs from it rather than hardcoding them; `OAuthResource` does exactly that unless you supply them.
+
+An OAuth token cannot reach billing, account lifecycle, credential management or admin surfaces
+regardless of scope. A missing scope answers `403` with
+`WWW-Authenticate: Bearer error="insufficient_scope"` naming it.
+
+### 94. OAuth 2.0 protected resource metadata
+
+- **Java:** `client.oauth()` — `OAuthResource: public OAuthProtectedResourceMetadata protectedResourceMetadata()`
+- **HTTP:** `GET {apiOrigin}/.well-known/oauth-protected-resource`
+- **Auth:** public — the SDK uses a credential-free transport for this route
+- **Side effects:** none.
+- **Contract notes:** RFC 9728. Served at the API host root, not under `/v1`, and bare rather than enveloped, as RFC 8615 requires. `scopes_supported` deliberately excludes `offline_access`, which is a request-time signal to the authorization server rather than a permission this API enforces. Also referenced from the `WWW-Authenticate: Bearer resource_metadata="..."` challenge on a 401/403.
+
+Parameters: none.
+
+Request body: none.
+
+Success `200` `application/json`: bare object — **no envelope**.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `resource` | `string(uri)` | no | no | The canonical resource identifier to send as the RFC 8707 `resource`. |
+| `authorization_servers` | `string(uri)[]` | no | no | Issuers allowed to mint tokens for this API. Start every integration by reading `{authorization_servers[0]}/.well-known/oauth-authorization-server`. |
+| `scopes_supported` | `string[]` | no | no | Scopes this API accepts. |
+| `bearer_methods_supported` | `string[]` | no | no | How a token may be presented; Assinafy publishes `header` only. |
+
+Documented statuses: `200` The protected resource metadata; `500` Unexpected server error.
+
+### 95. Exchange a code or refresh token for an access token
+
+- **Java:** `client.oauth()` — `OAuthResource: public OAuthTokens exchangeCode(OAuthClient client, String code, String codeVerifier, String redirectUri)`; `client.oauth()` — `OAuthResource: public OAuthTokens refreshToken(OAuthClient client, String refreshToken)`
+- **HTTP:** `POST /v1/oauth/token`
+- **Auth:** public — the application authenticates itself with `client_id`/`client_secret` in the body (`client_secret_post`). The SDK sends no `X-Api-Key` or `Authorization` header here.
+- **Side effects:** Issues tokens; a refresh rotates the refresh token and retires the one sent.
+- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour; a connection lasts 30 days from the user's approval, which refreshing does not extend.
+
+Parameters: none.
+
+Request body: **required**.
+
+`application/json`: object{grant_type!: `string enum[authorization_code, refresh_token]`; code: `string`; redirect_uri: `string(uri)`; code_verifier: `string`; refresh_token: `string`; client_id!: `string`; client_secret: `string`; resource: `string(uri)`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `grant_type` | `string enum[authorization_code, refresh_token]` | yes | no |  |
+| `code` | `string` | no | no | The authorization code, for `authorization_code`. |
+| `redirect_uri` | `string(uri)` | no | no | The same redirect URI that was authorized. |
+| `code_verifier` | `string` | no | no | RFC 7636: 43-128 characters from `[A-Za-z0-9-._~]`. Shorter values are rejected with `invalid_grant`. |
+| `refresh_token` | `string` | no | no | The current refresh token, for `refresh_token`. |
+| `client_id` | `string` | yes | no |  |
+| `client_secret` | `string` | no | no | Confidential clients only. Public clients authenticate with PKCE and are never issued a secret. |
+| `resource` | `string(uri)` | no | no | RFC 8707 resource indicator. Optional; when present it must be the `resource` published by `/.well-known/oauth-protected-resource` and must match the one sent to `/authorize`, otherwise `invalid_target`. The SDK defaults it to the configured API origin. |
+
+Success `200` `application/json`: bare object — **no envelope**.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `access_token` | `string` | no | no |  |
+| `token_type` | `string` | no | no | `Bearer`. |
+| `expires_in` | `integer` | no | no | Normally `3600`. |
+| `refresh_token` | `string` | no | yes | Present only when the `offline_access` scope was requested AND consented. |
+| `scope` | `string` | no | no | The scope of the ACCESS token. `offline_access` is a request-time signal rather than a permission, so it never appears here even when requested. |
+| `id_token` | `string` | no | yes | A signed OIDC `id_token` (RS256). Present only when the `openid` scope was granted. |
+
+Error `400`/`401` `application/json`: bare object — **no envelope**. Surfaced as `OAuthException`.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `error` | `string` | no | no | `invalid_grant`, `invalid_target`, `unsupported_grant_type` (400) or `invalid_client` (401). |
+| `error_description` | `string` | no | no | Never reveals whether `client_id` exists. |
+
+Documented statuses: `200` The token response; `400` `invalid_grant` (bad, expired, replayed, or wrong-client authorization code; a `code_verifier` outside the RFC 7636 grammar; redirect_uri mismatch; a refresh token whose authorization no longer includes `offline_access`), `invalid_target`, or `unsupported_grant_type`; `401` `invalid_client` — unknown/disabled client or failed client authentication; `500` Unexpected server error.
+
+### 96. Revoke a token
+
+- **Java:** `client.oauth()` — `OAuthResource: public void revokeToken(OAuthClient client, String token, String tokenTypeHint)`
+- **HTTP:** `POST /v1/oauth/revoke`
+- **Auth:** public — the application authenticates itself with `client_id`/`client_secret` in the body. The SDK sends no `X-Api-Key` or `Authorization` header here.
+- **Side effects:** Revokes the token. Revoking a refresh token ends the whole connection.
+- **Contract notes:** RFC 7009. Every token outcome returns `200` — including a token that does not exist, is already revoked, or is malformed — so the endpoint can never be used to probe whether a token exists. The one exception is failed client authentication, which returns `401`.
+
+Parameters: none.
+
+Request body: **required**.
+
+`application/json`: object{token!: `string`; token_type_hint: `string enum[access_token, refresh_token]`; client_id!: `string`; client_secret: `string`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `token` | `string` | yes | no | The access or refresh token to revoke. |
+| `token_type_hint` | `string enum[access_token, refresh_token]` | no | no | Lets the server skip a lookup. |
+| `client_id` | `string` | yes | no |  |
+| `client_secret` | `string` | no | no | Confidential clients only. |
+
+Success `200`: no payload.
+
+Documented statuses: `200` Revoked; `401` `invalid_client` — the only case that is not reported as success; `500` Unexpected server error.
+
+### 97. OpenID Connect userinfo
+
+- **Java:** `client.oauth()` — `OAuthResource: public OAuthUserInfo userInfo()`
+- **HTTP:** `GET /v1/oauth/userinfo`
+- **Auth:** Bearer JWT or `X-Api-Key` — build the client with the OAuth access token.
+- **Side effects:** none.
+- **Contract notes:** Claims about the user who authorized this token. Requires the `openid` scope; `name` requires `profile` and `email`/`email_verified` require `email`. Per OIDC Core §5.3.2, the response is a flat JSON object of claims — never this API's usual `{status, data, message}` envelope.
+
+Parameters: none.
+
+Request body: none.
+
+Success `200` `application/json`: bare object — **no envelope**.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `sub` | `string` | no | no | The user's stable identifier. |
+| `name` | `string` | no | yes | `null` without the `profile` scope. |
+| `email` | `string(email)` | no | yes | `null` without the `email` scope. |
+| `email_verified` | `boolean` | no | yes | `null` without the `email` scope. |
+
+Documented statuses: `200` The user's claims; `401` Missing or invalid credentials; `403` Forbidden — the `openid` scope was not granted; its `WWW-Authenticate` header names the scope to reconnect with; `500` Unexpected server error.
+
+### Authorization-server metadata (RFC 8414)
+
+- **Java:** `client.oauth()` — `OAuthResource: public OAuthAuthorizationServerMetadata authorizationServerMetadata()`; `public OAuthAuthorizationServerMetadata authorizationServerMetadata(String issuer)`
+- **HTTP:** `GET {issuer}/.well-known/oauth-authorization-server`
+- **Auth:** public — served by the authorization server, a different host from this API.
+- **Side effects:** none.
+- **Contract notes:** Not part of this API's OpenAPI document, because it is not served by this API. Listed here because the token, revocation and authorization endpoint URLs all come from it. The SDK verifies that the document's own `issuer` matches the host it was fetched from (RFC 8414 §3.3) and rejects one that disagrees. With no argument, the issuer is discovered from operation 94, which costs one extra request.
+
+Parameters: none. Request body: none.
+
+Success `200` `application/json`: bare object — **no envelope** — carrying `issuer`, `authorization_endpoint`, `token_endpoint`, `revocation_endpoint`, `userinfo_endpoint`, `jwks_uri`, `scopes_supported`, `response_types_supported`, `grant_types_supported`, `code_challenge_methods_supported`, `token_endpoint_auth_methods_supported`, `authorization_response_iss_parameter_supported` and `client_id_metadata_document_supported`.
+
+### Building an authorization URL
+
+- **Java:** `client.oauth()` — `OAuthResource: public OAuthAuthorizationRequest createAuthorizationUrl(AuthorizationUrlRequest request)`
+- **HTTP:** none directly — produces the `GET {authorization_endpoint}` URL for the browser.
+- **Contract notes:** Performs no network I/O beyond discovery, which is skipped when `authorizationEndpoint` and `issuer` are both supplied. Mints an RFC 7636 verifier (43 base64url characters), its `S256` challenge, a `state`, and — when the `openid` scope is requested — a `nonce`. The returned `OAuthAuthorizationRequest` must be stored in the user's session: the callback needs `state` and `issuer`, and the token exchange needs `codeVerifier`.
+
+Query parameters emitted: `response_type=code`, `client_id`, `redirect_uri`, `scope` (space separated), `state`, `code_challenge`, `code_challenge_method=S256`, `resource` (the configured API origin, omitted for a loopback base URL), and optionally `nonce` and `prompt`.
+
+### Reading an authorization callback
+
+- **Java:** `client.oauth()` — `OAuthResource: public String readAuthorizationCallback(String callbackUrlOrQuery, OAuthAuthorizationRequest stored)`; `public String readAuthorizationCallback(Map<String, String> params, OAuthAuthorizationRequest stored)`
+- **HTTP:** none — validates the query parameters the authorization server put on your redirect URI.
+- **Contract notes:** Checks, in order and before anything else is trusted, that `state` equals the stored value (compared in constant time) and that `iss` equals the stored issuer, and only then whether the server reported an error. Because the authorization server advertises `authorization_response_iss_parameter_supported: true` and always sends `iss`, a missing one is treated exactly like a wrong one. A declined consent arrives as `?error=access_denied` and raises `OAuthException`; a mismatch raises `ValidationException` — in either case the response is not yours, so stop rather than exchanging.
+
+Authorization-response errors: `access_denied` (the user declined), `invalid_scope` (a scope the application is not registered for, or none), `invalid_request` (missing or malformed PKCE parameters), `unsupported_response_type` (anything other than `response_type=code`), `invalid_target` (a `resource` other than the published one).
+
 ## Webhooks
 
 ### 80. List webhook deliveries
@@ -2969,6 +3128,69 @@ Owner-facing document notifications, keyed by notification type. `true` means th
 | `TemplateProcessingFailed` | `boolean` | no | no | A template could not be processed. |
 | `SignerWhatsappFailed` | `boolean` | no | no | A WhatsApp notification to a signer could not be delivered. |
 
+## Deployed extensions
+
+Routes the SDK calls that are live on the API but absent from the published OpenAPI document. They
+carry no compatibility promise from the reference, so each one names what the SDK does with it.
+
+### `POST /v1/signers/certificate/start`
+
+- **Java:** `client.signers()` — `SignerResource: public String startCertificateSignature(String signerAccessCode)`
+- **Auth:** signer access code. Configured bearer and API-key credentials are not used by this route.
+- **Availability:** **production only.** The sandbox does not expose it.
+- **Contract notes:** Begins an ICP-Brasil digital-certificate signature for a signer whose `verification_method` is `DigitalCertificate`. Those signers cannot use [Sign assignment items](#signing) — that endpoint returns `400` for them. The signer must have confirmed their data and accepted the terms first. The returned token is signed in the browser by the signer's own A1 or A3 certificate through the Web PKI extension.
+
+Request body: **required**. The access code travels in both the query and the body.
+
+`application/json`: object{signer-access-code!: `string`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `signer-access-code` | `string` | yes | no | The same value as the query parameter. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: object{token: `string`}}.
+
+```json
+{ "status": 200, "message": "", "data": { "token": "web-pki-token" } }
+```
+
+The Java method returns `data.token` and raises `ValidationException` when it is absent.
+
+Statuses: `200` Operation started; `400` Invalid signing state or request; `401` Invalid or expired signer access code; `500` Unexpected server error.
+
+### `POST /v1/signers/certificate/complete`
+
+- **Java:** `client.signers()` — `SignerResource: public String completeCertificateSignature(String signerAccessCode, String token)`
+- **Auth:** signer access code. Configured bearer and API-key credentials are not used by this route.
+- **Availability:** **production only.** The sandbox does not expose it.
+- **Contract notes:** Completes the signature with the browser-signed Web PKI token. Afterwards the document's `pades` artifact carries the qualified PAdES signature.
+
+Request body: **required**.
+
+`application/json`: object{signer-access-code!: `string`; token!: `string`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `signer-access-code` | `string` | yes | no | The same value as the query parameter. |
+| `token` | `string` | yes | no | The Web PKI token after the browser signed it with the signer's certificate. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: object{signerName: `string`}}.
+
+```json
+{ "status": 200, "message": "", "data": { "signerName": "Maria Silva" } }
+```
+
+The Java method returns `data.signerName` and raises `ValidationException` when it is absent.
+
+Statuses: `200` Signature completed; `400` Invalid signed token or signing state; `401` Invalid or expired signer access code; `500` Unexpected server error.
+
+### `GET /v1/accounts/{accountId}/templates/{templateId}`
+
+- **Java:** `client.templates()` — `TemplateResource: public Template get(String templateId)`; `public Template get(String templateId, String accountId)`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Availability:** live on production and sandbox.
+- **Contract notes:** Returns one [Template](#schema-template), the same schema [List templates](#templates) returns per element. Use the list operation when you need a contract the published reference guarantees.
+
 ## Java convenience APIs
 
 - `DocumentResource: public Document get(String documentId)` aliases `details`. `public Document waitUntilReady(String documentId)`, `public Document waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs)`, `public boolean isFullySigned(String documentId)`, and `public SigningProgress getSigningProgress(String documentId)` compose documented document reads locally.
@@ -2979,8 +3201,7 @@ Owner-facing document notifications, keyed by notification type. `true` means th
   names. Returned `Tag` records carry the attached-tag IDs accepted by `detachTag(...)`.
 - `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer resolution, and assignment creation. On an ordinary later-step failure, it attempts to delete the uploaded document and signer records whose create responses returned valid IDs; cleanup failures are suppressed on the original exception. Signers recovered after an indeterminate create response are not updated or deleted. A recovered entry containing CPF/CNPJ fails before assignment creation. If assignment creation has an indeterminate result and reconciliation cannot find it, the resources are retained to avoid deleting a potentially active request.
 - `SignerResource.create(...)` always sends the create POST. A supplied `CreateSignerRequest.cpf` (CPF or CNPJ) is persisted through a follow-up `government_id` update; if that update fails, the new signer is deleted. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
-- `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call the deployment extension `GET /accounts/{accountId}/templates/{templateId}`. Confirm endpoint support before using it.
-- `WebhookResource: public void delete()` and `public void delete(String accountId)` call an optional DELETE subscription route and are deprecated; use `inactivate`.
+- `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call `GET /accounts/{accountId}/templates/{templateId}`, a live route that the published OpenAPI document does not list — see [Deployed extensions](#deployed-extensions).
 - `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`; use this form only where clearing expiration is supported.
 - `PublicDocumentResource.sendToken(String)` follows the optional/bodyless form, and `sendToken(String, String)` sends only `email`. The deployment-specific `sendToken(String, String, String)` sends `email`, `recipient`, and `channel` for the email channel, and `recipient` plus `channel` for other channels.
 - `AssignmentResource.list(..., accountId)` adds optional `accountId` query context.

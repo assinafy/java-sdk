@@ -221,4 +221,39 @@ class SignerResourceExtraTest {
                 .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
         assertThat(http.capturedCount()).isZero();
     }
+
+    @Test
+    void certificateSignatureRoundTripCarriesTheAccessCodeInQueryAndBody() {
+        http.enqueue(200, "{\"status\":200,\"message\":\"\",\"data\":{\"token\":\"web-pki-token\"}}")
+            .enqueue(200, "{\"status\":200,\"message\":\"\",\"data\":{\"signerName\":\"Maria Silva\"}}");
+
+        String token = signers.startCertificateSignature("code1");
+        String signerName = signers.completeCertificateSignature("code1", "signed-" + token);
+
+        assertThat(token).isEqualTo("web-pki-token");
+        assertThat(signerName).isEqualTo("Maria Silva");
+        assertThat(http.capturedAt(0).getMethod()).isEqualTo("POST");
+        assertThat(http.capturedAt(0).getPath())
+                .isEqualTo("/signers/certificate/start?signer-access-code=code1");
+        assertThat(http.capturedAt(0).getJsonBody()).isEqualTo("{\"signer-access-code\":\"code1\"}");
+        assertThat(http.capturedAt(1).getPath())
+                .isEqualTo("/signers/certificate/complete?signer-access-code=code1");
+        assertThat(http.capturedAt(1).getJsonBody())
+                .contains("\"signer-access-code\":\"code1\"")
+                .contains("\"token\":\"signed-web-pki-token\"");
+    }
+
+    @Test
+    void certificateSignatureRejectsBlankInputAndTokenlessResponses() {
+        assertThatThrownBy(() -> signers.startCertificateSignature(" "))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        assertThatThrownBy(() -> signers.completeCertificateSignature("code1", ""))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
+
+        http.enqueue(200, "{\"status\":200,\"message\":\"\",\"data\":{}}");
+        assertThatThrownBy(() -> signers.startCertificateSignature("code1"))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class)
+                .hasMessageContaining("token");
+    }
 }
