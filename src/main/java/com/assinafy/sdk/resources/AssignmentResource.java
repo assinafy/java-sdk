@@ -130,8 +130,9 @@ public class AssignmentResource extends BaseResource {
      * ({@code POST /documents/{documentId}/assignments/estimate-cost}). Unlike creation, the
      * estimate payload contains only explicitly supplied {@code method}, {@code signers}, and
      * {@code entries}; signer IDs and steps are omitted, delivery methods are validated, and unset
-     * fields are omitted. A virtual estimate requires at least one signer; a collect estimate
-     * requires nonempty entries. Returns a cost breakdown map ({@code credits},
+     * fields are omitted. Every estimate requires at least one signer, because the API prices per
+     * signer in both modes; a collect estimate additionally requires nonempty entries. Returns a
+     * cost breakdown map ({@code credits},
      * {@code total_credits},
      * {@code document_balance}, {@code has_sufficient_resources}, …).
      *
@@ -372,8 +373,11 @@ public class AssignmentResource extends BaseResource {
         if (!estimate && (signers == null || signers.isEmpty())) {
             throw new ValidationException("At least one signer is required");
         }
-        if (estimate && VIRTUAL.equals(method) && (signers == null || signers.isEmpty())) {
-            throw new ValidationException("At least one signer is required for a virtual estimate");
+        // The contract marks signers required only for virtual, but the API prices per signer in
+        // both modes and rejects a signer-less estimate with
+        // 400 "Pelo menos um signatários precisa ser informado."
+        if (estimate && (signers == null || signers.isEmpty())) {
+            throw new ValidationException("At least one signer is required for a cost estimate");
         }
         if (COLLECT.equals(method)
                 && (request.getEntries() == null || request.getEntries().isEmpty())) {
@@ -387,7 +391,7 @@ public class AssignmentResource extends BaseResource {
 
         Map<String, Object> body = new HashMap<>();
         if (method != null || !estimate) body.put("method", method != null ? method : VIRTUAL);
-        if (!normalisedSigners.isEmpty() || !estimate) body.put("signers", normalisedSigners);
+        body.put("signers", normalisedSigners);
         if (request.getEntries() != null) body.put("entries", request.getEntries());
         if (!estimate) {
             if (request.getMessage() != null) body.put("message", request.getMessage());

@@ -5,6 +5,15 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-09-21
+
+Every cost estimate now requires at least one signer. The published contract marks `signers` as
+required only for `virtual`, but the API prices per signer in both modes and answers a signer-less
+estimate with `400 "Pelo menos um signatários precisa ser informado."` The payload builder dropped
+the `signers` key entirely when the list was empty, so a `collect` estimate could never be priced.
+`estimateCost` now raises `ValidationException` locally instead of failing upstream. 317 unit
+tests pass.
+
 ## [1.8.0] - 2026-09-20
 
 OAuth 2.1 with mandatory PKCE, so an application can act inside a customer's workspace with that

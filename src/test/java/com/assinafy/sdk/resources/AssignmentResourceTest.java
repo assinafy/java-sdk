@@ -92,16 +92,21 @@ class AssignmentResourceTest {
     }
 
     @Test
-    void estimatePayloadAllowsEmptyAndCollectOnlyRequests() {
-        assertThat(AssignmentResource.buildAssignmentPayload(
-                CreateAssignmentRequest.builder().build(), true)).isEmpty();
+    void estimatePayloadAlwaysCarriesSigners() {
+        // The API prices per signer in both modes and rejects a signer-less estimate.
+        assertThatThrownBy(() -> AssignmentResource.buildAssignmentPayload(
+                CreateAssignmentRequest.builder().build(), true))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("At least one signer");
 
         Map<String, Object> collect = AssignmentResource.buildAssignmentPayload(
                 CreateAssignmentRequest.builder()
                         .method("collect")
+                        .signers(List.of(SignerReference.builder()
+                                .verificationMethod("Whatsapp").build()))
                         .entries(List.of(Map.of("page_id", "p1")))
                         .build(), true);
-        assertThat(collect).containsOnlyKeys("method", "entries");
+        assertThat(collect).containsOnlyKeys("method", "signers", "entries");
     }
 
     @Test
@@ -398,5 +403,40 @@ class AssignmentResourceTest {
         assertThat(mock.lastCaptured().getJsonBody())
                 .contains("\"verification_method\":\"Email\"")
                 .doesNotContain("\"id\"", "\"step\"");
+    }
+
+    @Test
+    void collectEstimateSendsSignersAlongsideEntries() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":2}}");
+        AssignmentResource resource = new AssignmentResource(mock, "acc");
+        CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+                .method("collect")
+                .signers(List.of(SignerReference.builder()
+                        .verificationMethod("DigitalCertificate").build()))
+                .entries(List.of(Map.of("page_id", "p1")))
+                .build();
+
+        resource.estimateCost("doc-1", request);
+
+        // collect is priced per signer too, so the channels must reach the API.
+        assertThat(mock.lastCaptured().getJsonBody())
+                .contains("\"verification_method\":\"DigitalCertificate\"")
+                .contains("\"entries\"");
+    }
+
+    @Test
+    void everyEstimateRequiresAtLeastOneSigner() {
+        AssignmentResource resource = new AssignmentResource(new MockApiHttpClient(), "acc");
+
+        // The API refuses a signer-less estimate in either mode.
+        assertThatThrownBy(() -> resource.estimateCost("doc-1", CreateAssignmentRequest.builder()
+                .method("collect").entries(List.of(Map.of("page_id", "p1"))).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("At least one signer");
+        assertThatThrownBy(() -> resource.estimateCost("doc-1",
+                CreateAssignmentRequest.builder().method("virtual").build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("At least one signer");
     }
 }

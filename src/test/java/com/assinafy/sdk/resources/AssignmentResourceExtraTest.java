@@ -7,6 +7,7 @@ import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.ResendNotificationResponse;
 import com.assinafy.sdk.models.WhatsappNotification;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
+import com.assinafy.sdk.request.SignerReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -111,8 +112,11 @@ class AssignmentResourceExtraTest {
                 "\"has_sufficient_resources\":true,\"blocking_reason\":null,\"message\":null}}";
         http.enqueue(200, response).enqueue(200, response);
 
-        CostEstimate assignmentCost = assignments.estimateCostTyped(
-                "d1", CreateAssignmentRequest.builder().build());
+        CostEstimate assignmentCost = assignments.estimateCostTyped("d1",
+                CreateAssignmentRequest.builder()
+                        .signers(List.of(SignerReference.builder()
+                                .verificationMethod("Whatsapp").build()))
+                        .build());
         CostEstimate resendCost = assignments.estimateResendCostTyped("d1", "a1", "s1");
 
         assertThat(assignmentCost.getDocuments()).isEqualTo(1);
