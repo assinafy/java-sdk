@@ -91,7 +91,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.8.0</version>
+    <version>1.10.0</version>
 </dependency>
 ```
 
@@ -571,6 +571,7 @@ one (running on the user's device) never does and authenticates with PKCE alone.
 | `TEMPLATES_READ` | Read templates, their pages, roles, fields, and tags |
 | `TEMPLATES_WRITE` | Create, update, and delete templates |
 | `ACCOUNT_READ` | Read the workspace's profile, theme, and logo |
+| `WEBHOOKS_WRITE` | Configure and deactivate the workspace webhook subscription |
 | `OPENID` | Receive an `id_token` identifying the user, and enable userinfo |
 | `PROFILE` | Read the user's name |
 | `EMAIL` | Read the user's email and whether it is verified |
@@ -1189,8 +1190,7 @@ export ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1
 ./mvnw -Plive-api verify
 ```
 
-The live profile rejects any base URL other than the exact sandbox URL. GitHub Actions runs it
-weekly and on manual dispatch through the protected `sandbox` environment. Only `ASSINAFY_API_KEY`
+The live profile rejects any base URL other than the exact sandbox URL. Only `ASSINAFY_API_KEY`
 and `ASSINAFY_ACCOUNT_ID` are required. The assignment-notification case additionally needs
 `ASSINAFY_TEST_EMAIL_PRIMARY` and `ASSINAFY_TEST_EMAIL_SECONDARY`, and the password-reset case needs
 `ASSINAFY_TEST_EMAIL_PRIMARY`; leave them unset to skip those cases, or point them at controlled

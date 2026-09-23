@@ -81,7 +81,7 @@ Depois adicione o repositório e a dependência ao seu projeto:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.8.0</version>
+    <version>1.10.0</version>
 </dependency>
 ```
 
@@ -471,6 +471,7 @@ O enum `OAuthScope` cobre a lista publicada:
 | `TEMPLATES_READ` | Ler templates, suas páginas, papéis, campos e tags |
 | `TEMPLATES_WRITE` | Criar, alterar e apagar templates |
 | `ACCOUNT_READ` | Ler perfil, tema e logo do workspace |
+| `WEBHOOKS_WRITE` | Configurar e desativar a assinatura de webhooks do workspace |
 | `OPENID` | Receber um `id_token` identificando o usuário e habilitar o userinfo |
 | `PROFILE` | Ler o nome do usuário |
 | `EMAIL` | Ler o e-mail do usuário e se ele é verificado |

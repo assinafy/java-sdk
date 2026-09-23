@@ -22,7 +22,7 @@ import java.util.List;
  *   "userinfo_endpoint": "https://api.assinafy.com.br/v1/oauth/userinfo",
  *   "jwks_uri": "https://auth.assinafy.com.br/.well-known/jwks.json",
  *   "scopes_supported": ["documents:read", "documents:write", "templates:read",
- *                        "templates:write", "account:read", "openid", "profile",
+ *                        "templates:write", "account:read", "webhooks:write", "openid", "profile",
  *                        "email", "offline_access"],
  *   "response_types_supported": ["code"],
  *   "grant_types_supported": ["authorization_code", "refresh_token"],

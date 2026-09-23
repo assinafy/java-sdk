@@ -60,7 +60,7 @@ class OAuthResourceTest {
     void buildsAuthorizationUrlWithPkceStateAndResource() {
         OAuthAuthorizationRequest request = resource(new MockApiHttpClient()).createAuthorizationUrl(
                 offlineRequest()
-                        .scopes(OAuthScope.DOCUMENTS_READ, OAuthScope.DOCUMENTS_WRITE,
+                        .scopes(OAuthScope.DOCUMENTS_READ, OAuthScope.WEBHOOKS_WRITE,
                                 OAuthScope.OFFLINE_ACCESS)
                         .build());
 
@@ -69,7 +69,7 @@ class OAuthResourceTest {
         assertThat(params).containsEntry("response_type", "code")
                 .containsEntry("client_id", "cli_1a2b3c")
                 .containsEntry("redirect_uri", REDIRECT)
-                .containsEntry("scope", "documents:read documents:write offline_access")
+                .containsEntry("scope", "documents:read webhooks:write offline_access")
                 .containsEntry("code_challenge_method", "S256")
                 .containsEntry("resource", "https://api.assinafy.com.br")
                 .doesNotContainKey("nonce");

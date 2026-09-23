@@ -5,6 +5,10 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-09-23
+
+`OAuthScope.WEBHOOKS_WRITE` requests permission to configure and deactivate a workspace webhook subscription.
+
 ## [1.9.0] - 2026-09-21
 
 Every cost estimate now requires at least one signer. The published contract marks `signers` as

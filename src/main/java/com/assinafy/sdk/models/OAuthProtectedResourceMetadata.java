@@ -18,7 +18,7 @@ import java.util.List;
  *   "resource": "https://api.assinafy.com.br",
  *   "authorization_servers": ["https://auth.assinafy.com.br"],
  *   "scopes_supported": ["documents:read", "documents:write", "templates:read",
- *                        "templates:write", "account:read", "openid", "profile", "email"],
+ *                        "templates:write", "account:read", "webhooks:write", "openid", "profile", "email"],
  *   "bearer_methods_supported": ["header"]
  * }
  * }</pre>

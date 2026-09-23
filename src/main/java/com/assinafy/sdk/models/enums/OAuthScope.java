@@ -30,6 +30,9 @@ public enum OAuthScope {
     /** Read the workspace's profile, theme and logo. */
     ACCOUNT_READ("account:read"),
 
+    /** Configure and deactivate the workspace webhook subscription. */
+    WEBHOOKS_WRITE("webhooks:write"),
+
     /**
      * Identify the authenticated user through the OpenID Connect {@code sub} claim, receive an
      * {@code id_token}, and enable {@code GET /oauth/userinfo}.
