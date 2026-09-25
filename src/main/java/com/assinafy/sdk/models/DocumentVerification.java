@@ -13,6 +13,9 @@ public class DocumentVerification {
     @JsonProperty("id")
     private String id;
 
+    @JsonProperty("agreement_code")
+    private String agreementCode;
+
     @JsonProperty("status")
     private String status;
 
@@ -69,6 +72,20 @@ public class DocumentVerification {
      * @param id the ID
      */
     public void setId(String id) { this.id = id; }
+
+    /**
+     * Returns the agreement code printed on the document certificate.
+     *
+     * @return the agreement code, or {@code null} when the API returns none
+     */
+    public String getAgreementCode() { return agreementCode; }
+
+    /**
+     * Sets the agreement code.
+     *
+     * @param agreementCode the agreement code printed on the document certificate
+     */
+    public void setAgreementCode(String agreementCode) { this.agreementCode = agreementCode; }
 
     /**
      * Returns the status.

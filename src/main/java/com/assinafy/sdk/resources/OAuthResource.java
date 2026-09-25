@@ -105,8 +105,9 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>A token works for exactly <b>one</b> workspace. Calling any other answers {@code 403},
  *       even one the same user belongs to. Connect each workspace separately.</li>
- *   <li>A connection lasts <b>30 days from the user's approval</b>. Refreshing does not extend it,
- *       so plan for users to reconnect monthly.</li>
+ *   <li>A refresh token is valid for <b>30 days</b>, and every refresh returns a new one with a
+ *       fresh 30 days. A connection only expires after 30 days without a refresh; then the user
+ *       has to reconnect.</li>
  * </ul>
  *
  * <p>Requests to the token and revocation endpoints deliberately carry no {@code X-Api-Key} or
@@ -141,7 +142,9 @@ public class OAuthResource extends BaseResource {
      * Create OAuth operations.
      *
      * @param http transport carrying the client's configured credential, used by {@link #userInfo()}
-     * @param publicHttp credential-free transport for the token and revocation endpoints
+     * @param publicHttp credential-free transport for the token and revocation endpoints; it should
+     *                   not re-send requests on its own, because a re-sent refresh replays a
+     *                   retired refresh token
      * @param baseUrl the configured API base URL, used to derive the metadata origin and the
      *                RFC 8707 {@code resource} indicator
      * @param timeoutMs transport timeout applied to the metadata requests
@@ -343,9 +346,10 @@ public class OAuthResource extends BaseResource {
      *                           leading {@code ?}
      * @param stored the request returned by {@link #createAuthorizationUrl(AuthorizationUrlRequest)}
      * @return the validated single-use authorization code
-     * @throws ValidationException if {@code state} is missing or does not match, {@code iss} is
-     *         absent or disagrees with the stored issuer, or a successful response carries no
-     *         {@code code}. In every case the response is not yours — stop, do not exchange.
+     * @throws ValidationException if the stored request has no {@code state} or issuer,
+     *         {@code state} is missing or does not match, {@code iss} is absent or disagrees with
+     *         the stored issuer, or a successful response carries no {@code code}. In every case
+     *         the response is not yours — stop, do not exchange.
      * @throws OAuthException if the server reported an {@code error}, such as
      *         {@code access_denied}, {@code invalid_scope}, {@code invalid_request},
      *         {@code unsupported_response_type} or {@code invalid_target}
@@ -365,8 +369,9 @@ public class OAuthResource extends BaseResource {
      */
     public String readAuthorizationCallback(Map<String, String> params, OAuthAuthorizationRequest stored) {
         if (params == null) throw new ValidationException("Callback parameters are required");
-        if (stored == null || stored.state() == null || stored.state().isBlank()) {
-            throw new ValidationException("Stored authorization request with a state is required");
+        if (stored == null || stored.state() == null || stored.state().isBlank()
+                || stored.issuer() == null || stored.issuer().isBlank()) {
+            throw new ValidationException("Stored authorization request with a state and an issuer is required");
         }
 
         String state = params.get("state");
@@ -376,8 +381,7 @@ public class OAuthResource extends BaseResource {
         }
 
         String issuer = params.get("iss");
-        if (stored.issuer() != null
-                && (issuer == null || !stripTrailingSlashes(issuer).equals(stripTrailingSlashes(stored.issuer())))) {
+        if (issuer == null || !stripTrailingSlashes(issuer).equals(stripTrailingSlashes(stored.issuer()))) {
             throw new ValidationException(
                     "OAuth callback issuer is missing or does not match the expected issuer",
                     Map.of("expected", stored.issuer(), "received", issuer != null ? issuer : "none"));
@@ -476,12 +480,21 @@ public class OAuthResource extends BaseResource {
      * <ol>
      *   <li>persist {@link OAuthTokens#getRefreshToken()} before doing anything else with the
      *       response;</li>
-     *   <li>treat a timeout as "it may have succeeded" and re-read your stored token instead of
-     *       retrying blindly;</li>
+     *   <li>never re-send a refresh token after a failure that may have reached the server — a
+     *       timeout, a dropped connection, a {@code 5xx}. Re-read your storage instead, and if it
+     *       still holds the token you sent, ask the user to reconnect. Only a failure that provably
+     *       happened before sending is safe to retry: a
+     *       {@link com.assinafy.sdk.exceptions.NetworkException} caused by an
+     *       {@code UnknownHostException} (DNS), a {@code ConnectException} (connection refused) or
+     *       an {@code SSLHandshakeException};</li>
      *   <li>never run two refreshes concurrently for one connection.</li>
      * </ol>
      *
-     * <p>Refreshing does not extend the connection's 30-day life.
+     * <p>A refresh token is valid for 30 days, and the new one each refresh returns starts a fresh
+     * 30 days: a connection only expires after 30 days without a refresh. The default transport
+     * sends this request once and never re-sends it on its own: a timeout or dropped connection
+     * surfaces as {@link com.assinafy.sdk.exceptions.NetworkException} and a {@code 503} as
+     * {@link com.assinafy.sdk.exceptions.ApiException}.
      *
      * <p>Request body:
      * <pre>{@code
@@ -500,9 +513,10 @@ public class OAuthResource extends BaseResource {
      *
      * @param client the application's credentials
      * @param refreshToken the current refresh token
-     * @return a fresh token set
+     * @return a fresh token set whose refresh token differs from the one sent
      * @throws ValidationException if an argument is missing, or a 2xx response carries no
-     *         {@code access_token}
+     *         {@code access_token} or no new {@code refresh_token} (missing, blank, or the one
+     *         sent) — the token sent may already be retired, so ask the user to reconnect
      * @throws OAuthException {@code invalid_grant} when the refresh token was already used, expired,
      *         or the user reconnected with different permissions — ask the user to reconnect;
      *         {@code invalid_client} for bad application credentials
@@ -515,14 +529,24 @@ public class OAuthResource extends BaseResource {
         body.put("refresh_token", refreshToken);
         applyClientAuth(body, client);
         applyResource(body);
-        return requestToken("Failed to refresh the OAuth access token", body);
+        OAuthTokens tokens = requestToken("Failed to refresh the OAuth access token", body);
+        // The server retired the token just sent, so a response without a new one leaves nothing
+        // safe to store: returning it would let the caller save null or replay the retired token.
+        String renewed = tokens.getRefreshToken();
+        if (renewed == null || renewed.isBlank() || renewed.equals(refreshToken)) {
+            throw new ValidationException("Failed to refresh the OAuth access token: the token endpoint "
+                    + "returned no new refresh_token, and the one sent may be retired; ask the user to reconnect");
+        }
+        return tokens;
     }
 
     /**
      * Revoke an access or refresh token ({@code POST /oauth/revoke}, RFC 7009).
      *
      * <p>Call this when a user disconnects your app, instead of only deleting your copy of the
-     * token. Revoking a refresh token ends the whole connection.
+     * token. Revoking a refresh token ends the whole connection. Revoke the one you saved most
+     * recently, never an older copy: every refresh retires the token it was sent, and the
+     * {@code 200} below cannot tell you that the token you revoked was a retired one.
      *
      * <p>Every token outcome answers {@code 200} — unknown, malformed and already-revoked included
      * — so the endpoint cannot be used to probe whether a token exists. Only failed client
@@ -718,6 +742,11 @@ public class OAuthResource extends BaseResource {
 
     private static String requireRedirectUri(String value) {
         String uri = requireHttpsUrl(value, "Redirect URI");
+        // Unlike the transport's base URL, a redirect URI gets no loopback exception: Assinafy
+        // registers only https redirect URIs, so http://localhost can never match.
+        if (!uri.regionMatches(true, 0, "https:", 0, 6)) {
+            throw new ValidationException("Redirect URI must be an absolute https URL; http://localhost is not accepted");
+        }
         if (uri.indexOf('#') >= 0) {
             throw new ValidationException("Redirect URI must not contain a fragment");
         }

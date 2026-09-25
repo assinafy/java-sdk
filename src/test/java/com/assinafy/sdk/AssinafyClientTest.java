@@ -1,5 +1,7 @@
 package com.assinafy.sdk;
 
+import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.exceptions.NetworkException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.OAuthTokens;
 import com.assinafy.sdk.request.OAuthClient;
@@ -7,7 +9,10 @@ import com.assinafy.sdk.resources.OAuthResource;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
+import mockwebserver3.SocketEffect;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -91,7 +96,8 @@ class AssinafyClientTest {
             server.enqueue(new MockResponse.Builder()
                     .code(200)
                     .addHeader("Content-Type", "application/json")
-                    .body("{\"access_token\":\"at\",\"token_type\":\"Bearer\",\"expires_in\":3600}")
+                    .body("{\"access_token\":\"at\",\"token_type\":\"Bearer\",\"expires_in\":3600,"
+                            + "\"refresh_token\":\"rt2\"}")
                     .build());
             AssinafyClient client = new AssinafyClient(AssinafyClientOptions.builder()
                     .apiKey("workspace-secret")
@@ -113,6 +119,61 @@ class AssinafyClientTest {
             assertThat(request.getBody().utf8()).contains("app-secret")
                     .doesNotContain("workspace-secret")
                     .doesNotContain("workspace-token");
+        }
+    }
+
+    @Test
+    void oauthTokenRequestIsNeverResentAfterAConnectionFailure() throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            // The revoke leaves a pooled connection behind; the server then drops that connection
+            // after reading the refresh. OkHttp's default recovery would re-send the refresh on a
+            // new connection and replay a refresh token the first attempt may already have retired.
+            server.enqueue(new MockResponse.Builder().code(200).build());
+            server.enqueue(new MockResponse.Builder().onResponseStart(new SocketEffect.CloseSocket()).build());
+            server.enqueue(new MockResponse.Builder()
+                    .code(200)
+                    .addHeader("Content-Type", "application/json")
+                    .body("{\"access_token\":\"at\",\"refresh_token\":\"rt2\"}")
+                    .build());
+            AssinafyClient client = new AssinafyClient(AssinafyClientOptions.builder()
+                    .baseUrl(server.url("/v1").toString())
+                    .build());
+            OAuthClient app = OAuthClient.publicClient("cli_1a2b3c");
+
+            client.oauth().revokeToken(app, "old-access-token", null);
+
+            assertThatThrownBy(() -> client.oauth().refreshToken(app, "rt1"))
+                    .isInstanceOf(NetworkException.class);
+            assertThat(server.getRequestCount()).isEqualTo(2);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {307, 308, 408, 503})
+    void oauthTokenRequestIsSentOnceWhateverTheResponse(int status) throws Exception {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            // OkHttp repeats a request answered 503 with Retry-After: 0 even when connection retries
+            // are off. The second response is what any re-sent refresh would receive.
+            server.enqueue(new MockResponse.Builder()
+                    .code(status)
+                    .addHeader("Retry-After", "0")
+                    .addHeader("Location", "/v1/oauth/token")
+                    .build());
+            server.enqueue(new MockResponse.Builder()
+                    .code(200)
+                    .addHeader("Content-Type", "application/json")
+                    .body("{\"access_token\":\"at\",\"refresh_token\":\"rt2\"}")
+                    .build());
+            AssinafyClient client = new AssinafyClient(AssinafyClientOptions.builder()
+                    .baseUrl(server.url("/v1").toString())
+                    .build());
+
+            assertThatThrownBy(() -> client.oauth().refreshToken(OAuthClient.publicClient("cli_1a2b3c"), "rt1"))
+                    .isInstanceOfSatisfying(ApiException.class,
+                            failure -> assertThat(failure.getStatusCode()).isEqualTo(status));
+            assertThat(server.getRequestCount()).isEqualTo(1);
         }
     }
 

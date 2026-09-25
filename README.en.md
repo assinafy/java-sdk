@@ -92,7 +92,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.10.1</version>
+    <version>1.11.0</version>
 </dependency>
 ```
 
@@ -646,22 +646,41 @@ workspace id alongside the tokens.
 OAuthTokens renewed = client.oauth().refreshToken(app, connection.getRefreshToken());
 connection.save(renewed.getRefreshToken());   // BEFORE doing anything else with the response
 
+// From now on, call the API with the renewed access token
+connected = new AssinafyClient(
+    AssinafyClientOptions.builder().token(renewed.getAccessToken()).build());
+
 // Who approved? Needs OPENID; name needs PROFILE and email needs EMAIL.
 OAuthUserInfo who = connected.oauth().userInfo();
 
-// On disconnect, revoke rather than only deleting your copy
+// On disconnect, revoke rather than only deleting your copy — and revoke the refresh token
+// saved most recently, never an older copy: every refresh retired the one before it
 client.oauth().revokeToken(app, connection.getRefreshToken(), "refresh_token");
 ```
 
 > **Refresh tokens rotate.** Every call returns a new one and retires the one you sent. A replayed
 > refresh token cannot be told apart from a stolen one, so it ends the **entire connection** and the
 > user must reconnect. Persist the new refresh token before doing anything else with the response,
-> treat a timeout as "it may have succeeded" and re-read your stored token instead of retrying
-> blindly, and never run two refreshes concurrently for one connection.
+> and never run two refreshes concurrently for one connection. `refreshToken` only returns when the
+> response carries a new refresh token; otherwise it throws `ValidationException` and the user has
+> to reconnect.
+>
+> **Never re-send a refresh token after a failure that may have reached the server** — a timeout, a
+> dropped connection, a `5xx`: the first attempt may already have rotated it. Re-read your storage
+> instead; if it still holds the token you sent, ask the user to reconnect. Only a failure that
+> provably happened before sending is safe to retry: a `NetworkException` caused by an
+> `UnknownHostException` (DNS), a `ConnectException` (connection refused) or an
+> `SSLHandshakeException`. The SDK itself never re-sends a token request: a timeout or dropped
+> connection surfaces as `NetworkException`, and a `503` as `ApiException`.
 
 Two facts behind most integration bugs: **a token works for exactly one workspace** (any other
 answers `403`, even one the same user belongs to — connect each workspace separately), and **a
-connection lasts 30 days from approval**, which refreshing does not extend.
+refresh token is valid for 30 days**: every refresh returns a new one with a fresh 30 days, so a
+connection only expires after 30 days without a refresh, and then the user has to reconnect.
+
+`tokens.getIdToken()` is returned as received. Validate it with an OpenID Connect library before
+trusting it — RS256 key from `jwks_uri` matched by `kid`, `iss`, `aud` equal to your `client_id`,
+`exp`, and `nonce` equal to `stored.nonce()` — or read the user's claims from `userInfo()` instead.
 
 ### Discovery
 

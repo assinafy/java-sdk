@@ -13,6 +13,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import okhttp3.TlsVersion;
+import okio.BufferedSink;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -63,10 +64,34 @@ public class OkHttpApiClient implements ApiHttpClient {
      * @throws IllegalArgumentException if the base URL is invalid or the timeout is not positive
      */
     public OkHttpApiClient(String baseUrl, String apiKey, String token, long timeoutMs) {
+        this(baseUrl, apiKey, token, timeoutMs, true);
+    }
+
+    /**
+     * Create an OkHttp transport, choosing whether OkHttp may re-send a request on its own.
+     *
+     * <p>Pass {@code false} for a transport that calls the OAuth token endpoint. OkHttp otherwise
+     * re-sends a request after some connection failures, and when the server answers {@code 408}
+     * or {@code 503} with {@code Retry-After: 0}. A re-sent refresh grant replays a refresh token
+     * the first attempt may already have retired, which ends the user's whole connection. With
+     * {@code false}, OkHttp never retries after a connection failure and never sends a request
+     * body twice, so the failure or the response reaches the caller instead.
+     *
+     * @param baseUrl HTTPS API base URL without a query or fragment; HTTP is accepted only for a
+     *                loopback host used in local tests
+     * @param apiKey API key sent in {@code X-Api-Key}, or {@code null}
+     * @param token bearer token used when {@code apiKey} is blank, or {@code null}
+     * @param timeoutMs positive call, connection, read, and write timeout in milliseconds
+     * @param allowRetries whether OkHttp may re-send a request on its own
+     * @throws IllegalArgumentException if the base URL is invalid or the timeout is not positive
+     */
+    public OkHttpApiClient(String baseUrl, String apiKey, String token, long timeoutMs,
+                           boolean allowRetries) {
         if (timeoutMs <= 0) throw new IllegalArgumentException("timeoutMs must be greater than zero");
         this.baseUrl = normaliseBaseUrl(baseUrl);
         this.client = new OkHttpClient.Builder()
                 .connectionSpecs(CONNECTION_SPECS)
+                .retryOnConnectionFailure(allowRetries)
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)
@@ -74,9 +99,10 @@ public class OkHttpApiClient implements ApiHttpClient {
                 .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .writeTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .addInterceptor(chain -> {
-                    Request.Builder builder = chain.request().newBuilder()
+                    Request request = chain.request();
+                    Request.Builder builder = request.newBuilder()
                             .header("User-Agent", "assinafy-java-sdk/" + SDK_VERSION);
-                    if (chain.request().header("Accept") == null) {
+                    if (request.header("Accept") == null) {
                         builder.header("Accept", "application/json");
                     }
                     if (apiKey != null && !apiKey.isBlank()) {
@@ -84,9 +110,23 @@ public class OkHttpApiClient implements ApiHttpClient {
                     } else if (token != null && !token.isBlank()) {
                         builder.header("Authorization", "Bearer " + token);
                     }
+                    // retryOnConnectionFailure(false) does not stop OkHttp repeating a request
+                    // answered 503 with Retry-After: 0; a one-shot body is never sent twice.
+                    if (!allowRetries && request.body() != null) {
+                        builder.method(request.method(), oneShot(request.body()));
+                    }
                     return chain.proceed(builder.build());
                 })
                 .build();
+    }
+
+    private static RequestBody oneShot(RequestBody body) {
+        return new RequestBody() {
+            @Override public MediaType contentType() { return body.contentType(); }
+            @Override public long contentLength() throws IOException { return body.contentLength(); }
+            @Override public void writeTo(BufferedSink sink) throws IOException { body.writeTo(sink); }
+            @Override public boolean isOneShot() { return true; }
+        };
     }
 
     OkHttpApiClient(OkHttpClient client, String baseUrl) {

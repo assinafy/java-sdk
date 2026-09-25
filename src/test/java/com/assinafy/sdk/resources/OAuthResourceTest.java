@@ -11,6 +11,8 @@ import com.assinafy.sdk.models.enums.OAuthScope;
 import com.assinafy.sdk.request.AuthorizationUrlRequest;
 import com.assinafy.sdk.request.OAuthClient;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -122,6 +124,11 @@ class OAuthResourceTest {
                 .redirectUri("http://myapp.com/cb").scopes(OAuthScope.DOCUMENTS_READ).build()))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("Redirect URI");
+        // Assinafy never registers http redirect URIs, loopback included.
+        assertThatThrownBy(() -> oauth.createAuthorizationUrl(offlineRequest()
+                .redirectUri("http://localhost:8080/callback").scopes(OAuthScope.DOCUMENTS_READ).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Redirect URI");
         assertThatThrownBy(() -> oauth.createAuthorizationUrl(offlineRequest()
                 .redirectUri(REDIRECT + "#frag").scopes(OAuthScope.DOCUMENTS_READ).build()))
                 .isInstanceOf(ValidationException.class)
@@ -167,6 +174,13 @@ class OAuthResourceTest {
                 .hasMessageContaining("issuer");
         assertThatThrownBy(() -> oauth.readAuthorizationCallback(
                 "?code=abc&state=" + stored.state() + "&iss=https://evil.example", stored))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("issuer");
+        // Without a stored issuer there is nothing to check iss against, so nothing is accepted.
+        OAuthAuthorizationRequest noIssuer = new OAuthAuthorizationRequest(
+                stored.url(), stored.state(), stored.codeVerifier(), null, null);
+        assertThatThrownBy(() -> oauth.readAuthorizationCallback(
+                "?code=abc&state=" + stored.state() + "&iss=https://evil.example", noIssuer))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("issuer");
     }
@@ -287,6 +301,23 @@ class OAuthResourceTest {
                 .refreshToken(OAuthClient.publicClient("cli"), "rt"))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("no access_token");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"access_token\":\"at\"}",
+            "{\"access_token\":\"at\",\"refresh_token\":\" \"}",
+            "{\"access_token\":\"at\",\"refresh_token\":\"old-refresh\"}"})
+    void rejectsRefreshResponseWithoutANewRefreshToken(String response) {
+        MockApiHttpClient http = new MockApiHttpClient().enqueue(200, response);
+
+        // The token sent may already be retired: returning would let the caller store null or keep
+        // the retired token. The message must not echo a token.
+        assertThatThrownBy(() -> resource(http)
+                .refreshToken(OAuthClient.publicClient("cli"), "old-refresh"))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("no new refresh_token")
+                .hasMessageNotContaining("old-refresh");
     }
 
     @Test

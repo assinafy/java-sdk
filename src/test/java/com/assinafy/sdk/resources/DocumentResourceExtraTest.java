@@ -123,6 +123,7 @@ class DocumentResourceExtraTest {
     @Test
     void verifyTypedReturnsCompleteVerificationModel() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"hash\":\"H\",\"id\":\"d1\"," +
+                "\"agreement_code\":\"550E8400-E29B-41D4-A716-446655440000\"," +
                 "\"status\":\"certificated\",\"page_count\":\"2\",\"signer_count\":\"3\"," +
                 "\"completed_count\":3,\"completed_at\":\"2026-08-20T12:00:00Z\"," +
                 "\"verified_at\":\"2026-08-20T12:01:00Z\",\"is_valid\":true,\"message\":\"\"}}");
@@ -131,6 +132,7 @@ class DocumentResourceExtraTest {
 
         assertThat(result.getHash()).isEqualTo("H");
         assertThat(result.getId()).isEqualTo("d1");
+        assertThat(result.getAgreementCode()).isEqualTo("550E8400-E29B-41D4-A716-446655440000");
         assertThat(result.getStatus()).isEqualTo("certificated");
         assertThat(result.getPageCount()).isEqualTo("2");
         assertThat(result.getSignerCount()).isEqualTo("3");

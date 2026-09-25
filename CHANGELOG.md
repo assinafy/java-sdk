@@ -5,6 +5,17 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.11.0] - 2026-09-25
+
+- `DocumentVerification.getAgreementCode()` exposes `agreement_code`, the agreement code printed on the document certificate.
+- The transport behind the OAuth token and revocation endpoints sends each request once. OkHttp no longer re-sends it on its own — after a connection failure, or when the server answers `408` or `503` with `Retry-After: 0` — because a re-sent refresh replays a refresh token the first attempt may already have retired, which ends the user's whole connection. A dropped token call now raises `NetworkException`, and such a response `ApiException` with its status. `OkHttpApiClient` gains a constructor that takes `allowRetries`.
+- `refreshToken` throws `ValidationException` when a successful response carries no new refresh token — missing, blank, or the one sent — instead of returning a token set with nothing safe to store. Migration: handle it like `invalid_grant` and ask the user to reconnect.
+- `readAuthorizationCallback` rejects a stored request that has no issuer instead of skipping the `iss` check, and redirect URIs must use `https://` — Assinafy does not accept `http://localhost`. Migration: keep the whole `OAuthAuthorizationRequest` returned by `createAuthorizationUrl`, including `issuer()`.
+- Docs: a refresh token is valid for 30 days and every refresh returns a new one with a fresh 30 days, so a connection only expires after 30 days without a refresh. `OAuthTokens.getIdToken()` states that the SDK does not validate the `id_token`.
+- Docs: after a refresh, the examples build the connected client from the renewed access token and revoke the most recently saved refresh token. Never re-send a refresh token after a failure that may have reached the server: re-read storage, and if it still holds the token you sent, ask the user to reconnect. Only a DNS failure, a refused connection or a failed TLS handshake is safe to retry.
+
 ## [1.10.1] - 2026-09-25
 
 - The SDK's own HTTPS client now requires TLS 1.2 or newer; TLS 1.0 and 1.1 are refused. Clients supplied by the caller are unchanged.

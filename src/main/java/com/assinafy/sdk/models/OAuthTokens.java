@@ -106,8 +106,14 @@ public class OAuthTokens {
     public void setScope(String scope) { this.scope = scope; }
 
     /**
-     * {@return the signed OpenID Connect {@code id_token} (RS256), or {@code null} when the
-     * {@code openid} scope was not granted}
+     * Returns the signed OpenID Connect {@code id_token} (RS256) exactly as received; the SDK does
+     * not validate it. Before trusting it, use an OpenID Connect library to check the signature
+     * against the {@code jwks_uri} key matching its {@code kid}, and that {@code iss} equals
+     * {@link OAuthAuthorizationRequest#issuer()} ({@code https://auth.assinafy.com.br} in
+     * production), {@code aud} is your {@code client_id}, {@code exp} is in the future and
+     * {@code nonce} equals {@link OAuthAuthorizationRequest#nonce()}.
+     *
+     * @return the {@code id_token}, or {@code null} when the {@code openid} scope was not granted
      */
     public String getIdToken() { return idToken; }
 

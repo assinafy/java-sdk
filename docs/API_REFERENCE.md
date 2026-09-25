@@ -2233,8 +2233,8 @@ Documented statuses: `200` The protected resource metadata; `500` Unexpected ser
 - **Java:** `client.oauth()` — `OAuthResource: public OAuthTokens exchangeCode(OAuthClient client, String code, String codeVerifier, String redirectUri)`; `client.oauth()` — `OAuthResource: public OAuthTokens refreshToken(OAuthClient client, String refreshToken)`
 - **HTTP:** `POST /v1/oauth/token`
 - **Auth:** public — the application authenticates itself with `client_id`/`client_secret` in the body (`client_secret_post`). The SDK sends no `X-Api-Key` or `Authorization` header here.
-- **Side effects:** Issues tokens; a refresh rotates the refresh token and retires the one sent.
-- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour; a connection lasts 30 days from the user's approval, which refreshing does not extend.
+- **Side effects:** Issues tokens; a refresh rotates the refresh token and retires the one sent. The SDK sends each token request once and never re-sends it on its own — not after a connection failure, a `408`, or a `503` with `Retry-After: 0` — because a re-sent refresh would replay the retired token; a timeout or dropped connection raises `NetworkException`, and such a response `ApiException`. Do not re-send a refresh token after a failure that may have reached the server either: re-read storage, and if it still holds the token you sent, ask the user to reconnect. Only a `NetworkException` caused by `UnknownHostException`, `ConnectException` or `SSLHandshakeException` happened before sending and is safe to retry.
+- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour. A refresh token is valid for 30 days, and every refresh returns a new one with a fresh 30 days, so a connection only expires after 30 days without a refresh. `refreshToken` rejects a `2xx` response without a new `refresh_token` — missing, blank, or the one sent — with `ValidationException`: the token sent may already be retired, so ask the user to reconnect.
 
 Parameters: none.
 
@@ -2260,7 +2260,7 @@ Success `200` `application/json`: bare object — **no envelope**.
 | `access_token` | `string` | no | no |  |
 | `token_type` | `string` | no | no | `Bearer`. |
 | `expires_in` | `integer` | no | no | Normally `3600`. |
-| `refresh_token` | `string` | no | yes | Present only when the `offline_access` scope was requested AND consented. |
+| `refresh_token` | `string` | no | yes | Present only when the `offline_access` scope was requested AND consented. A refresh always returns a new one. |
 | `scope` | `string` | no | no | The scope of the ACCESS token. `offline_access` is a request-time signal rather than a permission, so it never appears here even when requested. |
 | `id_token` | `string` | no | yes | A signed OIDC `id_token` (RS256). Present only when the `openid` scope was granted. |
 
@@ -2278,7 +2278,7 @@ Documented statuses: `200` The token response; `400` `invalid_grant` (bad, expir
 - **Java:** `client.oauth()` — `OAuthResource: public void revokeToken(OAuthClient client, String token, String tokenTypeHint)`
 - **HTTP:** `POST /v1/oauth/revoke`
 - **Auth:** public — the application authenticates itself with `client_id`/`client_secret` in the body. The SDK sends no `X-Api-Key` or `Authorization` header here.
-- **Side effects:** Revokes the token. Revoking a refresh token ends the whole connection.
+- **Side effects:** Revokes the token. Revoking a refresh token ends the whole connection. Revoke the one saved most recently, never an older copy: every refresh retires the token it was sent, and the `200` answered for any token cannot tell you that the one revoked was retired.
 - **Contract notes:** RFC 7009. Every token outcome returns `200` — including a token that does not exist, is already revoked, or is malformed — so the endpoint can never be used to probe whether a token exists. The one exception is failed client authentication, which returns `401`.
 
 Parameters: none.
@@ -2345,7 +2345,7 @@ Query parameters emitted: `response_type=code`, `client_id`, `redirect_uri`, `sc
 
 - **Java:** `client.oauth()` — `OAuthResource: public String readAuthorizationCallback(String callbackUrlOrQuery, OAuthAuthorizationRequest stored)`; `public String readAuthorizationCallback(Map<String, String> params, OAuthAuthorizationRequest stored)`
 - **HTTP:** none — validates the query parameters the authorization server put on your redirect URI.
-- **Contract notes:** Checks, in order and before anything else is trusted, that `state` equals the stored value (compared in constant time) and that `iss` equals the stored issuer, and only then whether the server reported an error. Because the authorization server advertises `authorization_response_iss_parameter_supported: true` and always sends `iss`, a missing one is treated exactly like a wrong one. A declined consent arrives as `?error=access_denied` and raises `OAuthException`; a mismatch raises `ValidationException` — in either case the response is not yours, so stop rather than exchanging.
+- **Contract notes:** Checks, in order and before anything else is trusted, that `state` equals the stored value (compared in constant time) and that `iss` equals the stored issuer, and only then whether the server reported an error. Because the authorization server advertises `authorization_response_iss_parameter_supported: true` and always sends `iss`, a missing one is treated exactly like a wrong one, and a stored request without a `state` or issuer is rejected. A declined consent arrives as `?error=access_denied` and raises `OAuthException`; a mismatch raises `ValidationException` — in either case the response is not yours, so stop rather than exchanging.
 
 Authorization-response errors: `access_denied` (the user declined), `invalid_scope` (a scope the application is not registered for, or none), `invalid_request` (missing or malformed PKCE parameters), `unsupported_response_type` (anything other than `response_type=code`), `invalid_target` (a `resource` other than the published one).
 
@@ -3046,6 +3046,7 @@ The verification result for a document looked up by signature hash. When not ver
 |---|---|---:|---:|---|
 | `hash` | `string` | no | no |  |
 | `id` | `string`? | no | yes |  |
+| `agreement_code` | `string`? | no | yes | Agreement code printed on the document certificate. |
 | `status` | `string`? | no | yes |  |
 | `page_count` | `string`? | no | yes |  |
 | `signer_count` | `string`? | no | yes |  |

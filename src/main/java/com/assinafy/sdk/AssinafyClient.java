@@ -168,7 +168,10 @@ public class AssinafyClient {
     /**
      * Transport for endpoints that must not receive an SDK credential: the OAuth token and
      * revocation routes authenticate the application itself, so sending the integrator's own API
-     * key or bearer token would leak a workspace credential to a route with no use for it.
+     * key or bearer token would leak a workspace credential to a route with no use for it. It never
+     * re-sends a request on its own: a refresh re-sent after a dropped connection or a {@code 503}
+     * would replay a refresh token the first attempt may already have retired, ending the user's
+     * connection.
      */
     private static ApiHttpClient buildPublicHttp(AssinafyClientOptions options) {
         Objects.requireNonNull(options, "options");
@@ -176,7 +179,7 @@ public class AssinafyClient {
             throw new ValidationException("Timeout must be greater than zero");
         }
         String baseUrl = options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL;
-        return new OkHttpApiClient(baseUrl, null, null, options.getTimeoutMs());
+        return new OkHttpApiClient(baseUrl, null, null, options.getTimeoutMs(), false);
     }
 
     /**
