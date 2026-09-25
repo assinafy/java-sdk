@@ -6,6 +6,8 @@ import com.assinafy.sdk.resources.WorkspaceResource;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
+import okhttp3.ConnectionSpec;
+import okhttp3.TlsVersion;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,13 @@ class OkHttpApiClientTest {
 
     private OkHttpApiClient withApiKey() {
         return new OkHttpApiClient(baseUrl, "secret-key", null, 5_000);
+    }
+
+    @Test
+    void httpsRequiresTls12OrLater() {
+        assertThat(withApiKey().client.connectionSpecs().stream().filter(ConnectionSpec::isTls).toList())
+                .isNotEmpty()
+                .allSatisfy(spec -> assertThat(spec.tlsVersions()).containsOnly(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2));
     }
 
     @Test

@@ -5,6 +5,10 @@ All notable changes to `com.assinafy:assinafy-sdk` will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-09-25
+
+- The SDK's own HTTPS client now requires TLS 1.2 or newer; TLS 1.0 and 1.1 are refused. Clients supplied by the caller are unchanged.
+
 ## [1.10.0] - 2026-09-23
 
 `OAuthScope.WEBHOOKS_WRITE` requests permission to configure and deactivate a workspace webhook subscription.

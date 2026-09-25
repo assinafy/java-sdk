@@ -3,6 +3,7 @@ package com.assinafy.sdk.http;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import okhttp3.ConnectionSpec;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -11,10 +12,12 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okhttp3.TlsVersion;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -41,7 +44,12 @@ public class OkHttpApiClient implements ApiHttpClient {
             ? OkHttpApiClient.class.getPackage().getImplementationVersion()
             : "development";
 
-    private final OkHttpClient client;
+    /** HTTPS requires TLS 1.2 or later; cleartext remains only for the loopback URLs this class accepts. */
+    private static final List<ConnectionSpec> CONNECTION_SPECS = List.of(
+            new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS).tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2).build(),
+            ConnectionSpec.CLEARTEXT);
+
+    final OkHttpClient client;
     private final String baseUrl;
 
     /**
@@ -58,6 +66,7 @@ public class OkHttpApiClient implements ApiHttpClient {
         if (timeoutMs <= 0) throw new IllegalArgumentException("timeoutMs must be greater than zero");
         this.baseUrl = normaliseBaseUrl(baseUrl);
         this.client = new OkHttpClient.Builder()
+                .connectionSpecs(CONNECTION_SPECS)
                 .followRedirects(false)
                 .followSslRedirects(false)
                 .callTimeout(timeoutMs, TimeUnit.MILLISECONDS)

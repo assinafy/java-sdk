@@ -40,6 +40,7 @@ está em **[README.en.md](README.en.md)**, e o contrato de requisição/resposta
 
 - JDK 25 (LTS). O build exige Java `>=25,<26`.
 - Maven Wrapper fixado no Maven 3.9.16 — não é necessário ter Maven instalado no sistema.
+- TLS 1.2 ou superior: o cliente HTTP padrão recusa TLS 1.0 e 1.1.
 
 As dependências de runtime são OkHttp e Jackson. O jar publicado declara
 `Automatic-Module-Name: com.assinafy.sdk`.
@@ -81,7 +82,7 @@ Depois adicione o repositório e a dependência ao seu projeto:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.10.0</version>
+    <version>1.10.1</version>
 </dependency>
 ```
 

@@ -50,6 +50,7 @@ the [complete Java API reference](docs/API_REFERENCE.md).
 
 - JDK 25 (LTS). The build enforces Java `>=25,<26`.
 - Maven Wrapper pinned to Maven 3.9.16; a system Maven installation is not required.
+- TLS 1.2 or later: the default HTTP client refuses TLS 1.0 and 1.1.
 
 Runtime dependencies are OkHttp and Jackson. The published jar declares
 `Automatic-Module-Name: com.assinafy.sdk`.
@@ -91,7 +92,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.10.0</version>
+    <version>1.10.1</version>
 </dependency>
 ```
 
