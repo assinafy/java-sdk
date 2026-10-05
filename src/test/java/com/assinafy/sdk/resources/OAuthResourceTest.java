@@ -18,6 +18,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -133,6 +134,11 @@ class OAuthResourceTest {
                 .redirectUri(REDIRECT + "#frag").scopes(OAuthScope.DOCUMENTS_READ).build()))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("fragment");
+        assertThatThrownBy(() -> oauth.createAuthorizationUrl(offlineRequest()
+                .authorizationEndpoint("https://user:password@auth.example.invalid/oauth/authorize")
+                .scopes(OAuthScope.DOCUMENTS_READ).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("credentials");
         assertThatThrownBy(() -> oauth.createAuthorizationUrl(offlineRequest().build()))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("scope");
@@ -177,6 +183,10 @@ class OAuthResourceTest {
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("issuer");
         // Without a stored issuer there is nothing to check iss against, so nothing is accepted.
+        assertThatThrownBy(() -> oauth.readAuthorizationCallback(
+                "?code=abc&state=" + stored.state() + "&iss=" + ISSUER + "/", stored))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("issuer");
         OAuthAuthorizationRequest noIssuer = new OAuthAuthorizationRequest(
                 stored.url(), stored.state(), stored.codeVerifier(), null, null);
         assertThatThrownBy(() -> oauth.readAuthorizationCallback(
@@ -214,6 +224,23 @@ class OAuthResourceTest {
     }
 
     // ------------------------------------------------------------------ tokens
+
+    @Test
+    void rejectsAmbiguousAndMalformedCallbackParametersBeforeSending() {
+        MockApiHttpClient http = new MockApiHttpClient();
+        OAuthResource oauth = resource(http);
+        OAuthAuthorizationRequest stored = oauth.createAuthorizationUrl(
+                offlineRequest().scopes(OAuthScope.DOCUMENTS_READ).build());
+        String query = "state=" + stored.state() + "&iss=" + ISSUER + "&code=code";
+        for (String duplicate : List.of("&state=other", "&iss=" + ISSUER, "&code=other",
+                "&%63ode=other")) {
+            assertThatThrownBy(() -> oauth.readAuthorizationCallback(query + duplicate, stored))
+                    .isInstanceOf(ValidationException.class).hasMessageContaining("must not repeat");
+        }
+        assertThatThrownBy(() -> oauth.readAuthorizationCallback(query + "&extra=%GG", stored))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("percent encoding");
+        assertThat(http.capturedCount()).isZero();
+    }
 
     @Test
     void exchangesCodeForTokens() {

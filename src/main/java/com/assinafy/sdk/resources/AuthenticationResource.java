@@ -29,6 +29,53 @@ public class AuthenticationResource extends BaseResource {
     /**
      * Authenticate with {@code {email, password}} via {@code POST /login}.
      *
+     * <p><strong>HTTP:</strong> <code>POST /v1/login</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid",
+     *   "password": "password"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+     *     "user": {
+     *       "id": "bgjazeo5r9v2lq7l36dx48np",
+     *       "name": "John Smith",
+     *       "email": "example@example.invalid",
+     *       "telephone": null,
+     *       "government_id": null,
+     *       "is_email_verified": false,
+     *       "has_accepted_terms": true,
+     *       "created_at": "2023-03-03T11:51:34Z",
+     *       "to_be_deleted_at": null
+     *     },
+     *     "accounts": [
+     *       {
+     *         "id": "6401df46d6a6b0c692d9ec49",
+     *         "name": "JS",
+     *         "roles": [
+     *           "roles_example"
+     *         ],
+     *         "is_delete_allowed": true,
+     *         "created_at": "2023-03-03T11:51:34Z"
+     *       }
+     *     ]
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Access token, user and accounts; 400 One or more fields failed
+     * validation.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param email account email address
      * @param password account password
      * @return {@code {access_token, user: AuthUser, accounts: AuthAccount[]}}
@@ -45,6 +92,54 @@ public class AuthenticationResource extends BaseResource {
     /**
      * Exchange a provider token via {@code POST /authentication/social-login} with
      * {@code {provider, token, has_accepted_terms}}. The published provider is {@code google}.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/authentication/social-login</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "provider": "google",
+     *   "token": "yOTUvImV4cCI6MTY3OTY1ODY5NS...",
+     *   "has_accepted_terms": true
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+     *     "user": {
+     *       "id": "bgjazeo5r9v2lq7l36dx48np",
+     *       "name": "John Smith",
+     *       "email": "example@example.invalid",
+     *       "telephone": null,
+     *       "government_id": null,
+     *       "is_email_verified": false,
+     *       "has_accepted_terms": true,
+     *       "created_at": "2023-03-03T11:51:34Z",
+     *       "to_be_deleted_at": null
+     *     },
+     *     "accounts": [
+     *       {
+     *         "id": "6401df46d6a6b0c692d9ec49",
+     *         "name": "JS",
+     *         "roles": [
+     *           "roles_example"
+     *         ],
+     *         "is_delete_allowed": true,
+     *         "created_at": "2023-03-03T11:51:34Z"
+     *       }
+     *     ]
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Access token, user and accounts; 400 One or more fields failed
+     * validation.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param provider social provider; currently {@code google}
      * @param token provider access token
@@ -68,6 +163,28 @@ public class AuthenticationResource extends BaseResource {
      * Link a provider account to the authenticated user via {@code POST /auth/link-social-login}
      * with {@code {provider, token}}. The success envelope has no data payload.
      *
+     * <p><strong>HTTP:</strong> <code>POST /v1/auth/link-social-login</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "provider": "google",
+     *   "token": "token_example"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": ""
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Provider linked; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param provider social provider; currently {@code google}
      * @param token provider access token
      * @throws ValidationException if the provider or token is invalid
@@ -87,6 +204,32 @@ public class AuthenticationResource extends BaseResource {
      * The response {@code data.email} is decoded and discarded. Use
      * {@link #changePasswordResult(String, String, String)} when the response payload is needed.
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/authentication/change-password</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid",
+     *   "password": "X3$_!456aTa",
+     *   "new_password": "X3$_!456aT"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "email": "user@example.invalid"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Password changed; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param email account email address
      * @param password current password
      * @param newPassword replacement password
@@ -98,6 +241,32 @@ public class AuthenticationResource extends BaseResource {
 
     /**
      * Change the authenticated user's password and return {@code {email}} from the response.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/authentication/change-password</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid",
+     *   "password": "X3$_!456aTa",
+     *   "new_password": "X3$_!456aT"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "email": "user@example.invalid"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Password changed; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param email account email address
      * @param password current password
@@ -124,6 +293,30 @@ public class AuthenticationResource extends BaseResource {
      * The response {@code data.email} is decoded and discarded. Use
      * {@link #requestPasswordResetResult(String)} when the response payload is needed.
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/authentication/request-password-reset</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "email": "user@example.invalid"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Reset email sent; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param email account email address
      * @throws ValidationException if the email is invalid
      */
@@ -133,6 +326,33 @@ public class AuthenticationResource extends BaseResource {
 
     /**
      * Send password-reset instructions and return {@code {email}} from the response.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/authentication/request-password-reset</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "email": "user@example.invalid"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Reset email sent; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
+     * <p>An email that does not identify a registered user returns HTTP 404. A signer contact
+     * alone does not create a user identity.</p>
      *
      * @param email account email address
      * @return response data containing the affected {@code email}
@@ -153,6 +373,32 @@ public class AuthenticationResource extends BaseResource {
      * decoded and discarded; use {@link #resetPasswordResult(String, String, String)} when the
      * response payload is needed.
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/authentication/reset-password</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid",
+     *   "token": "b3ac64d6c55b3ac64d6c55",
+     *   "new_password": "N3w_p4ssw0rd"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "email": "user@example.invalid"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Password reset; 400 One or more fields failed validation.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param email account email address
      * @param token optional reset token delivered by email
      * @param newPassword replacement password
@@ -164,6 +410,32 @@ public class AuthenticationResource extends BaseResource {
 
     /**
      * Set a new password and return {@code {email}} from the response.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/authentication/reset-password</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "email": "user@example.invalid",
+     *   "token": "b3ac64d6c55b3ac64d6c55",
+     *   "new_password": "N3w_p4ssw0rd"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "email": "user@example.invalid"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Password reset; 400 One or more fields failed validation.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param email account email address
      * @param token optional reset token delivered by email

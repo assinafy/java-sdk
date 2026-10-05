@@ -14,6 +14,8 @@ import com.assinafy.sdk.util.ResponseHandler;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.YearMonth;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.Map;
@@ -101,6 +103,23 @@ public abstract class BaseResource {
     }
 
     /**
+     * Require nonblank text within the API's Unicode character limit.
+     *
+     * @param value text to validate
+     * @param name field name used in validation errors
+     * @param maximum maximum number of Unicode code points
+     * @return validated text
+     * @throws ValidationException if the text is blank or too long
+     */
+    protected String requireText(String value, String name, int maximum) {
+        requireId(value, name);
+        if (value.codePointCount(0, value.length()) > maximum) {
+            throw new ValidationException(name + " must be at most " + maximum + " characters");
+        }
+        return value;
+    }
+
+    /**
      * Require a syntactically valid email address.
      *
      * @param value email address to validate
@@ -110,6 +129,25 @@ public abstract class BaseResource {
     public static String requireEmail(String value) {
         if (value == null || !EMAIL.matcher(value).matches()) {
             throw new ValidationException("Invalid email address");
+        }
+        return value;
+    }
+
+    /**
+     * Validate an optional assignment expiration before any request is sent.
+     *
+     * @param value ISO-8601 timestamp with an offset, or {@code null} for no expiration
+     * @return validated timestamp, or {@code null}
+     * @throws ValidationException if the timestamp is malformed or less than one hour ahead
+     */
+    public static String requireExpiration(String value) {
+        if (value == null) return null;
+        try {
+            if (OffsetDateTime.parse(value).toInstant().isBefore(Instant.now().plusSeconds(3600))) {
+                throw new ValidationException("Expiration must be at least one hour in the future");
+            }
+        } catch (DateTimeParseException e) {
+            throw new ValidationException("Expiration must be an ISO-8601 timestamp with an offset");
         }
         return value;
     }

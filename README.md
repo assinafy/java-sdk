@@ -82,7 +82,7 @@ Depois adicione o repositório e a dependência ao seu projeto:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.11.0</version>
+    <version>1.12.0</version>
 </dependency>
 ```
 
@@ -122,8 +122,9 @@ AssinafyClient bearerClient = new AssinafyClient(
 
 Quando as duas estão configuradas, a chave de API vence. As operações voltadas ao signatário usam uma
 quarta credencial — o código de acesso do signatário — passada por chamada, e não configurada no
-cliente. Operações públicas não exigem credencial nenhuma; construa um cliente sem credenciais para
-elas.
+cliente. O transporte padrão omite `X-Api-Key` e `Authorization` nas rotas públicas, de login e
+recuperação de senha, nos grants OAuth e nas chamadas com código do signatário. Chamadas autenticadas
+continuam usando a credencial configurada.
 
 ## Configuração
 
@@ -228,6 +229,13 @@ Assignment assignment = client.assignments().create(
 
 Cada passo, em detalhe:
 
+O seu backend guarda `accountId`, `document.getId()`, `assignment.getId()` e os IDs dos signatários
+junto ao registro do contrato. A URL de cada signatário está em `assignment.getSigningUrls()`;
+ela é uma credencial, portanto não a publique nem a registre em logs. O signatário abre essa URL,
+aceita os termos, confirma os dados, valida o OTP de e-mail/WhatsApp ou usa o certificado A1/A3,
+e assina. Os webhooks avisam seu backend sobre o andamento; ele consulta os detalhes para confirmar
+o estado atual e só disponibiliza o arquivo final quando a certificação terminou.
+
 ### 1. Enviar o documento
 
 `documents().upload(bytes, nomeDoArquivo)` envia um PDF como `multipart/form-data` e devolve o
@@ -243,16 +251,20 @@ polling até o status chegar a `metadata_ready`, `pending_signature` ou `certifi
 documento terminar em `failed`, `rejected_by_signer`, `rejected_by_user` ou `expired`. A sobrecarga
 `waitUntilReady(id, maxWaitMs, pollIntervalMs)` controla o tempo total e o intervalo.
 
-Criar um assignment antes do documento ficar pronto é rejeitado pelo servidor — não pule este passo.
+O método `collect` exige `metadata_ready`, porque os campos apontam para páginas específicas.
+O método `virtual` também aceita `uploaded` ou `metadata_processing`; o servidor promove o documento
+para `pending_signature` quando termina o processamento. Esperar continua sendo útil quando você
+precisa das páginas ou quer detectar uma falha no PDF antes de solicitar assinaturas.
 
 ### 3. Resolver os signatários
 
 Signatários são recursos persistentes do workspace, reutilizados entre documentos.
-`signers().findOrCreate(...)` devolve o signatário cujo e-mail bate (comparação sem diferenciar
-maiúsculas) ou cria um novo. `signers().create(...)` sempre cria.
+`signers().findOrCreate(...)` devolve o signatário cujo e-mail bate, sem distinguir maiúsculas,
+ou cria um novo. `signers().create(...)` sempre cria.
 
-Um signatário precisa de `fullName` e de pelo menos um canal de entrega: `email` ou
-`whatsappPhoneNumber`. O CPF/CNPJ vai em `cpf` e é gravado pelo SDK através do update documentado
+O cadastro exige `fullName`. Para solicitar uma assinatura, o signatário também precisa do canal
+compatível com a verificação escolhida: `email` ou `whatsappPhoneNumber`.
+O CPF/CNPJ vai em `cpf` e é gravado pelo SDK através do update documentado
 (`government_id`), com os não-dígitos removidos.
 
 ```java
@@ -299,6 +311,10 @@ if (Boolean.TRUE.equals(previsao.getHasSufficientResources())) {
 de enviar. O signatário do passo 1 é notificado na criação; os passos seguintes só são notificados
 quando o passo anterior termina.
 
+`expiresAt` aceita um timestamp ISO-8601 com fuso, pelo menos uma hora no futuro. Por exemplo,
+`Instant.now().plus(7, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString()` define sete dias
+de prazo. O SDK valida o prazo antes de criar a solicitação; os métodos de estimativa ignoram o prazo.
+
 ### 5. Acompanhar o andamento
 
 ```java
@@ -332,6 +348,21 @@ byte[] miniatura = client.documents().thumbnail(document.getId());
 
 Um download não-2xx lança em vez de devolver o corpo de erro como se fossem os bytes do arquivo.
 
+`isFullySigned` pode retornar `true` enquanto o documento ainda está em `certificating`, pois todos
+os signatários já terminaram. Para guardar o PDF final, confirme `certificated` nos detalhes:
+
+```java
+Document finalizado = client.documents().details(document.getId());
+if ("certificated".equals(finalizado.getStatus())) {
+    Files.write(Path.of("contrato-assinado.pdf"), client.documents().download(finalizado.getId()));
+    Files.write(Path.of("contrato-certificacao.pdf"),
+        client.documents().download(finalizado.getId(), "certificate-page"));
+}
+```
+
+Se ainda não estiver certificado, agende uma nova consulta. `waitUntilReady` espera o processamento
+inicial; ele também aceita `pending_signature` e não espera todas as pessoas assinarem.
+
 A verificação pública confere um documento assinado pelo hash da assinatura, sem autenticação:
 `documents().verifyTyped(hash)`.
 
@@ -339,6 +370,9 @@ A verificação pública confere um documento assinado pelo hash da assinatura, 
 
 `documents().delete(id)` remove o documento. O `uploadAndRequestSignatures` usa a mesma rota para
 desfazer o próprio upload quando um passo posterior falha.
+
+Guarde os artefatos necessários antes de excluir. `documents().getStatuses()` informa quais estados
+permitem a exclusão; documentos em processamento podem precisar terminar essa etapa primeiro.
 
 ## Métodos de verificação e notificação
 
@@ -350,7 +384,7 @@ dois ou nenhum — o lado que faltar é inferido. Sem nenhum dos dois, ambos ass
 | --- | --- | --- | --- |
 | `Email` *(padrão)* | Código de uso único (OTP) por e-mail, exigido antes de assinar | Signatário com e-mail | 0 créditos |
 | `Whatsapp` | Código de uso único (OTP) por WhatsApp | `whatsappPhoneNumber` no signatário; só em planos pagos | 0,45 crédito (a notificação WhatsApp, que este método exige) |
-| `DigitalCertificate` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | Recurso Certificado Digital na conta; CPF em `governmentId`; um signatário por certificado em cada passo | 2 créditos + o custo da notificação |
+| `DigitalCertificate` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | Recurso Certificado Digital na conta; CPF/CNPJ em `governmentId`; um signatário por certificado em cada passo | 2 créditos + o custo da notificação |
 
 | Método de notificação | Entrega | Requisitos | Custo por signatário |
 | --- | --- | --- | --- |
@@ -393,8 +427,9 @@ String nomeNoCertificado =
     client.signers().completeCertificateSignature(signerAccessCode, tokenAssinado);
 ```
 
-> Essas duas rotas são extensões implantadas **somente em produção**: o sandbox não as expõe e elas
-> não constam do documento OpenAPI publicado.
+As duas rotas estão disponíveis em produção e sandbox, mas não constam do documento OpenAPI.
+O workspace precisa ter o recurso Certificado Digital habilitado. O SDK não lê arquivos A1 nem
+acessa dispositivos A3: a chave privada fica no dispositivo do signatário, operado pelo Web PKI.
 
 Concluído o fluxo, baixar o artefato `pades` devolve a assinatura PAdES qualificada.
 
@@ -529,8 +564,8 @@ OAuthTokens tokens = client.oauth().exchangeCode(
     app, code, guardado.codeVerifier(), "https://meuapp.com/oauth/callback");
 ```
 
-`readAuthorizationCallback` confere, antes de qualquer outra coisa, que o `state` é o seu (comparação
-em tempo constante) e que o `iss` é o servidor esperado; só então olha se o servidor reportou erro. Um
+`readAuthorizationCallback` confere, antes de qualquer outra coisa, que o `state` é o seu (em tempo constante) e que o `iss` é exatamente o emissor armazenado. Parâmetros repetidos e codificação percentual
+inválida são rejeitados. Só então confere se o servidor reportou erro. Um
 consentimento recusado chega como `?error=access_denied` e vira `OAuthException`, não uma falha de
 HTTP. Um `iss` ausente é tratado como um `iss` errado, porque o servidor sempre o envia (RFC 9207).
 
@@ -672,7 +707,7 @@ não configurado no cliente. São elas que um portal de assinatura próprio cons
 Signer eu = client.signers().getSelf(codigo);
 client.signers().acceptTerms(codigo);
 client.signers().confirmSignerData(documentId, codigo, Map.of("government_id", "12345678909"));
-client.signers().verifyEmail(codigo, "123456");            // o OTP recebido
+client.signers().verifyEmail(codigo, "123456");            // OTP de e-mail ou WhatsApp
 client.signers().uploadSignature(codigo, "signature", pngBytes);
 
 Map<String, Object> paraAssinar = client.assignments().getForSigner(codigo);
@@ -688,7 +723,8 @@ de uma vez (`signMultiple`, `declineMultiple`).
 ```java
 client.webhooks().register(RegisterWebhookRequest.builder()
     .url("https://meuapp.com/webhooks/assinafy")
-    .events(List.of("document_ready", "assignment_completed"))
+    .email("operacoes@example.invalid")
+    .events(List.of("document_ready", "signer_signed_document", "document_processing_failed"))
     .build());
 
 WebhookSubscription atual = client.webhooks().get();
@@ -701,6 +737,13 @@ client.webhooks().inactivate();   // para a entrega sem apagar a inscrição
 ```
 
 Há uma inscrição por workspace: registrar de novo substitui a anterior.
+
+O endpoint recebe um `POST` JSON, responde `2xx` rapidamente e processa o evento em segundo plano.
+Guarde o `id` do evento para evitar processamento duplicado e confirme o `account_id` da conexão.
+`subject` e `object` são objetos polimórficos; `object` contém a entidade com seus relacionamentos.
+O evento `document_ready` informa que a última pessoa assinou, enquanto a certificação final ainda
+pode estar em processamento. Consulte `documents().details(...)` antes de baixar o arquivo final.
+O contrato da API não define uma assinatura HMAC de webhook; não invente um header de autenticação.
 
 ## Workspaces, usuários e chaves de API
 
@@ -773,8 +816,11 @@ PaginatedResult<Document> pagina = client.documents().list(params);
 | Produção | `https://api.assinafy.com.br/v1` |
 | Sandbox | `AssinafyClientOptions.SANDBOX_BASE_URL` |
 
-O sandbox é gratuito e espelha a produção para testar a integração de ponta a ponta — com a exceção
-das rotas de certificado digital, que existem apenas em produção.
+O sandbox permite testar a integração sem usar documentos de produção. As funcionalidades
+disponíveis dependem do plano do workspace: WhatsApp e Certificado Digital podem retornar `403`
+quando não estão habilitados. As notificações WhatsApp são simuladas no sandbox; consulte
+`assignments().getWhatsappNotificationsTyped(...)` para obter os botões e códigos do fluxo de teste.
+Uma assinatura A1/A3 completa continua exigindo um certificado ICP-Brasil válido e o Web PKI.
 
 ## Desenvolvimento
 
@@ -791,6 +837,20 @@ das rotas de certificado digital, que existem apenas em produção.
 
 O build é estrito: `-Xlint:all -Werror` no compilador e `doclint:all` com `failOnWarnings` no
 Javadoc, então um aviso quebra o `verify`.
+
+O SDK não adiciona um loop de retentativas da aplicação. O transporte OkHttp padrão pode repetir
+falhas de conexão e certas respostas `408`/`503`. Token e revogação OAuth usam um transporte separado
+sem repetição. Após um resultado indeterminado de criação, consulte o estado remoto antes de criar
+novamente.
+
+O perfil ao vivo aceita somente a URL exata do sandbox. `ASSINAFY_API_KEY` e
+`ASSINAFY_ACCOUNT_ID` vêm do ambiente ou de um cofre de segredos. Os casos com convites usam
+`ASSINAFY_TEST_EMAIL_PRIMARY` e `ASSINAFY_TEST_EMAIL_SECONDARY`; o reset de senha usa
+`ASSINAFY_TEST_USER_EMAIL`, que precisa ser um usuário cadastrado, não apenas um signatário.
+Destinatários `.invalid` permitem testar a criação sem entregar e-mail, mas não confirmam o OTP.
+Os testes criam registros temporários e os removem; confira a conta após uma execução interrompida.
+WhatsApp e Certificado Digital exigem os recursos habilitados no plano. Os certificados A1/A3 e
+Web PKI são reais também no sandbox; um `403` de plano não valida a conclusão da assinatura.
 
 ## Documentação
 

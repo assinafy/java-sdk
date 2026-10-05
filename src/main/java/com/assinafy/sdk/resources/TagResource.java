@@ -44,6 +44,8 @@ public class TagResource extends BaseResource {
     /**
      * List tags for the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
+     *
      * @return paginated tags
      */
     public PaginatedResult<Tag> list() {
@@ -52,6 +54,8 @@ public class TagResource extends BaseResource {
 
     /**
      * List tags for the default account.
+     *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
      *
      * @param params paging and filter options; {@code null} sends no query parameters
      * @return paginated tags
@@ -62,6 +66,37 @@ public class TagResource extends BaseResource {
 
     /**
      * List tags for an explicit or default account ({@code GET /accounts/{id}/tags}).
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/tags</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>search</code> (query, optional): Search term.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "tag",
+     *       "id": "fa8c09f3e709a8a1c82d69b1454",
+     *       "name": "Contracts",
+     *       "color": null,
+     *       "created_at": "2026-05-14T12:00:00Z",
+     *       "updated_at": "2026-05-14T12:00:00Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The workspace tags; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param params paging and filter options; {@code null} sends no query parameters
      * @param accountId explicit account ID, or {@code null} for the default
@@ -78,6 +113,8 @@ public class TagResource extends BaseResource {
     /**
      * Create a tag in the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #create(CreateTagRequest, String)}.</p>
+     *
      * @param request tag name and optional color
      * @return the created tag
      */
@@ -87,6 +124,40 @@ public class TagResource extends BaseResource {
 
     /**
      * Create a tag ({@code POST /accounts/{id}/tags}).
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/tags</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "Contracts",
+     *   "color": null
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "tag",
+     *     "id": "fa8c09f3e709a8a1c82d69b1454",
+     *     "name": "Contracts",
+     *     "color": null,
+     *     "created_at": "2026-05-14T12:00:00Z",
+     *     "updated_at": "2026-05-14T12:00:00Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created tag; 400 One or more fields failed validation.; 409 A
+     * tag with the same name already exists.; 401 Missing or invalid credentials.; 500 Unexpected server
+     * error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param request tag name and optional color
      * @param accountId explicit account ID, or {@code null} for the default
@@ -107,6 +178,8 @@ public class TagResource extends BaseResource {
     /**
      * Update a tag in the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #rename(String, RenameTagRequest, String)}.</p>
+     *
      * @param tagId tag ID
      * @param request fields to update; {@code null} sends an empty object
      * @return the updated tag
@@ -118,6 +191,41 @@ public class TagResource extends BaseResource {
     /**
      * Update a tag ({@code PUT /accounts/{id}/tags/{tagId}}).
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/accounts/{accountId}/tags/{tagId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>tagId</code> (path, required): The tag ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "Signed Contracts",
+     *   "color": null
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "tag",
+     *     "id": "fa8c09f3e709a8a1c82d69b1454",
+     *     "name": "Contracts",
+     *     "color": null,
+     *     "created_at": "2026-05-14T12:00:00Z",
+     *     "updated_at": "2026-05-14T12:00:00Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated tag; 400 One or more fields failed validation.; 404
+     * The requested resource does not exist.; 401 Missing or invalid credentials.; 500 Unexpected server
+     * error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param tagId tag ID
      * @param request fields to update; {@code null} sends an empty object
      * @param accountId explicit account ID, or {@code null} for the default
@@ -126,7 +234,7 @@ public class TagResource extends BaseResource {
     public Tag rename(String tagId, RenameTagRequest request, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         String tid = pathSegment(tagId, "Tag ID");
-        // Build the body explicitly so the documented tri-state for `color` is honoured:
+        // Build the body explicitly so the documented tri-state for </code>color</code> is honoured:
         // omit = leave unchanged, value = set, explicit null (clearColor) = clear.
         Map<String, Object> payload = new LinkedHashMap<>();
         if (request != null) {
@@ -146,6 +254,8 @@ public class TagResource extends BaseResource {
     /**
      * Delete a tag. Equivalent to {@link #delete(String, boolean)} with {@code force = false}.
      *
+     * <p>Wire contract, payloads and failures: {@link #delete(String, boolean, String)}.</p>
+     *
      * @param tagId tag ID
      */
     public void delete(String tagId) {
@@ -157,6 +267,8 @@ public class TagResource extends BaseResource {
      * 409 Conflict unless {@code force} is {@code true}, in which case it is detached
      * from every document and then deleted.
      *
+     * <p>Wire contract, payloads and failures: {@link #delete(String, boolean, String)}.</p>
+     *
      * @param tagId tag ID
      * @param force whether to detach the tag from resources before deletion
      */
@@ -166,6 +278,31 @@ public class TagResource extends BaseResource {
 
     /**
      * Delete a tag from an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/accounts/{accountId}/tags/{tagId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>tagId</code> (path, required): The tag ID.</li>
+     * <li><code>force</code> (query, optional): Detach from resources before deleting.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "deleted": true
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Tag deleted; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param tagId tag ID
      * @param force whether to detach the tag from resources before deletion

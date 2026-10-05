@@ -39,6 +39,26 @@ public class ApiKeyResource extends BaseResource {
      * {@code GET /users/api-keys} — retrieve the masked current API key, or {@code null}
      * when no key has been generated yet.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/users/api-keys</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "api_key": null
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The masked API key; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @return the masked current key, or {@code null} when none exists
      */
     public ApiKey get() {
@@ -48,6 +68,30 @@ public class ApiKeyResource extends BaseResource {
     /**
      * {@code POST /users/api-keys} — generate a new API key for the user, returning the
      * full value. The previously active key (if any) is immediately invalidated.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/users/api-keys</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "password": "password"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "api_key": null
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The generated API key (shown in full only once); 401 Missing or
+     * invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param password the user's account password (required by the API)
      * @return the newly generated full API key
@@ -59,7 +103,47 @@ public class ApiKeyResource extends BaseResource {
         return call("Failed to generate API key", () -> http.post("/users/api-keys", body), ApiKey.class);
     }
 
-    /** {@code DELETE /users/api-keys} — delete the existing API key. */
+    /** {@code DELETE /users/api-keys} — delete the existing API      * <p><strong>HTTP:</strong> <code>DELETE /v1/users/api-keys</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 API key deleted; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/users/api-keys</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 API key deleted; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
+key. */
     public void delete() {
         callVoid("Failed to delete API key", () -> http.delete("/users/api-keys"));
     }

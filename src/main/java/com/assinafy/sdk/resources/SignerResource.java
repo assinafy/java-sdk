@@ -58,6 +58,8 @@ public class SignerResource extends BaseResource {
     /**
      * Create a signer in the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #create(CreateSignerRequest, String)}.</p>
+     *
      * @param request signer profile; {@code full_name} is required
      * @return the created signer
      */
@@ -70,6 +72,40 @@ public class SignerResource extends BaseResource {
      * use {@link #findOrCreate(CreateSignerRequest, String)} when reuse by email is intended. A
      * supplied CPF/CNPJ is applied through the documented signer update after creation; if that
      * update fails, the newly created signer is deleted.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/signers</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "full_name": "John Dove",
+     *   "email": "john@example.invalid",
+     *   "whatsapp_phone_number": "+5548999990000"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "signer",
+     *     "id": "62d6ee35c7741ca4006b9e11",
+     *     "full_name": "John Signer",
+     *     "email": null,
+     *     "whatsapp_phone_number": null,
+     *     "has_accepted_terms": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created signer; 400 One or more fields failed validation.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param request signer profile; {@code full_name} is required
      * @param accountId explicit account ID, or {@code null} for the default
@@ -121,6 +157,8 @@ public class SignerResource extends BaseResource {
      * when none exists. A request without an email is always created. An existing match is returned
      * unchanged; request name, phone, and CPF/CNPJ apply only when a signer is created.
      *
+     * <p>Wire payloads and HTTP failures follow {@link #create(CreateSignerRequest, String)}.</p>
+     *
      * @param request signer profile; {@code full_name} is required
      * @return an existing email match or the created signer
      */
@@ -133,6 +171,8 @@ public class SignerResource extends BaseResource {
      * concurrent request creates the same email after the lookup, a duplicate 4xx response is
      * resolved with one final lookup. An existing match is returned unchanged; request name, phone,
      * and CPF/CNPJ apply only when a signer is created.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #create(CreateSignerRequest, String)}.</p>
      *
      * @param request signer profile; {@code full_name} is required
      * @param accountId explicit account ID, or {@code null} for the default
@@ -184,6 +224,8 @@ public class SignerResource extends BaseResource {
     /**
      * Fetch a signer from the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #get(String, String)}.</p>
+     *
      * @param signerId signer ID
      * @return the signer
      */
@@ -193,6 +235,35 @@ public class SignerResource extends BaseResource {
 
     /**
      * Fetch a signer ({@code GET /accounts/{id}/signers/{signerId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/signers/{signerId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "signer",
+     *     "id": "62d6ee35c7741ca4006b9e11",
+     *     "full_name": "John Signer",
+     *     "email": null,
+     *     "whatsapp_phone_number": null,
+     *     "has_accepted_terms": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The signer; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerId signer ID
      * @param accountId explicit account ID, or {@code null} for the default
@@ -207,6 +278,8 @@ public class SignerResource extends BaseResource {
     /**
      * List signers for the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
+     *
      * @return paginated signers
      */
     public PaginatedResult<Signer> list() {
@@ -215,6 +288,8 @@ public class SignerResource extends BaseResource {
 
     /**
      * List signers for the default account.
+     *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
      *
      * @param params paging and search options; {@code null} sends no query parameters
      * @return paginated signers
@@ -225,6 +300,39 @@ public class SignerResource extends BaseResource {
 
     /**
      * List signers ({@code GET /accounts/{id}/signers}).
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/signers</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>search</code> (query, optional): Filter by full_name or email.</li>
+     * <li><code>page</code> (query, optional): Page number.</li>
+     * <li><code>per-page</code> (query, optional): Records per page (max 100).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "signer",
+     *       "id": "62d6ee35c7741ca4006b9e11",
+     *       "full_name": "John Signer",
+     *       "email": null,
+     *       "whatsapp_phone_number": null,
+     *       "has_accepted_terms": false
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 A page of signers; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param params paging and search options; {@code null} sends no query parameters
      * @param accountId explicit account ID, or {@code null} for the default
@@ -239,6 +347,8 @@ public class SignerResource extends BaseResource {
     /**
      * Update a signer in the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #update(String, UpdateSignerRequest, String)}.</p>
+     *
      * @param signerId signer ID
      * @param request fields to update; {@code null} sends an empty object
      * @return the updated signer
@@ -249,6 +359,43 @@ public class SignerResource extends BaseResource {
 
     /**
      * Update a signer ({@code PUT /accounts/{id}/signers/{signerId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/accounts/{accountId}/signers/{signerId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "full_name": "John Dove",
+     *   "email": "john@example.invalid",
+     *   "whatsapp_phone_number": "+5548999990000",
+     *   "government_id": "39053344705"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "signer",
+     *     "id": "62d6ee35c7741ca4006b9e11",
+     *     "full_name": "John Signer",
+     *     "email": null,
+     *     "whatsapp_phone_number": null,
+     *     "has_accepted_terms": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated signer; 400 One or more fields failed validation.;
+     * 404 The requested resource does not exist.; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param signerId signer ID
      * @param request fields to update; {@code null} sends an empty object
@@ -274,6 +421,8 @@ public class SignerResource extends BaseResource {
     /**
      * Delete a signer from the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #delete(String, String)}.</p>
+     *
      * @param signerId signer ID
      */
     public void delete(String signerId) {
@@ -282,6 +431,30 @@ public class SignerResource extends BaseResource {
 
     /**
      * Delete a signer ({@code DELETE /accounts/{id}/signers/{signerId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/accounts/{accountId}/signers/{signerId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Signer deleted; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerId signer ID
      * @param accountId explicit account ID, or {@code null} for the default
@@ -295,6 +468,8 @@ public class SignerResource extends BaseResource {
     /**
      * Find an exact case-insensitive email match in the default account.
      *
+     * <p>Wire payloads and HTTP failures follow {@link #list(ListParams, String)}.</p>
+     *
      * @param email signer email
      * @return the matching signer, or {@code null}
      */
@@ -304,6 +479,8 @@ public class SignerResource extends BaseResource {
 
     /**
      * Find an exact case-insensitive email match using the documented signer list/search operation.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #list(ListParams, String)}.</p>
      *
      * @param email signer email
      * @param accountId explicit account ID, or {@code null} for the default
@@ -340,6 +517,34 @@ public class SignerResource extends BaseResource {
     /**
      * Fetch the signer identified by a signer access code ({@code GET /signers/self}).
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/self</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "signer",
+     *     "id": "62d6ee35c7741ca4006b9e11",
+     *     "full_name": "John Signer",
+     *     "email": null,
+     *     "whatsapp_phone_number": null,
+     *     "has_accepted_terms": false,
+     *     "has_signature": true,
+     *     "has_initial": false,
+     *     "is_signature_reusable": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The signer; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param signerAccessCode signer query credential
      * @return the signer profile
      */
@@ -354,6 +559,23 @@ public class SignerResource extends BaseResource {
      * Record that the signer accepted the terms of use ({@code PUT /signers/accept-terms}).
      * Authenticated by the signer access code, passed as the {@code signer-access-code} query
      * parameter; the endpoint takes no request body and returns no payload.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/signers/accept-terms</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": ""
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Terms accepted; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerAccessCode signer query credential
      */
@@ -370,6 +592,40 @@ public class SignerResource extends BaseResource {
      * <p>Maps to {@code PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}}.
      * The {@code data} map may carry {@code full_name}, {@code email}, and {@code government_id}.
      * Additional keys are forwarded unchanged.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/documents/{documentId}/signers/confirm-data</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "full_name": "full_name_example",
+     *   "email": "signer@example.invalid",
+     *   "government_id": "government_id_example"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "signer",
+     *     "id": "62d6ee35c7741ca4006b9e11",
+     *     "full_name": "John Signer",
+     *     "email": null,
+     *     "whatsapp_phone_number": null,
+     *     "has_accepted_terms": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Data confirmed; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param signerAccessCode signer query credential
@@ -390,6 +646,27 @@ public class SignerResource extends BaseResource {
      * Submit the OTP verification code sent to the signer ({@code POST /verify}). Authenticated by
      * the signer access code (passed as the {@code signer-access-code} query parameter); the body
      * carries only {@code verification-code}.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/verify</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "verification-code": "123456"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": ""
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Code verified; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerAccessCode signer query credential
      * @param verificationCode one-time verification code
@@ -426,8 +703,9 @@ public class SignerResource extends BaseResource {
      * { "status": 200, "message": "", "data": { "token": "web-pki-token" } }
      * }</pre>
      *
-     * <p><b>Deployment note.</b> This route is a production-only extension: the sandbox does not
-     * expose it and it is absent from the published OpenAPI document.
+     * <p>This route is available on production and sandbox for workspaces with Digital Certificate
+     * enabled. It is absent from the published OpenAPI document. Both environments require an
+     * actual ICP-Brasil certificate and Web PKI.
      *
      * @param signerAccessCode signer query credential
      * @return the Web PKI operation token the browser must sign
@@ -458,8 +736,9 @@ public class SignerResource extends BaseResource {
      * { "status": 200, "message": "", "data": { "signerName": "Certificate Signer" } }
      * }</pre>
      *
-     * <p><b>Deployment note.</b> This route is a production-only extension: the sandbox does not
-     * expose it and it is absent from the published OpenAPI document.
+     * <p>This route is available on production and sandbox for workspaces with Digital Certificate
+     * enabled. It is absent from the published OpenAPI document. Both environments require an
+     * actual ICP-Brasil certificate and Web PKI.
      *
      * @param signerAccessCode signer query credential
      * @param token the Web PKI token from {@link #startCertificateSignature(String)}, after the
@@ -491,6 +770,8 @@ public class SignerResource extends BaseResource {
      * Upload the signer's signature/initials image ({@code POST /signature}). Both {@code type}
      * (e.g. {@code signature} or {@code initial}) and {@code reuse} are optional per the docs.
      *
+     * <p>Wire contract, payloads and failures: {@link #uploadSignature(String, String, byte[], Boolean)}.</p>
+     *
      * @param signerAccessCode signer query credential
      * @param type signature type, or {@code null} to omit it
      * @param imageData non-empty PNG or JPEG bytes
@@ -503,6 +784,27 @@ public class SignerResource extends BaseResource {
      * Upload the signer's signature/initials image with the documented {@code reuse} flag. When
      * {@code reuse} is non-null it sets the signer's {@code is_signature_reusable} flag; when null
      * the flag is left unchanged.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/signature</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>type</code> (query, optional): Image type, e.g. <code>signature</code> or <code>initial</code>.</li>
+     * <li><code>reuse</code> (query, optional): Whether the signer opted to reuse this signature in future processes. When set, updates the signer's <code>is_signature_reusable</code> flag; when omitted, the flag is left unchanged.</li>
+     * </ul>
+     * <p>Request body: <code>image/png</code>, raw artifact bytes.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": ""
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Signature stored; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerAccessCode signer query credential
      * @param type signature type, or {@code null} to omit it
@@ -531,6 +833,21 @@ public class SignerResource extends BaseResource {
     /**
      * Download a stored signature or initials image ({@code GET /signature/{type}}).
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signature/{signatureType}</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signatureType</code> (path, required): Image type (e.g. <code>signature</code>, <code>initial</code>).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>image/*</code>, raw artifact bytes.</p>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The signature image; 404 The requested resource does not exist.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param signerAccessCode signer query credential
      * @param type signature type path value
      * @return image bytes
@@ -544,6 +861,60 @@ public class SignerResource extends BaseResource {
 
     /**
      * Fetch the signer's current document as a map.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/document</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "document",
+     *     "id": "615601fab04c0a3147bb1246",
+     *     "account_id": "d199996981dbd199996981db",
+     *     "template_id": null,
+     *     "name": "document.pdf",
+     *     "status": "metadata_ready",
+     *     "artifacts": {
+     *       "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *     },
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [
+     *       {
+     *         "id": "id_example",
+     *         "name": "name_example"
+     *       }
+     *     ],
+     *     "assignment": null,
+     *     "pages": [
+     *       {
+     *         "id": "615601faf166d6d1d8e7dc30",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *       }
+     *     ],
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "updated_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The document with the signer&#x27;s items; 404 The requested
+     * resource does not exist.; 401 Missing or invalid credentials.; 500 Unexpected server error.
+     * Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param signerId signer ID
      * @param signerAccessCode signer query credential
@@ -559,6 +930,9 @@ public class SignerResource extends BaseResource {
     /**
      * Fetch the signer's current document as a typed model.
      *
+     * <p>Wire contract, payloads and failures: {@link #getCurrentDocument(String, String)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param signerId signer ID
      * @param signerAccessCode signer query credential
      * @return document details
@@ -570,6 +944,8 @@ public class SignerResource extends BaseResource {
 
     /**
      * List a signer's documents with default paging.
+     *
+     * <p>Wire contract, payloads and failures: {@link #listDocuments(String, String, ListParams)}.</p>
      *
      * @param signerId signer ID
      * @param signerAccessCode signer query credential
@@ -583,6 +959,63 @@ public class SignerResource extends BaseResource {
      * List the documents assigned to a signer ({@code GET /signers/{signerId}/documents}). The
      * endpoint documents only {@code page}/{@code per-page} paging (supply via {@link ListParams});
      * for server-side text search use {@link #searchDocuments(String, String, String)}.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/documents</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * <li><code>page</code> (query, optional): Page number.</li>
+     * <li><code>per-page</code> (query, optional): Records per page (max 100).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "document",
+     *       "id": "615601fab04c0a3147bb1246",
+     *       "account_id": "d199996981dbd199996981db",
+     *       "template_id": null,
+     *       "name": "document.pdf",
+     *       "status": "metadata_ready",
+     *       "artifacts": {
+     *         "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *       },
+     *       "is_closed": false,
+     *       "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *       "decline_reason": null,
+     *       "declined_by": null,
+     *       "tags": [
+     *         {
+     *           "id": "id_example",
+     *           "name": "name_example"
+     *         }
+     *       ],
+     *       "assignment": null,
+     *       "pages": [
+     *         {
+     *           "id": "615601faf166d6d1d8e7dc30",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *         }
+     *       ],
+     *       "created_at": "2026-06-03T03:54:16Z",
+     *       "updated_at": "2026-06-03T03:54:16Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The signer&#x27;s documents; 401 Missing or invalid credentials.;
+     * 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerId signer ID
      * @param signerAccessCode signer query credential
@@ -603,6 +1036,62 @@ public class SignerResource extends BaseResource {
      * Search the documents a signer is party to, returning a compact representation
      * ({@code GET /signers/{signerId}/documents/search}). Authenticated by the signer access code.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/documents/search</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * <li><code>search</code> (query, optional): Search term.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "document",
+     *       "id": "615601fab04c0a3147bb1246",
+     *       "account_id": "d199996981dbd199996981db",
+     *       "template_id": null,
+     *       "name": "document.pdf",
+     *       "status": "metadata_ready",
+     *       "artifacts": {
+     *         "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *       },
+     *       "is_closed": false,
+     *       "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *       "decline_reason": null,
+     *       "declined_by": null,
+     *       "tags": [
+     *         {
+     *           "id": "id_example",
+     *           "name": "name_example"
+     *         }
+     *       ],
+     *       "assignment": null,
+     *       "pages": [
+     *         {
+     *           "id": "615601faf166d6d1d8e7dc30",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *         }
+     *       ],
+     *       "created_at": "2026-06-03T03:54:16Z",
+     *       "updated_at": "2026-06-03T03:54:16Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Matching documents; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param signerId signer ID
      * @param signerAccessCode signer query credential
      * @param search free-text query matched against the signer's documents
@@ -621,6 +1110,23 @@ public class SignerResource extends BaseResource {
 
     /**
      * Download a signer document using an access-code query.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>artifactName</code> (path, required): Artifact type.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/pdf</code>, raw artifact bytes.</p>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The artifact binary; 404 The requested resource does not exist.;
+     * 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param signerId signer ID
      * @param documentId document ID
@@ -644,6 +1150,8 @@ public class SignerResource extends BaseResource {
      * code is required. Artifact names are {@code original}, {@code certificated},
      * {@code certificate-page}, {@code pades}, or {@code bundle}.
      *
+     * <p>Wire contract, payloads and failures: {@link #downloadDocument(String, String, String, String)}.</p>
+     *
      * @param signerId signer ID
      * @param documentId document ID
      * @param artifactName artifact name, or {@code null} for {@code certificated}
@@ -660,6 +1168,32 @@ public class SignerResource extends BaseResource {
     /**
      * Sign multiple eligible documents ({@code PUT /signers/documents/sign-multiple}).
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/signers/documents/sign-multiple</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "document_ids": [
+     *     "document_ids_example"
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Signing result; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param signerAccessCode signer query credential
      * @param documentIds document ID list
      * @return the response data map, normally wrapping an empty array
@@ -675,6 +1209,33 @@ public class SignerResource extends BaseResource {
     /**
      * Decline multiple documents ({@code PUT /signers/documents/decline-multiple}).
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/signers/documents/decline-multiple</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "document_ids": [
+     *     "document_ids_example"
+     *   ],
+     *   "decline_reason": "Unfavorable terms."
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Decline result; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param signerAccessCode signer query credential
      * @param documentIds document ID list
      * @param declineReason non-blank decline reason
@@ -683,7 +1244,7 @@ public class SignerResource extends BaseResource {
     public Map<String, Object> declineMultiple(String signerAccessCode, List<String> documentIds, String declineReason) {
         requireId(signerAccessCode, "Signer access code");
         validateDocumentIds(documentIds);
-        requireId(declineReason, "Decline reason");
+        requireText(declineReason, "Decline reason", 2000);
         Map<String, Object> body = new HashMap<>();
         body.put("document_ids", documentIds);
         body.put("decline_reason", declineReason);

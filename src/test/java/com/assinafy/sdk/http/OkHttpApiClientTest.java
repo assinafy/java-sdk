@@ -11,6 +11,8 @@ import okhttp3.TlsVersion;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map;
 
@@ -45,6 +47,30 @@ class OkHttpApiClientTest {
 
     private OkHttpApiClient withApiKey() {
         return new OkHttpApiClient(baseUrl, "secret-key", null, 5_000);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/login", "/authentication/social-login", "/authentication/reset-password",
+            "/authentication/request-password-reset", "/public/documents/doc",
+            "/public/documents/doc/send-token", "/documents/hash/verify", "/oauth/token", "/oauth/revoke",
+            "/signers/self?signer-access-code=code", "/sign?signer-access-code=code",
+            "/signers/signer/documents/doc/download/bundle"})
+    void publicAndSignerEndpointsNeverReceiveWorkspaceCredentials(String path) throws Exception {
+        for (boolean apiKey : new boolean[]{true, false}) {
+            server.enqueue(response(200).body("{}").build());
+            var transport = new OkHttpApiClient(baseUrl, apiKey ? "secret-key" : null, "secret-token", 5_000);
+            transport.post(path, "{}");
+            RecordedRequest request = server.takeRequest();
+            assertThat(request.getHeaders().get("X-Api-Key")).isNull();
+            assertThat(request.getHeaders().get("Authorization")).isNull();
+        }
+    }
+
+    @Test
+    void signerQueryMapAlsoOmitsWorkspaceCredentials() throws Exception {
+        server.enqueue(response(200).body("{}").build());
+        withApiKey().get("/signers/signer/documents", Map.of("signer-access-code", "code"));
+        assertThat(server.takeRequest().getHeaders().get("X-Api-Key")).isNull();
     }
 
     @Test
@@ -302,7 +328,7 @@ class OkHttpApiClientTest {
         assertThatThrownBy(() -> new OkHttpApiClient("http://127.example.com/v1", "k", null, 5_000))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HTTPS");
-        assertThatThrownBy(() -> new OkHttpApiClient("https://user:pass@example.com/v1", "k", null, 5_000))
+        assertThatThrownBy(() -> new OkHttpApiClient("https://user:pass@example.invalid/v1", "k", null, 5_000))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("credentials");
         assertThatThrownBy(() -> new OkHttpApiClient(baseUrl, "k", null, 0))

@@ -59,7 +59,8 @@ final class SigningRules {
      *
      * @param verificationMethod requested verification method, or {@code null}
      * @param notificationMethods requested notification methods, or {@code null}
-     * @throws ValidationException if a value is outside the documented vocabulary
+     * @throws ValidationException if a value is unsupported, more than one notification is
+     *         selected, or verification and notification are incompatible
      */
     static void validateDeliveryMethods(String verificationMethod, List<String> notificationMethods) {
         if (verificationMethod != null && !VERIFICATION_METHODS.contains(verificationMethod)) {
@@ -68,6 +69,14 @@ final class SigningRules {
         if (notificationMethods != null && notificationMethods.stream().anyMatch(
                 method -> method == null || !NOTIFICATION_METHODS.contains(method))) {
             throw new ValidationException("Notification methods must contain Email or Whatsapp");
+        }
+        if (notificationMethods != null && notificationMethods.size() > 1) {
+            throw new ValidationException("A signer may use only one notification method");
+        }
+        if (verificationMethod != null && !DIGITAL_CERTIFICATE.equals(verificationMethod)
+                && notificationMethods != null && !notificationMethods.isEmpty()
+                && !verificationMethod.equals(notificationMethods.getFirst())) {
+            throw new ValidationException("Verification and notification methods must match");
         }
     }
 

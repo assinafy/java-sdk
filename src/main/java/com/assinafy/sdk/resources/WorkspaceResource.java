@@ -47,6 +47,41 @@ public class WorkspaceResource extends BaseResource {
     /**
      * Create a workspace account ({@code POST /accounts}).
      *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "Acme Inc.",
+     *   "notification_sender_type": "Account"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "account",
+     *     "id": "6401df46d6a6b0c692d9ec49",
+     *     "name": "Acme Inc.",
+     *     "primary_color": null,
+     *     "secondary_color": null,
+     *     "notification_sender_type": "User",
+     *     "roles": [
+     *       "roles_example"
+     *     ],
+     *     "is_delete_allowed": true,
+     *     "created_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created account; 400 One or more fields failed validation.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param request required account name and optional notification-sender type
      * @return the created account
      */
@@ -62,6 +97,38 @@ public class WorkspaceResource extends BaseResource {
     /**
      * List the workspaces the authenticated user can access ({@code GET /accounts}).
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "account",
+     *       "id": "6401df46d6a6b0c692d9ec49",
+     *       "name": "Acme Inc.",
+     *       "primary_color": null,
+     *       "secondary_color": null,
+     *       "notification_sender_type": "User",
+     *       "roles": [
+     *         "roles_example"
+     *       ],
+     *       "is_delete_allowed": true,
+     *       "created_at": "2026-06-03T03:54:16Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The user&#x27;s accounts; 401 Missing or invalid credentials.;
+     * 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @return paginated accessible accounts
      */
     public PaginatedResult<Workspace> list() {
@@ -70,6 +137,39 @@ public class WorkspaceResource extends BaseResource {
 
     /**
      * Fetch a workspace's profile ({@code GET /accounts/{accountId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "account",
+     *     "id": "6401df46d6a6b0c692d9ec49",
+     *     "name": "Acme Inc.",
+     *     "primary_color": null,
+     *     "secondary_color": null,
+     *     "notification_sender_type": "User",
+     *     "roles": [
+     *       "roles_example"
+     *     ],
+     *     "is_delete_allowed": true,
+     *     "created_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The account; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param accountId account ID
      * @return the account
@@ -81,6 +181,44 @@ public class WorkspaceResource extends BaseResource {
 
     /**
      * Update a workspace's profile ({@code PUT /accounts/{accountId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/accounts/{accountId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "Acme Inc.",
+     *   "notification_sender_type": "Account"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "account",
+     *     "id": "6401df46d6a6b0c692d9ec49",
+     *     "name": "Acme Inc.",
+     *     "primary_color": null,
+     *     "secondary_color": null,
+     *     "notification_sender_type": "User",
+     *     "roles": [
+     *       "roles_example"
+     *     ],
+     *     "is_delete_allowed": true,
+     *     "created_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated account; 400 One or more fields failed validation.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param accountId account ID
      * @param request fields to update
@@ -100,6 +238,8 @@ public class WorkspaceResource extends BaseResource {
      * (listing the blockers under {@code restrictions}) if the workspace has an active paid
      * subscription.
      *
+     * <p>Wire contract, payloads and failures: {@link #delete(String, boolean)}.</p>
+     *
      * @param accountId account ID
      */
     public void delete(String accountId) {
@@ -111,6 +251,36 @@ public class WorkspaceResource extends BaseResource {
      * subscription on the workspace and proceeds with immediate deletion; this sends the documented
      * {@code {"force": true}} request body. The default ({@code force = false}) path issues a plain
      * bodyless DELETE, which the server treats as {@code force = false}.
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/accounts/{accountId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "force": false
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Account deleted; 400 Deletion blocked by active restrictions.
+     * Each `restrictions` entry describes one blocker; resolve them individually, or retry with `force:
+     * true` to cancel blocking subscriptions/documents automatically.; 404 The requested resource does
+     * not exist.; 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param accountId account ID
      * @param force whether to cancel a blocking paid subscription and force deletion
@@ -128,6 +298,32 @@ public class WorkspaceResource extends BaseResource {
      * Get a workspace's branding theme ({@code GET /accounts/{accountId}/theme}): display name,
      * primary/secondary colours and the logo URL.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/theme</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "account_name": "Account Name",
+     *     "primary_color": "aabbcc",
+     *     "secondary_color": null,
+     *     "logo": "https://api.assinafy.com.br/v1/accounts/1a/logo"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The theme; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param accountId account ID
      * @return the account theme
      */
@@ -138,6 +334,8 @@ public class WorkspaceResource extends BaseResource {
 
     /**
      * Return the latest 12 zero-filled monthly document KPI rows for an account.
+     *
+     * <p>Wire contract, payloads and failures: {@link #stats(String, String, String)}.</p>
      *
      * @param accountId account ID
      * @return monthly document statistics
@@ -154,6 +352,46 @@ public class WorkspaceResource extends BaseResource {
      * signature_requests_verification_whatsapp, signature_requests_verification_bypass,
      * signature_requests_verification_digital_certificate, signature_requests_viewed,
      * signature_requests_completed, documents_certified}}.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/stats</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>granularity</code> (query, optional): <code>monthly</code> (default) or <code>daily</code>.</li>
+     * <li><code>month</code> (query, optional): Target month <code>YYYY-MM</code> (required when <code>granularity=daily</code>).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "period": "2026-06",
+     *       "documents_uploaded": 42,
+     *       "documents_sent": 37,
+     *       "signature_requests": 61,
+     *       "signature_requests_notification_email": 55,
+     *       "signature_requests_notification_whatsapp": 18,
+     *       "signature_requests_notification_bypass": 3,
+     *       "signature_requests_verification_email": 48,
+     *       "signature_requests_verification_whatsapp": 6,
+     *       "signature_requests_verification_bypass": 3,
+     *       "signature_requests_verification_digital_certificate": 4,
+     *       "signature_requests_viewed": 44,
+     *       "signature_requests_completed": 52,
+     *       "documents_certified": 30
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 KPI series; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param accountId account whose statistics to return
      * @param granularity {@code monthly} or {@code daily}
@@ -172,6 +410,21 @@ public class WorkspaceResource extends BaseResource {
      * Download the workspace logo image bytes ({@code GET /accounts/{accountId}/logo}). Throws
      * {@link com.assinafy.sdk.exceptions.ApiException} (404) when no logo has been uploaded.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/logo</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>image/*</code>, raw artifact bytes.</p>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The logo image; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param accountId account ID
      * @return logo image bytes
      */
@@ -183,6 +436,30 @@ public class WorkspaceResource extends BaseResource {
     /**
      * Upload (replace) the workspace logo ({@code POST /accounts/{accountId}/logo}, multipart
      * {@code file}). The image content type is auto-detected (PNG/JPEG/GIF) from the bytes.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/logo</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>multipart/form-data</code>. Illustrative payload with the documented
+     * fields; optional fields may be absent or null.</p>
+     * <pre>{
+     *   "file": "file.pdf (binary bytes)"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": ""
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Logo updated; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param accountId account ID
      * @param imageData non-empty PNG, JPEG, or GIF bytes
@@ -201,6 +478,26 @@ public class WorkspaceResource extends BaseResource {
 
     /**
      * Remove the workspace logo ({@code DELETE /accounts/{accountId}/logo}).
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/accounts/{accountId}/logo</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": ""
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Logo deleted; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param accountId account ID
      */

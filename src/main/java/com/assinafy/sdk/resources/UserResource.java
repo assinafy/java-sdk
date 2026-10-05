@@ -46,6 +46,34 @@ public class UserResource extends BaseResource {
      * <p>Both {@code data: {user, accounts}} and direct user-data response shapes are normalized to
      * {@link AuthUser}.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/users/self</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "id": "bgjazeo5r9v2lq7l36dx48np",
+     *     "name": "John Smith",
+     *     "email": "example@example.invalid",
+     *     "telephone": null,
+     *     "government_id": null,
+     *     "is_email_verified": false,
+     *     "has_accepted_terms": true,
+     *     "created_at": "2023-03-03T11:51:34Z",
+     *     "to_be_deleted_at": null
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The current user; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @return the authenticated user profile
      */
     public AuthUser get() {
@@ -61,6 +89,8 @@ public class UserResource extends BaseResource {
     /**
      * Return the latest monthly document KPIs across all accessible accounts.
      *
+     * <p>Wire contract, payloads and failures: {@link #stats(String, String)}.</p>
+     *
      * @return the latest 12 zero-filled monthly rows
      */
     public List<DocumentStatsRow> stats() {
@@ -75,6 +105,45 @@ public class UserResource extends BaseResource {
      * signature_requests_verification_whatsapp, signature_requests_verification_bypass,
      * signature_requests_verification_digital_certificate, signature_requests_viewed,
      * signature_requests_completed, documents_certified}}.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/users/self/stats</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>granularity</code> (query, optional): <code>monthly</code> (default) or <code>daily</code>.</li>
+     * <li><code>month</code> (query, optional): Target month <code>YYYY-MM</code> (required when <code>granularity=daily</code>).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "period": "2026-06",
+     *       "documents_uploaded": 42,
+     *       "documents_sent": 37,
+     *       "signature_requests": 61,
+     *       "signature_requests_notification_email": 55,
+     *       "signature_requests_notification_whatsapp": 18,
+     *       "signature_requests_notification_bypass": 3,
+     *       "signature_requests_verification_email": 48,
+     *       "signature_requests_verification_whatsapp": 6,
+     *       "signature_requests_verification_bypass": 3,
+     *       "signature_requests_verification_digital_certificate": 4,
+     *       "signature_requests_viewed": 44,
+     *       "signature_requests_completed": 52,
+     *       "documents_certified": 30
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 KPI series; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param granularity {@code monthly} or {@code daily}
      * @param month required for daily data, in {@code YYYY-MM} form
@@ -92,6 +161,34 @@ public class UserResource extends BaseResource {
      * {@code GET /users/self/notification-preferences} — return all nine owner-facing document
      * email switches. Account/security emails are not configurable and are not included.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/users/self/notification-preferences</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "DocumentCompleted": true,
+     *     "SignerDeclined": true,
+     *     "DocumentCancelled": true,
+     *     "DocumentAboutToExpire": true,
+     *     "DocumentExpired": true,
+     *     "DocumentExpirationReset": true,
+     *     "DocumentProcessingFailed": true,
+     *     "TemplateProcessingFailed": true,
+     *     "SignerWhatsappFailed": true
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The current preferences; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @return all current preferences; {@code true} means the email is enabled
      */
     public NotificationPreferences getNotificationPreferences() {
@@ -103,6 +200,47 @@ public class UserResource extends BaseResource {
     /**
      * {@code PUT /users/self/notification-preferences} — merge selected email switches into the
      * current user's preferences. Omitted keys keep their existing values.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/users/self/notification-preferences</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentCancelled": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "DocumentExpirationReset": true,
+     *   "DocumentProcessingFailed": true,
+     *   "TemplateProcessingFailed": true,
+     *   "SignerWhatsappFailed": true
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "DocumentCompleted": true,
+     *     "SignerDeclined": true,
+     *     "DocumentCancelled": true,
+     *     "DocumentAboutToExpire": true,
+     *     "DocumentExpired": true,
+     *     "DocumentExpirationReset": true,
+     *     "DocumentProcessingFailed": true,
+     *     "TemplateProcessingFailed": true,
+     *     "SignerWhatsappFailed": true
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated preferences; 400 One or more fields failed
+     * validation.; 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param changes map containing only {@code DocumentCompleted},
      *                {@code SignerDeclined}, {@code DocumentCancelled},

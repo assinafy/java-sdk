@@ -88,6 +88,19 @@ class AssinafyClientWorkflowTest {
     }
 
     @Test
+    void rejectsInvalidExpirationBeforeUpload() {
+        MockApiHttpClient http = new MockApiHttpClient();
+        assertThatThrownBy(() -> clientWith(http).uploadAndRequestSignatures(
+                UploadAndRequestSignaturesRequest.builder()
+                        .fileData("%PDF-1.4".getBytes()).fileName("c.pdf")
+                        .signers(List.of(SignerEntry.builder().name("Maria")
+                                .email("maria@example.invalid").build()))
+                        .expiresAt("not-a-timestamp").build()))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
     void uploadAndRequestSignaturesValidatesEveryEmailBeforeUpload() {
         MockApiHttpClient http = new MockApiHttpClient();
 

@@ -26,7 +26,7 @@ class WebhookResourceTest {
         WebhookResource resource = new WebhookResource(mock, "acc");
         resource.register(RegisterWebhookRequest.builder()
                 .url("https://example.com/webhook")
-                .email("ops@example.com")
+                .email("ops@example.invalid")
                 .build());
 
         String body = mock.lastCaptured().getJsonBody();
@@ -112,7 +112,7 @@ class WebhookResourceTest {
         WebhookResource resource = new WebhookResource(mock, "acc");
 
         assertThatThrownBy(() -> resource.register(RegisterWebhookRequest.builder()
-                .email("ops@example.com")
+                .email("ops@example.invalid")
                 .build()))
                 .isInstanceOf(ValidationException.class);
     }

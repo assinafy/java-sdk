@@ -37,20 +37,20 @@ class PublicDocumentResourceTest {
     @Test
     void sendTokenPutsEmailBodyToSendTokenPath() {
         mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
-        resource.sendToken("doc1", "user@example.com");
+        resource.sendToken("doc1", "user@example.invalid");
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1/send-token");
         String body = mock.lastCaptured().getJsonBody();
-        assertThat(body).isEqualTo("{\"email\":\"user@example.com\"}");
+        assertThat(body).isEqualTo("{\"email\":\"user@example.invalid\"}");
     }
 
     @Test
     void explicitChannelOverloadPreservesDeployedPayload() {
         mock.enqueue(200, "{\"status\":200,\"message\":\"\"}");
-        resource.sendToken("doc1", "user@example.com", "email");
+        resource.sendToken("doc1", "user@example.invalid", "email");
         assertThat(mock.lastCaptured().getJsonBody()).contains(
-                "\"email\":\"user@example.com\"",
-                "\"recipient\":\"user@example.com\"",
+                "\"email\":\"user@example.invalid\"",
+                "\"recipient\":\"user@example.invalid\"",
                 "\"channel\":\"email\"");
     }
 
@@ -58,7 +58,7 @@ class PublicDocumentResourceTest {
     void sendTokenRequiresEmail() {
         assertThatThrownBy(() -> resource.sendToken("doc1", ""))
                 .isInstanceOf(ValidationException.class);
-        assertThatThrownBy(() -> resource.sendToken("", "user@example.com"))
+        assertThatThrownBy(() -> resource.sendToken("", "user@example.invalid"))
                 .isInstanceOf(ValidationException.class);
     }
 

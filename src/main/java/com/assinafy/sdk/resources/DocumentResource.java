@@ -71,6 +71,8 @@ public class DocumentResource extends BaseResource {
      * must have a PDF file name, be non-empty, and be at most 25 MB. The API validates the document
      * content.
      *
+     * <p>Wire contract, payloads and failures: {@link #upload(byte[], String, Map, String)}.</p>
+     *
      * @param fileData PDF bytes
      * @param fileName PDF file name
      * @return the uploaded document summary
@@ -82,6 +84,63 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Upload a PDF and create a document, with optional document metadata and an explicit account.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/documents</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>multipart/form-data</code>. Illustrative payload with the documented
+     * fields; optional fields may be absent or null.</p>
+     * <pre>{
+     *   "file": "file.pdf (binary bytes)"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "document",
+     *     "id": "615601fab04c0a3147bb1246",
+     *     "account_id": "d199996981dbd199996981db",
+     *     "template_id": null,
+     *     "name": "document.pdf",
+     *     "status": "metadata_ready",
+     *     "artifacts": {
+     *       "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *     },
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [
+     *       {
+     *         "id": "id_example",
+     *         "name": "name_example"
+     *       }
+     *     ],
+     *     "assignment": null,
+     *     "pages": [
+     *       {
+     *         "id": "615601faf166d6d1d8e7dc30",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *       }
+     *     ],
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "updated_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created document; 400 One or more fields failed validation.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param fileData  the PDF bytes (non-empty, ≤ 25 MB)
      * @param fileName  the file name (must end in {@code .pdf})
@@ -102,8 +161,8 @@ public class DocumentResource extends BaseResource {
         Document document = call("Document upload failed",
                 () -> http.postMultipart("/accounts/" + id + "/documents", fileName, fileData, fileName, finalMetadata),
                 Document.class);
-        if (document == null || document.getId() == null) {
-            throw new ValidationException("Upload succeeded but no document ID was returned");
+        if (document == null || document.getId() == null || document.getId().isBlank()) {
+            throw new AssinafyException("Upload succeeded but no document ID was returned");
         }
         logInfo("Document uploaded", Map.of("documentId", document.getId()));
         return document;
@@ -111,6 +170,8 @@ public class DocumentResource extends BaseResource {
 
     /**
      * List documents in the default account with default paging.
+     *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
      *
      * @return matching documents and pagination metadata
      */
@@ -121,6 +182,8 @@ public class DocumentResource extends BaseResource {
     /**
      * List documents in the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
+     *
      * @param params paging and filtering parameters, or {@code null}
      * @return matching documents and pagination metadata
      */
@@ -130,6 +193,68 @@ public class DocumentResource extends BaseResource {
 
     /**
      * List documents in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/documents</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>status</code> (query, optional): Status filter, e.g. <code>pending_signature</code>.</li>
+     * <li><code>method</code> (query, optional): Signature method filter.</li>
+     * <li><code>search</code> (query, optional): Partial match on document.name, signer.full_name, signer.email.</li>
+     * <li><code>tags</code> (query, optional): Comma-separated tag IDs; returns documents having ALL listed tags.</li>
+     * <li><code>sort</code> (query, optional): Sort by <code>name</code> or <code>updated_at</code>.</li>
+     * <li><code>page</code> (query, optional): Page number.</li>
+     * <li><code>per-page</code> (query, optional): Records per page (max 100).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "document",
+     *       "id": "615601fab04c0a3147bb1246",
+     *       "account_id": "d199996981dbd199996981db",
+     *       "template_id": null,
+     *       "name": "document.pdf",
+     *       "status": "metadata_ready",
+     *       "artifacts": {
+     *         "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *       },
+     *       "is_closed": false,
+     *       "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *       "decline_reason": null,
+     *       "declined_by": null,
+     *       "tags": [
+     *         {
+     *           "id": "id_example",
+     *           "name": "name_example"
+     *         }
+     *       ],
+     *       "assignment": null,
+     *       "pages": [
+     *         {
+     *           "id": "615601faf166d6d1d8e7dc30",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *         }
+     *       ],
+     *       "created_at": "2026-06-03T03:54:16Z",
+     *       "updated_at": "2026-06-03T03:54:16Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 A page of documents; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param params paging and filtering parameters, or {@code null}
      * @param accountId explicit account ID, or {@code null} for the default
@@ -144,6 +269,59 @@ public class DocumentResource extends BaseResource {
     /**
      * Fetch full document details, including the assignment.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/{documentId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "document",
+     *     "id": "615601fab04c0a3147bb1246",
+     *     "account_id": "d199996981dbd199996981db",
+     *     "template_id": null,
+     *     "name": "document.pdf",
+     *     "status": "metadata_ready",
+     *     "artifacts": {
+     *       "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *     },
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [
+     *       {
+     *         "id": "id_example",
+     *         "name": "name_example"
+     *       }
+     *     ],
+     *     "assignment": null,
+     *     "pages": [
+     *       {
+     *         "id": "615601faf166d6d1d8e7dc30",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *       }
+     *     ],
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "updated_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The document; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId document ID
      * @return expanded document details
      */
@@ -154,6 +332,8 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Fetch full document details as an alias for {@link #details(String)}.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #details(String)}.</p>
      *
      * @param documentId document ID
      * @return expanded document details
@@ -166,6 +346,64 @@ public class DocumentResource extends BaseResource {
      * Rename a document ({@code PATCH /documents/{documentId}} with body {@code {"name": ...}}) and
      * return the updated document.
      *
+     * <p><strong>HTTP:</strong> <code>PATCH /v1/documents/{documentId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "Service agreement.pdf"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "document",
+     *     "id": "615601fab04c0a3147bb1246",
+     *     "account_id": "d199996981dbd199996981db",
+     *     "template_id": null,
+     *     "name": "document.pdf",
+     *     "status": "metadata_ready",
+     *     "artifacts": {
+     *       "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *     },
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [
+     *       {
+     *         "id": "id_example",
+     *         "name": "name_example"
+     *       }
+     *     ],
+     *     "assignment": null,
+     *     "pages": [
+     *       {
+     *         "id": "615601faf166d6d1d8e7dc30",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *       }
+     *     ],
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "updated_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated document; 400 One or more fields failed validation.;
+     * 404 The requested resource does not exist.; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId document ID
      * @param newName nonblank replacement name
      * @return the updated document
@@ -173,7 +411,7 @@ public class DocumentResource extends BaseResource {
      */
     public Document rename(String documentId, String newName) {
         String id = pathSegment(documentId, "Document ID");
-        requireId(newName, "Document name");
+        requireText(newName, "Document name", 255);
         String json = serialise(Map.of("name", newName));
         return call("Failed to rename document", () -> http.patch("/documents/" + id, json), Document.class);
     }
@@ -182,6 +420,8 @@ public class DocumentResource extends BaseResource {
      * Lightweight document search ({@code GET /accounts/{accountId}/documents/search}), returning a
      * compact representation without expanded assignments or pages. Honors {@code search},
      * {@code status}, and paging via {@link ListParams}.
+     *
+     * <p>Wire contract, payloads and failures: {@link #search(ListParams, String)}.</p>
      *
      * @param params search, status, and paging parameters, or {@code null}
      * @return matching compact documents and pagination metadata
@@ -192,6 +432,65 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Search documents in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/documents/search</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>search</code> (query, optional): Search term.</li>
+     * <li><code>status</code> (query, optional): string.</li>
+     * <li><code>page</code> (query, optional): Page number.</li>
+     * <li><code>per-page</code> (query, optional): Records per page (max 100).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "document",
+     *       "id": "615601fab04c0a3147bb1246",
+     *       "account_id": "d199996981dbd199996981db",
+     *       "template_id": null,
+     *       "name": "document.pdf",
+     *       "status": "metadata_ready",
+     *       "artifacts": {
+     *         "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *       },
+     *       "is_closed": false,
+     *       "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *       "decline_reason": null,
+     *       "declined_by": null,
+     *       "tags": [
+     *         {
+     *           "id": "id_example",
+     *           "name": "name_example"
+     *         }
+     *       ],
+     *       "assignment": null,
+     *       "pages": [
+     *         {
+     *           "id": "615601faf166d6d1d8e7dc30",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *         }
+     *       ],
+     *       "created_at": "2026-06-03T03:54:16Z",
+     *       "updated_at": "2026-06-03T03:54:16Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Matching documents; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param params search, status, and paging parameters, or {@code null}
      * @param accountId explicit account ID, or {@code null} for the default
@@ -208,6 +507,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Poll until a document is ready, using a 30-second timeout and 2-second interval.
      *
+     * <p>Wire payloads and HTTP failures follow {@link #details(String)}.</p>
+     *
      * @param documentId document ID
      * @return the first ready document state
      */
@@ -220,6 +521,8 @@ public class DocumentResource extends BaseResource {
      * ({@code metadata_ready}/{@code pending_signature}/{@code certificated}). The first attempt
      * is immediate. The polling deadline is checked between attempts and therefore cannot preempt
      * an in-flight transport call.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #details(String)}.</p>
      *
      * @param documentId document ID
      * @param maxWaitMs maximum polling budget in milliseconds
@@ -266,6 +569,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Download the default certificated artifact as bytes.
      *
+     * <p>Wire contract, payloads and failures: {@link #download(String, String)}.</p>
+     *
      * @param documentId document ID
      * @return artifact bytes
      */
@@ -278,6 +583,22 @@ public class DocumentResource extends BaseResource {
      *
      * <p>The request accepts any media type ({@code Accept: }{@literal *}/{@literal *}) because artifacts may be PDFs,
      * ZIP bundles, or other documented binary formats.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/{documentId}/download/{artifactName}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>artifactName</code> (path, required): Artifact type.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/pdf</code>, raw artifact bytes.</p>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The artifact binary; 404 The requested resource does not exist.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param artifactName one of {@code original}, {@code certificated}, {@code certificate-page},
@@ -296,6 +617,21 @@ public class DocumentResource extends BaseResource {
     /**
      * Download a document thumbnail.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/{documentId}/thumbnail</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>image/*</code>, raw artifact bytes.</p>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The thumbnail image; 404 The requested resource does not exist.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId document ID
      * @return thumbnail bytes
      */
@@ -306,6 +642,22 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Download one rendered document page.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/{documentId}/pages/{pageId}/download</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>pageId</code> (path, required): The page ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>image/*</code>, raw artifact bytes.</p>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The page image; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param pageId page ID
@@ -319,6 +671,36 @@ public class DocumentResource extends BaseResource {
 
     /**
      * List a document's activity log.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/{documentId}/activities</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "id": 4,
+     *       "event": "assignment_created",
+     *       "message": "Assignment created by John Smith.",
+     *       "payload": null,
+     *       "origin": null,
+     *       "created_at": "2022-07-19T19:28:13Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Document activities; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @return activity entries, or an empty list when the response contains no data
@@ -334,6 +716,29 @@ public class DocumentResource extends BaseResource {
     /**
      * Delete a document.
      *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/documents/{documentId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Document deleted; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId document ID
      */
     public void delete(String documentId) {
@@ -344,6 +749,9 @@ public class DocumentResource extends BaseResource {
     /**
      * Create a document from a template in the default account. See the account-aware overload for
      * the signer validation rules.
+     *
+     * <p>Wire contract, payloads and failures: {@link #createFromTemplate(String,
+     * CreateDocumentFromTemplateRequest, String)}.</p>
      *
      * @param templateId template ID
      * @param request signer assignments and document settings
@@ -363,6 +771,86 @@ public class DocumentResource extends BaseResource {
      * most one method is permitted per signer. If one signer supplies a step, all must do so and the
      * positive steps must be contiguous from 1. A digital-certificate signer must be alone in its
      * step.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/templates/{templateId}/documents</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>templateId</code> (path, required): The template ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "signers": [
+     *     {
+     *       "role_id": "fa8c14f32d732271e071998246e",
+     *       "id": "fa8c140cb49b79f940aab95fddd",
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "notification_methods_example"
+     *       ],
+     *       "step": 1
+     *     }
+     *   ],
+     *   "editor_fields": [
+     *     {
+     *       "field_id": "fa8c14f3af99d2846d1789de4ba",
+     *       "value": "Field value"
+     *     }
+     *   ],
+     *   "name": "sample-contract-one-page.pdf",
+     *   "message": "Message to the signers",
+     *   "expires_at": "2030-10-05T12:00:00Z",
+     *   "tags": [
+     *     "tags_example"
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "document",
+     *     "id": "615601fab04c0a3147bb1246",
+     *     "account_id": "d199996981dbd199996981db",
+     *     "template_id": null,
+     *     "name": "document.pdf",
+     *     "status": "metadata_ready",
+     *     "artifacts": {
+     *       "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *     },
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [
+     *       {
+     *         "id": "id_example",
+     *         "name": "name_example"
+     *       }
+     *     ],
+     *     "assignment": null,
+     *     "pages": [
+     *       {
+     *         "id": "615601faf166d6d1d8e7dc30",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *       }
+     *     ],
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "updated_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created document; 400 One or more fields failed validation.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param templateId template ID
      * @param request signer assignments and document settings
@@ -388,6 +876,9 @@ public class DocumentResource extends BaseResource {
      * nonblank role IDs, validates delivery-method values, and omits signer IDs, signer steps, and
      * creation-only document settings.
      *
+     * <p>Wire contract, payloads and failures: {@link #estimateCostFromTemplate(String,
+     * CreateDocumentFromTemplateRequest, String)}.</p>
+     *
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @return the cost breakdown
@@ -400,6 +891,9 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Return a typed template-document cost estimate for the default account.
+     *
+     * <p>Wire contract, payloads and failures: {@link #estimateCostFromTemplateTyped(String,
+     * CreateDocumentFromTemplateRequest, String)}.</p>
      *
      * @param templateId template ID
      * @param request template signer estimate inputs
@@ -416,6 +910,61 @@ public class DocumentResource extends BaseResource {
      *
      * <p>The estimate requires nonblank role IDs, validates delivery-method values, and omits
      * signer IDs, signer steps, and creation-only document settings.
+     *
+     * <p><strong>HTTP:</strong> <code>POST
+     * /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>templateId</code> (path, required): The template ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "signers": [
+     *     {
+     *       "role_id": "fa8c14f32d732271e071998246e",
+     *       "verification_method": "Whatsapp",
+     *       "notification_methods": [
+     *         "notification_methods_example"
+     *       ]
+     *     }
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "documents": 1,
+     *     "credits": 1,
+     *     "needs_extra_document": false,
+     *     "extra_document_cost": 1,
+     *     "total_credits": 1,
+     *     "breakdown": [
+     *       {
+     *         "code": "NotificationWhatsapp",
+     *         "name": "Whatsapp Notification",
+     *         "cost": 0.9,
+     *         "quantity": 2,
+     *         "unit_cost": 0.45
+     *       }
+     *     ],
+     *     "document_balance": 1,
+     *     "credit_balance": 1,
+     *     "has_sufficient_resources": false,
+     *     "blocking_reason": null,
+     *     "message": null
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Cost estimate; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param templateId template ID
      * @param request template signer estimate inputs
@@ -435,6 +984,10 @@ public class DocumentResource extends BaseResource {
     /**
      * Return a typed template-document cost estimate for an explicit or default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #estimateCostFromTemplate(String,
+     * CreateDocumentFromTemplateRequest, String)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @param accountId explicit account ID, or {@code null} for the default
@@ -452,6 +1005,39 @@ public class DocumentResource extends BaseResource {
      * Verify a signed document by its signature hash ({@code GET /documents/{hash}/verify}). The
      * returned map carries {@code is_valid} plus, when valid, signing metadata.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/{documentSignatureHash}/verify</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentSignatureHash</code> (path, required): The document signature hash.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "hash": "FE32EDDADE7CBDDCBB934E7402047450B0E59C02",
+     *     "id": null,
+     *     "agreement_code": null,
+     *     "status": null,
+     *     "page_count": null,
+     *     "signer_count": null,
+     *     "completed_count": null,
+     *     "completed_at": null,
+     *     "verified_at": "2023-01-27T19:27:46Z",
+     *     "is_valid": true,
+     *     "message": ""
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Verification result; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param hash document signature hash
      * @return raw verification result
      */
@@ -463,6 +1049,9 @@ public class DocumentResource extends BaseResource {
     /**
      * Verify a signed document and return a typed result.
      *
+     * <p>Wire contract, payloads and failures: {@link #verify(String)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param hash document signature hash
      * @return typed verification result
      */
@@ -472,6 +1061,8 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Determine whether a document is certificated or every signer has completed.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #details(String)}.</p>
      *
      * @param documentId document ID
      * @return {@code true} when signing is complete
@@ -489,6 +1080,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Calculate signer completion counts and percentage from document details.
      *
+     * <p>Wire payloads and HTTP failures follow {@link #details(String)}.</p>
+     *
      * @param documentId document ID
      * @return signing progress
      */
@@ -505,6 +1098,29 @@ public class DocumentResource extends BaseResource {
     /**
      * List supported document statuses and whether each is deletable.
      *
+     * <p><strong>HTTP:</strong> <code>GET /v1/documents/statuses</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "code": "metadata_ready",
+     *       "deletable": true
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Supported statuses; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @return supported status definitions
      */
     public List<DocumentStatusInfo> getStatuses() {
@@ -518,6 +1134,8 @@ public class DocumentResource extends BaseResource {
      *
      * <p>{@code GET /accounts/{accountId}/documents/{documentId}/tags}.
      *
+     * <p>Wire contract, payloads and failures: {@link #listTags(String, String)}.</p>
+     *
      * @param documentId document ID
      * @return attached tags
      */
@@ -527,6 +1145,37 @@ public class DocumentResource extends BaseResource {
 
     /**
      * List tags attached to a document in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/documents/{documentId}/tags</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>documentId</code> (path, required): The document ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "tag",
+     *       "id": "fa8c09f3e709a8a1c82d69b1454",
+     *       "name": "Contracts",
+     *       "color": null,
+     *       "created_at": "2026-05-14T12:00:00Z",
+     *       "updated_at": "2026-05-14T12:00:00Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Attached tags; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param accountId explicit account ID, or {@code null} for the default
@@ -546,6 +1195,9 @@ public class DocumentResource extends BaseResource {
      *
      * <p>{@code PUT /accounts/{accountId}/documents/{documentId}/tags}.
      *
+     * <p>Wire payloads and HTTP failures follow {@link #replaceTagIds(String, java.util.List, String)}.
+     * This overload accepts names directly, without ID resolution.</p>
+     *
      * @param documentId document ID
      * @param tagNames replacement tag names; {@code null} detaches all tags
      * @return resulting attached-tag records; use their IDs when detaching
@@ -556,6 +1208,9 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Replace document tags in an explicit or default account using tag names.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #replaceTagIds(String, java.util.List, String)}.
+     * This overload accepts names directly, without ID resolution.</p>
      *
      * @param documentId document ID
      * @param tagNames replacement tag names; {@code null} detaches all tags
@@ -571,6 +1226,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Replace the document's tag set using workspace tag IDs.
      *
+     * <p>Wire contract, payloads and failures: {@link #replaceTagIds(String, List, String)}.</p>
+     *
      * @param documentId document ID
      * @param tagIds replacement workspace tag IDs; {@code null} detaches all tags
      * @return resulting attached-tag records; use their IDs when detaching
@@ -582,6 +1239,43 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Replace document tags in an explicit or default account using workspace tag IDs.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/accounts/{accountId}/documents/{documentId}/tags</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>documentId</code> (path, required): The document ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "tags": [
+     *     "tags_example"
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "tag",
+     *       "id": "fa8c09f3e709a8a1c82d69b1454",
+     *       "name": "Contracts",
+     *       "color": null,
+     *       "created_at": "2026-05-14T12:00:00Z",
+     *       "updated_at": "2026-05-14T12:00:00Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Updated tags; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param tagIds replacement workspace tag IDs; {@code null} detaches all tags
@@ -601,6 +1295,9 @@ public class DocumentResource extends BaseResource {
      *
      * <p>{@code POST /accounts/{accountId}/documents/{documentId}/tags}.
      *
+     * <p>Wire payloads and HTTP failures follow {@link #appendTagIds(String, java.util.List, String)}.
+     * This overload accepts names directly, without ID resolution.</p>
+     *
      * @param documentId document ID
      * @param tagNames tag names to attach; {@code null} sends an empty list
      * @return resulting attached-tag records; use their IDs when detaching
@@ -611,6 +1308,9 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Append document tags in an explicit or default account using tag names.
+     *
+     * <p>Wire payloads and HTTP failures follow {@link #appendTagIds(String, java.util.List, String)}.
+     * This overload accepts names directly, without ID resolution.</p>
      *
      * @param documentId document ID
      * @param tagNames tag names to attach; {@code null} sends an empty list
@@ -626,6 +1326,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Attach additional tags to a document using workspace tag IDs.
      *
+     * <p>Wire contract, payloads and failures: {@link #appendTagIds(String, List, String)}.</p>
+     *
      * @param documentId document ID
      * @param tagIds workspace tag IDs to attach; {@code null} sends an empty list
      * @return resulting attached-tag records; use their IDs when detaching
@@ -637,6 +1339,43 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Append document tags in an explicit or default account using workspace tag IDs.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/documents/{documentId}/tags</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>documentId</code> (path, required): The document ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "tags": [
+     *     "tags_example"
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "tag",
+     *       "id": "fa8c09f3e709a8a1c82d69b1454",
+     *       "name": "Contracts",
+     *       "color": null,
+     *       "created_at": "2026-05-14T12:00:00Z",
+     *       "updated_at": "2026-05-14T12:00:00Z"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Attached tags; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param tagIds workspace tag IDs to attach; {@code null} sends an empty list
@@ -693,6 +1432,8 @@ public class DocumentResource extends BaseResource {
      *
      * <p>{@code DELETE /accounts/{accountId}/documents/{documentId}/tags/{tagId}}.
      *
+     * <p>Wire contract, payloads and failures: {@link #detachTag(String, String, String)}.</p>
+     *
      * @param documentId document ID
      * @param tagId attached-tag ID returned by {@link #listTags(String)} or the attach response
      */
@@ -702,6 +1443,31 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Detach a tag from a document in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>documentId</code> (path, required): The document ID.</li>
+     * <li><code>tagId</code> (path, required): The tag ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "detached": true
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Tag detached; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document ID
      * @param tagId attached-tag ID returned by a list or attach operation
@@ -739,6 +1505,7 @@ public class DocumentResource extends BaseResource {
         Map<String, Object> body = new HashMap<>();
         body.put("signers", signers);
         if (!estimate) {
+            requireExpiration(request.getExpiresAt());
             if (request.getName() != null) body.put("name", request.getName());
             if (request.getMessage() != null) body.put("message", request.getMessage());
             if (request.getExpiresAt() != null) body.put("expires_at", request.getExpiresAt());
@@ -756,9 +1523,6 @@ public class DocumentResource extends BaseResource {
             throw new ValidationException("Every template signer requires a signer ID");
         }
         SigningRules.validateDeliveryMethods(signer.getVerificationMethod(), signer.getNotificationMethods());
-        if (!estimate && signer.getNotificationMethods() != null && signer.getNotificationMethods().size() > 1) {
-            throw new ValidationException("A template signer may use only one notification method");
-        }
         Map<String, Object> value = new HashMap<>();
         value.put("role_id", signer.getRoleId());
         if (!estimate) value.put("id", signer.getId());

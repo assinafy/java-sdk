@@ -40,6 +40,18 @@ class DocumentResourceTest {
     }
 
     @Test
+    void uploadRejectsMissingOrBlankServerIdentifier() {
+        for (String data : List.of("{}", "{\"id\":\" \"}")) {
+            mock.enqueue(200, "{\"status\":200,\"data\":" + data + "}");
+            assertThatThrownBy(() -> resource.upload("%PDF-1.4 data".getBytes(), "contract.pdf"))
+                    .isInstanceOf(com.assinafy.sdk.exceptions.AssinafyException.class)
+                    .isNotInstanceOf(ValidationException.class)
+                    .hasMessageContaining("document ID");
+        }
+        assertThat(mock.capturedCount()).isEqualTo(2);
+    }
+
+    @Test
     void uploadRejectsEmptyData() {
         assertThatThrownBy(() -> resource.upload(new byte[0], "contract.pdf"))
                 .isInstanceOf(ValidationException.class);

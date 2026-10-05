@@ -19,6 +19,86 @@ class AssignmentResourceTest {
     private static final String ASSIGNMENT_RESPONSE = "{\"status\":200,\"data\":{\"id\":\"assignment-1\"}}";
 
     @Test
+    void validatesExpirationAndTextLimitsBeforeSending() {
+        MockApiHttpClient http = new MockApiHttpClient();
+        AssignmentResource assignments = new AssignmentResource(http, "acc");
+        DocumentResource documents = new DocumentResource(http, "acc");
+        SignerResource signers = new SignerResource(http, "acc");
+        for (String expiration : List.of("not-a-date", "2030-01-01", "2020-01-01T00:00:00Z",
+                java.time.Instant.now().plusSeconds(1800).toString())) {
+            var request = CreateAssignmentRequest.builder().signers(List.of(SignerReference.ofId("s1")))
+                    .expiresAt(expiration).build();
+            assertThatThrownBy(() -> assignments.create("doc", request)).isInstanceOf(ValidationException.class);
+            assertThatThrownBy(() -> assignments.resetExpiration("doc", "asg", expiration))
+                    .isInstanceOf(ValidationException.class);
+            var template = com.assinafy.sdk.request.CreateDocumentFromTemplateRequest.builder()
+                    .signers(List.of(com.assinafy.sdk.request.TemplateSigner.builder().id("s1").roleId("r1").build()))
+                    .expiresAt(expiration).build();
+            assertThatThrownBy(() -> documents.createFromTemplate("template", template))
+                    .isInstanceOf(ValidationException.class);
+        }
+        assertThatThrownBy(() -> documents.rename("doc", "x".repeat(256)))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> assignments.decline("doc", "asg", "code", "x".repeat(2001)))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> signers.declineMultiple("code", List.of("doc"), "x".repeat(2001)))
+                .isInstanceOf(ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
+
+        String unicodeName = "\uD83D\uDCC4".repeat(255);
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc\"}}");
+        documents.rename("doc", unicodeName);
+        assertThat(http.lastCaptured().getJsonBody()).contains(unicodeName);
+        String futureWithOffset = java.time.OffsetDateTime.now(java.time.ZoneOffset.ofHours(3))
+                .plusDays(2).toString();
+        assertThat(BaseResource.requireExpiration(futureWithOffset)).isEqualTo(futureWithOffset);
+    }
+
+    @Test
+    void rejectsIncompatibleDeliveryMethodsForCreationAndEstimationBeforeSending() {
+        MockApiHttpClient http = new MockApiHttpClient();
+        AssignmentResource assignments = new AssignmentResource(http, "acc");
+        DocumentResource documents = new DocumentResource(http, "acc");
+        for (String verification : List.of("Email", "Whatsapp")) {
+            String notification = "Email".equals(verification) ? "Whatsapp" : "Email";
+            CreateAssignmentRequest request = CreateAssignmentRequest.builder().signers(List.of(
+                    SignerReference.builder().id("s1").verificationMethod(verification)
+                            .notificationMethods(List.of(notification)).build())).build();
+            assertThatThrownBy(() -> assignments.create("doc", request))
+                    .isInstanceOf(ValidationException.class).hasMessageContaining("must match");
+            assertThatThrownBy(() -> assignments.estimateCost("doc", request))
+                    .isInstanceOf(ValidationException.class).hasMessageContaining("must match");
+            var template = com.assinafy.sdk.request.CreateDocumentFromTemplateRequest.builder()
+                    .signers(List.of(com.assinafy.sdk.request.TemplateSigner.builder()
+                            .id("s1").roleId("r1").verificationMethod(verification)
+                            .notificationMethods(List.of(notification)).build())).build();
+            assertThatThrownBy(() -> documents.createFromTemplate("template", template))
+                    .isInstanceOf(ValidationException.class).hasMessageContaining("must match");
+            assertThatThrownBy(() -> documents.estimateCostFromTemplate("template", template))
+                    .isInstanceOf(ValidationException.class).hasMessageContaining("must match");
+        }
+        var multiple = CreateAssignmentRequest.builder().signers(List.of(SignerReference.builder()
+                .id("s1").notificationMethods(List.of("Email", "Whatsapp")).build())).build();
+        assertThatThrownBy(() -> assignments.create("doc", multiple))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("only one");
+        assertThatThrownBy(() -> assignments.estimateCost("doc", multiple))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("only one");
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
+    void digitalCertificateAllowsEitherSingleNotificationChannel() {
+        for (String notification : List.of("Email", "Whatsapp")) {
+            var request = CreateAssignmentRequest.builder().signers(List.of(SignerReference.builder()
+                    .id("s1").verificationMethod("DigitalCertificate")
+                    .notificationMethods(List.of(notification)).build())).build();
+            assertThat(AssignmentResource.buildAssignmentPayload(request, false).get("signers"))
+                    .isEqualTo(List.of(Map.of("id", "s1", "verification_method", "DigitalCertificate",
+                            "notification_methods", List.of(notification))));
+        }
+    }
+
+    @Test
     void buildPayloadNormalisesStringSignerIds() {
         CreateAssignmentRequest req = CreateAssignmentRequest.builder()
                 .signers(List.of(SignerReference.ofId("a"), SignerReference.ofId("b")))
@@ -35,16 +115,17 @@ class AssignmentResourceTest {
 
     @Test
     void buildPayloadIncludesOptionalFields() {
+        String expiresAt = java.time.Instant.now().plusSeconds(86_400).toString();
         CreateAssignmentRequest req = CreateAssignmentRequest.builder()
                 .signers(List.of(SignerReference.ofId("a")))
                 .message("hi")
-                .expiresAt("2024-12-31")
+                .expiresAt(expiresAt)
                 .copyReceivers(List.of("c"))
                 .build();
         Map<String, Object> body = AssignmentResource.buildAssignmentPayload(req, false);
 
         assertThat(body.get("message")).isEqualTo("hi");
-        assertThat(body.get("expires_at")).isEqualTo("2024-12-31");
+        assertThat(body.get("expires_at")).isEqualTo(expiresAt);
         assertThat(body.get("copy_receivers")).isEqualTo(List.of("c"));
     }
 

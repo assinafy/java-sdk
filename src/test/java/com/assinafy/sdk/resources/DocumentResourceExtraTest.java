@@ -352,16 +352,14 @@ class DocumentResourceExtraTest {
     }
 
     @Test
-    void templateEstimateAllowsMultipleDocumentedNotificationMethods() {
-        http.enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":0.45}}");
-
-        documents.estimateCostFromTemplate("tmpl",
+    void templateEstimateRejectsMultipleNotificationMethodsBeforeSending() {
+        assertThatThrownBy(() -> documents.estimateCostFromTemplate("tmpl",
                 CreateDocumentFromTemplateRequest.builder().signers(List.of(
                         TemplateSigner.builder().roleId("r1")
-                                .notificationMethods(List.of("Email", "Whatsapp")).build())).build());
-
-        assertThat(http.lastCaptured().getJsonBody())
-                .contains("\"notification_methods\":[\"Email\",\"Whatsapp\"]");
+                                .notificationMethods(List.of("Email", "Whatsapp")).build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("only one notification method");
+        assertThat(http.capturedCount()).isZero();
     }
 
     @Test

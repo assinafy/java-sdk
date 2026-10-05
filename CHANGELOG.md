@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-05
+
+### Changed
+
+- Workspace credentials are omitted from public, login, password-reset, OAuth grant and signer-access-code requests by the default transport.
+- Assignment and template-document creation and estimates share delivery validation: at most one notification channel, matching Email/WhatsApp verification when a channel is selected. Digital-certificate verification permits either channel; empty notification arrays remain supported. Migration: replace multiple or incompatible channels with a compatible single channel.
+- Document names and decline reasons enforce the API's 255 and 2,000 character limits. Creation and expiration reset require an ISO 8601 timestamp with an offset at least one hour ahead. Migration: supply a future timestamp instead of a date-only value.
+- OAuth callbacks reject repeated parameters, malformed percent encoding and an issuer that differs from the stored issuer. OAuth URLs reject embedded credentials and fragments.
+- An upload response without a document ID raises `AssinafyException`. Migration: handle this malformed server response as an SDK failure instead of a local input-validation error.
+- Jackson dependencies use BOM 2.22.3.
+- The signing guide explains asynchronous processing, recipient verification, certificate generation, final artifact storage and webhook handling. Certificate endpoints are available in production and sandbox when enabled by the workspace plan.
+
 ## [1.11.0] - 2026-09-25
 
 - `DocumentVerification.getAgreementCode()` exposes `agreement_code`, the agreement code printed on the document certificate.

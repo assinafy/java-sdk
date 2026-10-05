@@ -209,6 +209,13 @@ public class AssinafyClient {
      * creation. Reused signer profiles are also left unchanged. Signers must have unique
      * case-insensitive email addresses, or unique WhatsApp numbers when no email is supplied.
      *
+     * <p>Request/response wire payloads follow
+     * {@link DocumentResource#upload(byte[], String, java.util.Map, String)},
+     * {@link SignerResource#create(com.assinafy.sdk.request.CreateSignerRequest, String)} and
+     * {@link AssignmentResource#create(String, CreateAssignmentRequest)}. The returned composite
+     * contains those typed document/assignment payloads and the resolved signer IDs; it creates no
+     * additional HTTP endpoint. Expiration is validated before uploading.
+     *
      * @param request document, assignment, signer, and polling settings
      * @return the created document, the assignment, and the signer IDs
      * @throws ValidationException if the request is absent, contains no signers, or contains a
@@ -220,6 +227,7 @@ public class AssinafyClient {
         if (request.getSigners() == null || request.getSigners().isEmpty()) {
             throw new ValidationException("At least one signer is required");
         }
+        BaseResource.requireExpiration(request.getExpiresAt());
         Set<String> emails = new HashSet<>();
         Set<String> whatsappNumbers = new HashSet<>();
         for (UploadAndRequestSignaturesRequest.SignerEntry signer : request.getSigners()) {

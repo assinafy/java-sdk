@@ -49,6 +49,8 @@ public class FieldResource extends BaseResource {
      * {@code name} are required; {@code regex} and {@code is_required} are optional. Returns the
      * created {@link FieldDefinition}.
      *
+     * <p>Wire contract, payloads and failures: {@link #create(CreateFieldRequest, String)}.</p>
+     *
      * @param request field definition to create
      * @return the created field definition
      */
@@ -58,6 +60,46 @@ public class FieldResource extends BaseResource {
 
     /**
      * Create a field definition in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "Full name",
+     *   "type": "text",
+     *   "regex": null,
+     *   "is_required": false
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "field",
+     *     "id": "6152120297080d55bdd13197",
+     *     "name": "Signature",
+     *     "type": "signature",
+     *     "regex": null,
+     *     "is_pre_defined": false,
+     *     "is_active": false,
+     *     "is_required": false,
+     *     "is_standard": false,
+     *     "is_read_only": false,
+     *     "is_visible": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created field; 400 One or more fields failed validation.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param request field definition to create
      * @param accountId explicit account ID, or {@code null} for the default
@@ -80,6 +122,8 @@ public class FieldResource extends BaseResource {
     /**
      * List field definitions for the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
+     *
      * @return paginated field definitions
      */
     public PaginatedResult<FieldDefinition> list() {
@@ -88,6 +132,8 @@ public class FieldResource extends BaseResource {
 
     /**
      * List field definitions for the default account.
+     *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
      *
      * @param params paging and filter options; {@code null} sends no query parameters
      * @return paginated field definitions
@@ -98,6 +144,43 @@ public class FieldResource extends BaseResource {
 
     /**
      * List field definitions ({@code GET /accounts/{accountId}/fields}).
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/fields</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>include_inactive</code> (query, optional): Include inactive field definitions.</li>
+     * <li><code>include_standard</code> (query, optional): Include standard field types (signature, initial, signatureDate).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "field",
+     *       "id": "6152120297080d55bdd13197",
+     *       "name": "Signature",
+     *       "type": "signature",
+     *       "regex": null,
+     *       "is_pre_defined": false,
+     *       "is_active": false,
+     *       "is_required": false,
+     *       "is_standard": false,
+     *       "is_read_only": false,
+     *       "is_visible": false
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Field definitions; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param params paging and filter options; {@code null} sends no query parameters
      * @param accountId explicit account ID, or {@code null} for the default
@@ -114,6 +197,8 @@ public class FieldResource extends BaseResource {
     /**
      * Fetch a field definition by ID from the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #get(String, String)}.</p>
+     *
      * @param fieldId field definition ID
      * @return the field definition
      */
@@ -123,6 +208,40 @@ public class FieldResource extends BaseResource {
 
     /**
      * Fetch a field definition ({@code GET /accounts/{accountId}/fields/{fieldId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/fields/{fieldId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>fieldId</code> (path, required): The field ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "field",
+     *     "id": "6152120297080d55bdd13197",
+     *     "name": "Signature",
+     *     "type": "signature",
+     *     "regex": null,
+     *     "is_pre_defined": false,
+     *     "is_active": false,
+     *     "is_required": false,
+     *     "is_standard": false,
+     *     "is_read_only": false,
+     *     "is_visible": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The field; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param fieldId field definition ID
      * @param accountId explicit account ID, or {@code null} for the default
@@ -140,6 +259,8 @@ public class FieldResource extends BaseResource {
      * Update a field definition ({@code PUT /accounts/{accountId}/fields/{fieldId}}) and return the
      * updated {@link FieldDefinition}.
      *
+     * <p>Wire contract, payloads and failures: {@link #update(String, UpdateFieldRequest, String)}.</p>
+     *
      * @param fieldId field definition ID
      * @param request fields to update
      * @return the updated field definition
@@ -150,6 +271,46 @@ public class FieldResource extends BaseResource {
 
     /**
      * Update a field definition in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/accounts/{accountId}/fields/{fieldId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>fieldId</code> (path, required): The field ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "name": "name_example",
+     *   "regex": null,
+     *   "is_active": false
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "field",
+     *     "id": "6152120297080d55bdd13197",
+     *     "name": "Signature",
+     *     "type": "signature",
+     *     "regex": null,
+     *     "is_pre_defined": false,
+     *     "is_active": false,
+     *     "is_required": false,
+     *     "is_standard": false,
+     *     "is_read_only": false,
+     *     "is_visible": false
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated field; 404 The requested resource does not exist.;
+     * 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param fieldId field definition ID
      * @param request fields to update
@@ -169,6 +330,8 @@ public class FieldResource extends BaseResource {
     /**
      * Delete a field definition from the default account.
      *
+     * <p>Wire contract, payloads and failures: {@link #delete(String, String)}.</p>
+     *
      * @param fieldId field definition ID
      */
     public void delete(String fieldId) {
@@ -177,6 +340,30 @@ public class FieldResource extends BaseResource {
 
     /**
      * Delete a field definition ({@code DELETE /accounts/{accountId}/fields/{fieldId}}).
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/accounts/{accountId}/fields/{fieldId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>fieldId</code> (path, required): The field ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Field deleted; 404 The requested resource does not exist.; 401
+     * Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope
+     * statuses raise <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429
+     * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
+     * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param fieldId field definition ID
      * @param accountId explicit account ID, or {@code null} for the default
@@ -192,6 +379,8 @@ public class FieldResource extends BaseResource {
      * Validate a single value against a field definition. Authenticated callers may omit
      * {@code signerAccessCode}; signer self-service callers must supply it.
      *
+     * <p>Wire contract, payloads and failures: {@link #validate(String, Object, String, String)}.</p>
+     *
      * @param fieldId field definition ID
      * @param value value to validate; may be {@code null}
      * @param signerAccessCode signer query credential, or {@code null} for normal authentication
@@ -203,6 +392,36 @@ public class FieldResource extends BaseResource {
 
     /**
      * Validate one value in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields/{fieldId}/validate</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>fieldId</code> (path, required): The field ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "value": "400.676.228-36"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "type": "cpf",
+     *     "success": true,
+     *     "error_message": ""
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Validation result; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param fieldId field definition ID
      * @param value value to validate; may be {@code null}
@@ -230,6 +449,8 @@ public class FieldResource extends BaseResource {
      * Validate multiple values in one round-trip. {@code entries} is the list of
      * {@code {field_id, value}} objects to validate.
      *
+     * <p>Wire contract, payloads and failures: {@link #validateMultiple(List, String, String)}.</p>
+     *
      * @param entries field IDs and values; {@code null} sends an empty array
      * @param signerAccessCode signer query credential, or {@code null} for normal authentication
      * @return one result per submitted field
@@ -240,6 +461,41 @@ public class FieldResource extends BaseResource {
 
     /**
      * Validate multiple values in an explicit or default account.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields/validate-multiple</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>[
+     *   {
+     *     "field_id": "63488ffb7adf435aba319787",
+     *     "value": "1111111111111"
+     *   }
+     * ]</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "field_id": "63488ffb7adf435aba319787",
+     *       "type": "cpf",
+     *       "success": false,
+     *       "error_message": "Invalid CPF."
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Validation results; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param entries field IDs and values; {@code null} sends an empty array
      * @param signerAccessCode signer query credential, or {@code null} for normal authentication
@@ -261,6 +517,29 @@ public class FieldResource extends BaseResource {
 
     /**
      * List supported input types ({@code /field-types}). Workspace-independent.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/field-types</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "type": "cpf",
+     *       "name": "CPF"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Field types; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @return supported field types
      */

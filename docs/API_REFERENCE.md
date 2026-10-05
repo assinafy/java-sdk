@@ -1,12 +1,12 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **93** documented operations, plus the production-only routes listed under [Deployed extensions](#deployed-extensions).
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **93** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
 
 ## Conventions
 
 - Build a client with `new AssinafyClient(AssinafyClientOptions.builder()...build())`; each operation names its client accessor and exact current public signature.
 - Custom API base URLs must use HTTPS. Plain HTTP is accepted only for loopback hosts used in local tests, so credentials are not sent over cleartext networks.
-- Authenticated operations accept either `X-Api-Key` (recommended for server integrations) or `Authorization: Bearer <JWT>`. Signer-facing operations use the `signer-access-code` query credential. Public operations should use a credential-free client.
+- Authenticated operations accept either `X-Api-Key` (recommended for server integrations) or `Authorization: Bearer <JWT>`. Signer-facing operations use the `signer-access-code` query credential. The default transport omits workspace credentials on public, login, OAuth grant, and signer-access-code requests.
 - JSON success bodies use `{ "status": integer, "message": string, "data": ... }`. The SDK returns `data`. A Java `void` method discards the success envelope and also accepts an empty 2xx body. Binary methods return raw `byte[]`, not JSON.
 - A `!` after an inline JSON field name means required. `?` after a type means explicitly nullable. “Required: no” means the OpenAPI schema does not require the field; it does not imply the server always omits it.
 - Linked component schemas are part of the operation payload; follow the link for every nested field. List methods return `PaginatedResult<T>` when pagination headers are exposed.
@@ -880,7 +880,7 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create document from template.
-- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account. The Java SDK requires nonblank role and signer IDs, accepts only the documented verification and notification methods, permits at most one notification method per signer, and validates signing steps as an all-or-none contiguous sequence starting at 1. A `DigitalCertificate` signer must be alone in its step.
+- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account. The Java SDK requires nonblank role and signer IDs, accepts only the documented verification and notification methods, permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to match verification, and validates signing steps as an all-or-none contiguous sequence starting at 1. A `DigitalCertificate` signer must be alone in its step.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1192,7 +1192,7 @@ Documented statuses: `200` A page of assignments; `401` Missing or invalid crede
 - **HTTP:** `POST /v1/documents/{documentId}/assignments`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Creates the assignment and dispatches configured signature requests.
-- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires signer IDs, validates the documented delivery-method values, and requires nonempty `entries` for `collect`. `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1. A `DigitalCertificate` signer must be alone in its step.
+- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires signer IDs, permits zero or one notification channel matching Email/WhatsApp verification (DigitalCertificate allows either), validates an optional ISO 8601 expiration with an offset at least one hour ahead, and requires nonempty `entries` for `collect`. `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1. A `DigitalCertificate` signer must be alone in its step.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2234,7 +2234,7 @@ Documented statuses: `200` The protected resource metadata; `500` Unexpected ser
 - **HTTP:** `POST /v1/oauth/token`
 - **Auth:** public — the application authenticates itself with `client_id`/`client_secret` in the body (`client_secret_post`). The SDK sends no `X-Api-Key` or `Authorization` header here.
 - **Side effects:** Issues tokens; a refresh rotates the refresh token and retires the one sent. The SDK sends each token request once and never re-sends it on its own — not after a connection failure, a `408`, or a `503` with `Retry-After: 0` — because a re-sent refresh would replay the retired token; a timeout or dropped connection raises `NetworkException`, and such a response `ApiException`. Do not re-send a refresh token after a failure that may have reached the server either: re-read storage, and if it still holds the token you sent, ask the user to reconnect. Only a `NetworkException` caused by `UnknownHostException`, `ConnectException` or `SSLHandshakeException` happened before sending and is safe to retry.
-- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour. A refresh token is valid for 30 days, and every refresh returns a new one with a fresh 30 days, so a connection only expires after 30 days without a refresh. `refreshToken` rejects a `2xx` response without a new `refresh_token` — missing, blank, or the one sent — with `ValidationException`: the token sent may already be retired, so ask the user to reconnect.
+- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour. A refresh token is valid for 30 days, and every refresh returns a new one with a fresh 30 days, so a connection only expires after 30 days without a refresh. The token-exchange grant advertised by discovery is reserved for internal Assinafy service clients; marketplace integrations use authorization code and refresh grants. `refreshToken` rejects a `2xx` response without a new `refresh_token` — missing, blank, or the one sent — with `ValidationException`: the token sent may already be retired, so ask the user to reconnect.
 
 Parameters: none.
 
@@ -2345,7 +2345,7 @@ Query parameters emitted: `response_type=code`, `client_id`, `redirect_uri`, `sc
 
 - **Java:** `client.oauth()` — `OAuthResource: public String readAuthorizationCallback(String callbackUrlOrQuery, OAuthAuthorizationRequest stored)`; `public String readAuthorizationCallback(Map<String, String> params, OAuthAuthorizationRequest stored)`
 - **HTTP:** none — validates the query parameters the authorization server put on your redirect URI.
-- **Contract notes:** Checks, in order and before anything else is trusted, that `state` equals the stored value (compared in constant time) and that `iss` equals the stored issuer, and only then whether the server reported an error. Because the authorization server advertises `authorization_response_iss_parameter_supported: true` and always sends `iss`, a missing one is treated exactly like a wrong one, and a stored request without a `state` or issuer is rejected. A declined consent arrives as `?error=access_denied` and raises `OAuthException`; a mismatch raises `ValidationException` — in either case the response is not yours, so stop rather than exchanging.
+- **Contract notes:** Checks, in order and before anything else is trusted, that `state` equals the stored value (compared in constant time) and that `iss` exactly equals the stored issuer, and only then whether the server reported an error. Because the authorization server advertises `authorization_response_iss_parameter_supported: true` and always sends `iss`, a missing one is treated exactly like a wrong one, and a stored request without a `state` or issuer is rejected. Repeated parameters and malformed percent encoding are rejected. A declined consent arrives as `?error=access_denied` and raises `OAuthException`; a mismatch raises `ValidationException` — in either case the response is not yours, so stop rather than exchanging.
 
 Authorization-response errors: `access_denied` (the user declined), `invalid_scope` (a scope the application is not registered for, or none), `invalid_request` (missing or malformed PKCE parameters), `unsupported_response_type` (anything other than `response_type=code`), `invalid_target` (a `resource` other than the published one).
 
@@ -3138,7 +3138,7 @@ carry no compatibility promise from the reference, so each one names what the SD
 
 - **Java:** `client.signers()` — `SignerResource: public String startCertificateSignature(String signerAccessCode)`
 - **Auth:** signer access code. Configured bearer and API-key credentials are not used by this route.
-- **Availability:** **production only.** The sandbox does not expose it.
+- **Availability:** production and sandbox; the workspace must have Digital Certificate enabled.
 - **Contract notes:** Begins an ICP-Brasil digital-certificate signature for a signer whose `verification_method` is `DigitalCertificate`. Those signers cannot use [Sign assignment items](#signing) — that endpoint returns `400` for them. The signer must have confirmed their data and accepted the terms first. The returned token is signed in the browser by the signer's own A1 or A3 certificate through the Web PKI extension.
 
 Request body: **required**. The access code travels in both the query and the body.
@@ -3163,7 +3163,7 @@ Statuses: `200` Operation started; `400` Invalid signing state or request; `401`
 
 - **Java:** `client.signers()` — `SignerResource: public String completeCertificateSignature(String signerAccessCode, String token)`
 - **Auth:** signer access code. Configured bearer and API-key credentials are not used by this route.
-- **Availability:** **production only.** The sandbox does not expose it.
+- **Availability:** production and sandbox; the workspace must have Digital Certificate enabled.
 - **Contract notes:** Completes the signature with the browser-signed Web PKI token. Afterwards the document's `pades` artifact carries the qualified PAdES signature.
 
 Request body: **required**.
@@ -3203,6 +3203,8 @@ Statuses: `200` Signature completed; `400` Invalid signed token or signing state
 - `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer resolution, and assignment creation. On an ordinary later-step failure, it attempts to delete the uploaded document and signer records whose create responses returned valid IDs; cleanup failures are suppressed on the original exception. Signers recovered after an indeterminate create response are not updated or deleted. A recovered entry containing CPF/CNPJ fails before assignment creation. If assignment creation has an indeterminate result and reconciliation cannot find it, the resources are retained to avoid deleting a potentially active request.
 - `SignerResource.create(...)` always sends the create POST. A supplied `CreateSignerRequest.cpf` (CPF or CNPJ) is persisted through a follow-up `government_id` update; if that update fails, the new signer is deleted. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
 - `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call `GET /accounts/{accountId}/templates/{templateId}`, a live route that the published OpenAPI document does not list — see [Deployed extensions](#deployed-extensions).
+- Assignment/template creation and expiration reset validate timestamps with an offset at least one hour ahead; estimates ignore expiration. Rename and decline enforce 255 and 2,000 Unicode-character limits.
+- A password-reset request for an unknown user returns `404`, with no user found; a signer contact does not establish a registered user identity.
 - `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`; use this form only where clearing expiration is supported.
 - `PublicDocumentResource.sendToken(String)` follows the optional/bodyless form, and `sendToken(String, String)` sends only `email`. The deployment-specific `sendToken(String, String, String)` sends `email`, `recipient`, and `channel` for the email channel, and `recipient` plus `channel` for other channels.
 - `AssignmentResource.list(..., accountId)` adds optional `accountId` query context.

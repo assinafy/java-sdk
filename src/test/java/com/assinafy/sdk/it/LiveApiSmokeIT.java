@@ -49,6 +49,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -73,11 +75,17 @@ class LiveApiSmokeIT {
     private static final long RECONCILE_DELAY_MS = 500;
     private static final long DOCUMENT_DELETE_TIMEOUT_MS = 30_000;
     private static final long DOCUMENT_DELETE_POLL_MS = 1_000;
-    private static final long MAX_RETRY_DELAY_MS = 10_000;
+    private static final long MAX_RETRY_DELAY_MS = 30_000;
 
     private static String apiKey;
     private static String accountId;
     private static AssinafyClient client;
+
+    @BeforeEach
+    void paceSandboxRequests() throws InterruptedException {
+        // Leave room for each test's multi-request lifecycle within the sandbox rate window.
+        Thread.sleep(3_000);
+    }
 
     @BeforeAll
     static void setUp() {
@@ -99,7 +107,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(1)
     void listsWorkspacesIncludesTheConfiguredAccount() {
-        PaginatedResult<Workspace> result = client.workspaces().list();
+        PaginatedResult<Workspace> result = read(() -> client.workspaces().list());
         assertThat(result.getData()).isNotEmpty();
         assertThat(result.getData())
                 .extracting(Workspace::getId)
@@ -109,7 +117,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(2)
     void getsWorkspaceById() {
-        var ws = client.workspaces().get(accountId);
+        var ws = read(() -> client.workspaces().get(accountId));
         assertThat(ws.getId()).isEqualTo(accountId);
         assertThat(ws.getName()).isNotBlank();
     }
@@ -118,7 +126,7 @@ class LiveApiSmokeIT {
     @Order(3)
     void listsDocumentsWithPaginationMeta() {
         PaginatedResult<Document> result =
-                client.documents().list(ListParams.builder().perPage(2).page(1).build());
+                read(() -> client.documents().list(ListParams.builder().perPage(2).page(1).build()));
         // Even with empty data the meta should be populated when per-page works correctly.
         assertThat(result.getMeta()).as("pagination meta proves per-page is honored").isNotNull();
         assertThat(result.getMeta().getPerPage()).isEqualTo(2);
@@ -127,7 +135,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(4)
     void getsDocumentStatuses() {
-        List<DocumentStatusInfo> statuses = client.documents().getStatuses();
+        List<DocumentStatusInfo> statuses = read(() -> client.documents().getStatuses());
         assertThat(statuses).isNotEmpty();
         assertThat(statuses).extracting(DocumentStatusInfo::getCode).contains("certificated");
     }
@@ -135,7 +143,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(5)
     void listsTemplates() {
-        PaginatedResult<Template> templates = client.templates().list();
+        PaginatedResult<Template> templates = read(() -> client.templates().list());
         // Workspaces may have zero templates; just check it doesn't error.
         assertThat(templates.getData()).isNotNull();
     }
@@ -143,7 +151,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(6)
     void listsWebhookEventTypes() {
-        List<WebhookEventTypeInfo> types = client.webhooks().listEventTypes();
+        List<WebhookEventTypeInfo> types = read(() -> client.webhooks().listEventTypes());
         assertThat(types).isNotEmpty();
     }
 
@@ -152,7 +160,7 @@ class LiveApiSmokeIT {
     void getsWebhookSubscriptionWithoutErrors() {
         // get() maps a 404 to null (callOptional); otherwise it returns a well-formed subscription.
         assertThatCode(() -> {
-            var sub = client.webhooks().get();
+            var sub = read(() -> client.webhooks().get());
             if (sub != null) {
                 // When present, the documented fields are populated (events is always returned).
                 assertThat(sub.getEvents()).isNotNull();
@@ -164,14 +172,14 @@ class LiveApiSmokeIT {
     @Test
     @Order(8)
     void listsFieldDefinitions() {
-        PaginatedResult<FieldDefinition> fields = client.fields().list();
+        PaginatedResult<FieldDefinition> fields = read(() -> client.fields().list());
         assertThat(fields.getData()).isNotNull();
     }
 
     @Test
     @Order(9)
     void listsFieldTypes() {
-        List<FieldType> types = client.fields().listTypes();
+        List<FieldType> types = read(() -> client.fields().listTypes());
         assertThat(types).isNotEmpty();
         assertThat(types).extracting(FieldType::getType).anyMatch("cpf"::equalsIgnoreCase);
     }
@@ -179,7 +187,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(10)
     void listsSigners() {
-        PaginatedResult<Signer> signers = client.signers().list(ListParams.builder().perPage(5).build());
+        PaginatedResult<Signer> signers = read(() -> client.signers().list(ListParams.builder().perPage(5).build()));
         assertThat(signers.getData()).isNotNull();
     }
 
@@ -202,8 +210,8 @@ class LiveApiSmokeIT {
             documentId.set(doc.getId());
             assertThat(doc.getId()).isNotBlank();
             // Wait for status to advance past 'uploading' or 'metadata_processing'.
-            client.documents().waitUntilReady(doc.getId(), 20_000, 1_500);
-            var details = client.documents().details(doc.getId());
+            read(() -> client.documents().waitUntilReady(doc.getId(), 20_000, 1_500));
+            var details = read(() -> client.documents().details(doc.getId()));
             assertThat(details.getId()).isEqualTo(doc.getId());
             assertThat(details.getTags()).as("tags are always present (possibly empty)").isNotNull();
             assertThat(details.getArtifacts()).isNotNull();
@@ -211,22 +219,22 @@ class LiveApiSmokeIT {
                     .as("the inline thumbnail artifact URL is exposed").isNotBlank();
 
             // Binary downloads: the available 'original' artifact returns real PDF bytes...
-            byte[] original = client.documents().download(doc.getId(), "original");
+            byte[] original = read(() -> client.documents().download(doc.getId(), "original"));
             assertThat(original).isNotEmpty();
             assertThat(new String(original, 0, Math.min(5, original.length))).startsWith("%PDF");
-            assertThat(client.documents().thumbnail(doc.getId())).isNotEmpty();
+            assertThat(read(() -> client.documents().thumbnail(doc.getId()))).isNotEmpty();
 
             // Rename (PATCH /documents/{id}) round-trips through the SDK.
             var renamed = client.documents().rename(doc.getId(), "sdk-it-renamed.pdf");
             assertThat(renamed.getName()).isEqualTo("sdk-it-renamed.pdf");
 
             // Lightweight search (GET /accounts/{id}/documents/search) returns a compact page.
-            var searchResult = client.documents().search(
-                    ListParams.builder().search("sdk-it-renamed").perPage(10).build());
+            var searchResult = read(() -> client.documents().search(
+                    ListParams.builder().search("sdk-it-renamed").perPage(10).build()));
             assertThat(searchResult.getData()).as("search returns a (possibly empty) page").isNotNull();
 
             // An unavailable artifact is surfaced as an API error.
-            assertThatThrownBy(() -> client.documents().download(doc.getId(), "certificated"))
+            assertThatThrownBy(() -> read(() -> client.documents().download(doc.getId(), "certificated")))
                     .isInstanceOf(com.assinafy.sdk.exceptions.ApiException.class);
 
             // Document tags: create, attach by name and ID, replace, list, and detach.
@@ -250,11 +258,11 @@ class LiveApiSmokeIT {
             waitForDocumentTag(doc.getId(), tagName, false);
 
             // Estimate cost for a 1-signer assignment (no email is sent).
-            Map<String, Object> cost = client.assignments().estimateCost(doc.getId(),
+            Map<String, Object> cost = read(() -> client.assignments().estimateCost(doc.getId(),
                     CreateAssignmentRequest.builder()
                             .method("virtual")
                             .signers(List.of(SignerReference.builder().verificationMethod("Email").build()))
-                            .build());
+                            .build()));
             assertThat(cost).isNotNull();
         }
     }
@@ -283,7 +291,7 @@ class LiveApiSmokeIT {
             assertThat(created.getId()).isNotBlank();
             assertThat(created.getEmail()).isEqualToIgnoringCase(email);
 
-            Signer fetched = client.signers().get(created.getId());
+            Signer fetched = read(() -> client.signers().get(created.getId()));
             assertThat(fetched.getId()).isEqualTo(created.getId());
         }
     }
@@ -324,14 +332,14 @@ class LiveApiSmokeIT {
     void validatesFieldValueReturningTypedResult() {
         // Use the predefined "E-mail" field definition from the account.
         PaginatedResult<FieldDefinition> fields =
-                client.fields().list(ListParams.builder().perPage(50).build());
+                read(() -> client.fields().list(ListParams.builder().perPage(50).build()));
         FieldDefinition emailField = fields.getData().stream()
                 .filter(f -> "email".equalsIgnoreCase(f.getType()))
                 .findFirst()
                 .orElse(null);
         Assumptions.assumeTrue(emailField != null, "No email field definition available");
 
-        FieldValidationResult ok = client.fields().validate(emailField.getId(), "john@example.com", null);
+        FieldValidationResult ok = client.fields().validate(emailField.getId(), "john@example.invalid", null);
         assertThat(ok.getSuccess()).isTrue();
 
         FieldValidationResult bad = client.fields().validate(emailField.getId(), "not-an-email", null);
@@ -372,7 +380,7 @@ class LiveApiSmokeIT {
             FieldDefinition created = client.fields().create(
                     CreateFieldRequest.builder().type("text").name(name).build());
             fieldId.set(created.getId());
-            assertThat(client.fields().get(created.getId()).getName()).isEqualTo(name);
+            assertThat(read(() -> client.fields().get(created.getId())).getName()).isEqualTo(name);
 
             FieldDefinition updated = client.fields().update(created.getId(),
                     UpdateFieldRequest.builder().name(name + "-updated").build());
@@ -383,7 +391,7 @@ class LiveApiSmokeIT {
     @Test
     @Order(18)
     void getsAccountTheme() {
-        var theme = client.workspaces().getTheme(accountId);
+        var theme = read(() -> client.workspaces().getTheme(accountId));
         assertThat(theme).isNotNull();
         // account_name is always populated; colors/logo may be null depending on branding.
         assertThat(theme.getAccountName()).isNotBlank();
@@ -392,18 +400,18 @@ class LiveApiSmokeIT {
     @Test
     @Order(19)
     void listsAssignmentsWithSandboxAccountContext() {
-        assertThat(client.assignments().list(ListParams.builder().perPage(1).build()).getData())
+        assertThat(read(() -> client.assignments().list(ListParams.builder().perPage(1).build())).getData())
                 .isNotNull();
     }
 
     @Test
     @Order(20)
     void getsAuthenticatedUserAndProbesDocumentedSandboxRoutes() {
-        assertThat(client.users().get().getId()).isNotBlank();
+        assertThat(read(() -> client.users().get()).getId()).isNotBlank();
 
-        probeDocumentedRoute(() -> client.workspaces().stats(accountId));
-        probeDocumentedRoute(() -> client.users().stats());
-        probeDocumentedRoute(() -> client.users().getNotificationPreferences());
+        probeDocumentedRoute(() -> read(() -> client.workspaces().stats(accountId)));
+        probeDocumentedRoute(() -> read(() -> client.users().stats()));
+        probeDocumentedRoute(() -> read(() -> client.users().getNotificationPreferences()));
     }
 
     @Test
@@ -416,7 +424,7 @@ class LiveApiSmokeIT {
                 "Set both ASSINAFY_TEST_EMAIL_PRIMARY and ASSINAFY_TEST_EMAIL_SECONDARY");
 
         try (SandboxCleanup cleanup = new SandboxCleanup()) {
-            Signer existingPrimary = client.signers().findByEmail(primaryEmail);
+            Signer existingPrimary = read(() -> client.signers().findByEmail(primaryEmail));
             Signer primary = existingPrimary;
             if (primary == null) {
                 String fullName = "SDK Integration Primary "
@@ -435,7 +443,7 @@ class LiveApiSmokeIT {
                         .build());
             }
 
-            Signer existingSecondary = client.signers().findByEmail(secondaryEmail);
+            Signer existingSecondary = read(() -> client.signers().findByEmail(secondaryEmail));
             Signer secondary = existingSecondary;
             if (secondary == null) {
                 String fullName = "SDK Integration Secondary "
@@ -458,7 +466,7 @@ class LiveApiSmokeIT {
             documentCreateAttempted.set(true);
             Document document = client.documents().upload(minimalPdf(), fileName);
             documentId.set(document.getId());
-            client.documents().waitUntilReady(document.getId(), 30_000, 1_500);
+            read(() -> client.documents().waitUntilReady(document.getId(), 30_000, 1_500));
 
             CreateAssignmentRequest request = CreateAssignmentRequest.builder()
                     .method("virtual")
@@ -473,33 +481,43 @@ class LiveApiSmokeIT {
                     .expiresAt(expirationInDays(7))
                     .build();
 
-            assertThat(client.assignments().estimateCost(document.getId(), request)).isNotNull();
+            assertThat(read(() -> client.assignments().estimateCost(document.getId(), request))).isNotNull();
             Assignment assignment = client.assignments().create(document.getId(), request);
             assertThat(assignment.getId()).isNotBlank();
             assertThat(assignment.getSigners()).hasSize(2);
 
             client.assignments().resetExpiration(document.getId(), assignment.getId(),
                     expirationInDays(8));
-            assertThat(client.assignments().estimateResendCost(
-                    document.getId(), assignment.getId(), primary.getId())).isNotNull();
+            String primarySignerId = primary.getId();
+            assertThat(read(() -> client.assignments().estimateResendCost(
+                    document.getId(), assignment.getId(), primarySignerId))).isNotNull();
             assertThat(client.assignments().resendNotification(
                     document.getId(), assignment.getId(), primary.getId()).getDocumentId())
                     .isEqualTo(document.getId());
-            assertThat(client.assignments().getWhatsappNotifications(
-                    document.getId(), assignment.getId())).isNotNull();
+            assertThat(read(() -> client.assignments().getWhatsappNotifications(
+                    document.getId(), assignment.getId()))).isNotNull();
             client.publicDocuments().sendToken(document.getId(), secondaryEmail, "email");
-            assertThat(client.documents().activities(document.getId())).isNotNull();
+            assertThat(read(() -> client.documents().activities(document.getId()))).isNotNull();
         }
     }
 
     @Test
     @Order(22)
     void requestsPasswordResetForConfiguredSandboxIdentity() {
-        String email = System.getenv("ASSINAFY_TEST_EMAIL_PRIMARY");
+        String email = System.getenv("ASSINAFY_TEST_USER_EMAIL");
         Assumptions.assumeTrue(email != null && !email.isBlank(),
-                "Set ASSINAFY_TEST_EMAIL_PRIMARY");
+                "Set ASSINAFY_TEST_USER_EMAIL to a registered sandbox user identity");
         assertThatCode(() -> client.authentication().requestPasswordReset(email))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    @Order(22)
+    void passwordResetRejectsUnknownIdentity() {
+        assertThatThrownBy(() -> client.authentication().requestPasswordReset(
+                "java-sdk-unknown-" + UUID.randomUUID() + "@example.invalid"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(failure -> assertThat(((ApiException) failure).getStatusCode()).isEqualTo(404));
     }
 
     @Test
@@ -525,7 +543,7 @@ class LiveApiSmokeIT {
             cleanup.add(() -> deleteDocument(
                     documentId.get(), fileName, workflowAttempted.get()));
 
-            Signer expectedSigner = client.signers().findByEmail(email);
+            Signer expectedSigner = read(() -> client.signers().findByEmail(email));
             if (expectedSigner == null) {
                 signerCreateAttempted.set(true);
                 expectedSigner = client.signers().create(CreateSignerRequest.builder()
@@ -566,16 +584,16 @@ class LiveApiSmokeIT {
     @Test
     @Order(24)
     void leavesNoNamedSandboxTestResources() {
-        assertThat(client.documents().search(
-                        ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
+        assertThat(read(() -> client.documents().search(
+                        ListParams.builder().search("sdk-it-").perPage(100).build())).getData())
                 .extracting(Document::getName)
                 .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
-        assertThat(client.tags().list(
-                        ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
+        assertThat(read(() -> client.tags().list(
+                        ListParams.builder().search("sdk-it-").perPage(100).build())).getData())
                 .extracting(Tag::getName)
                 .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
-        assertThat(client.fields().list(
-                        ListParams.builder().search("sdk-it-").perPage(100).build()).getData())
+        assertThat(read(() -> client.fields().list(
+                        ListParams.builder().search("sdk-it-").perPage(100).build())).getData())
                 .extracting(FieldDefinition::getName)
                 .noneMatch(name -> name != null && name.startsWith("sdk-it-"));
     }
@@ -811,22 +829,38 @@ class LiveApiSmokeIT {
                         || error instanceof NetworkException
                         || error instanceof ApiException api && api.getStatusCode() >= 500;
                 if (!retryable || retryAttempts++ == 2) throw error;
-                long delayMs = 1_250;
-                if (error instanceof RateLimitException rateLimit) {
-                    String retryAfter = rateLimit.getResponseHeader("retry-after");
-                    try {
-                        if (retryAfter != null) {
-                            long seconds = Math.min(MAX_RETRY_DELAY_MS / 1_000,
-                                    Math.max(1, Long.parseLong(retryAfter)));
-                            delayMs = Math.min(MAX_RETRY_DELAY_MS, seconds * 1_000 + 250);
-                        }
-                    } catch (NumberFormatException ignored) {
-                        // Retry-After may be an HTTP date; use the short sandbox fallback.
-                    }
-                }
+                long delayMs = retryDelayMs(error);
                 sleepCleanup(delayMs);
             }
         }
+    }
+
+    private static <T> T read(Supplier<T> operation) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return operation.get();
+            } catch (RateLimitException throttled) {
+                if (attempt == 2) throw throttled;
+                sleepCleanup(retryDelayMs(throttled));
+            }
+        }
+    }
+
+    private static long retryDelayMs(RuntimeException error) {
+        long delayMs = 1_250;
+        if (error instanceof RateLimitException rateLimit) {
+            String retryAfter = rateLimit.getResponseHeader("retry-after");
+            try {
+                if (retryAfter != null) {
+                    long seconds = Math.min(MAX_RETRY_DELAY_MS / 1_000,
+                            Math.max(1, Long.parseLong(retryAfter)));
+                    delayMs = Math.min(MAX_RETRY_DELAY_MS, seconds * 1_000 + 250);
+                }
+            } catch (NumberFormatException ignored) {
+                // Retry-After may be an HTTP date; use the short sandbox fallback.
+            }
+        }
+        return delayMs;
     }
 
     private static final class SandboxCleanup implements AutoCloseable {

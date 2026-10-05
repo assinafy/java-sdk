@@ -63,6 +63,8 @@ public class AssignmentResource extends BaseResource {
      * <p>This overload supplies the client's default {@code accountId} query automatically when one
      * is configured; bearer sessions may resolve their account without it.
      *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
+     *
      * @param params paging and filtering parameters, or {@code null}
      * @return matching assignments and pagination metadata
      */
@@ -73,6 +75,80 @@ public class AssignmentResource extends BaseResource {
     /**
      * List assignments, adding {@code accountId} query context when an explicit or default account
      * is available.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/assignments</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>page</code> (query, optional): Page number.</li>
+     * <li><code>per-page</code> (query, optional): Records per page (max 100).</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "resource": "assignment",
+     *       "id": "615606ef81d199996981dbce",
+     *       "sender_email": "sender@example.invalid",
+     *       "method": "virtual",
+     *       "expires_at": null,
+     *       "message": null,
+     *       "signers": [
+     *         {
+     *           "resource": "signer",
+     *           "id": "62d6ee35c7741ca4006b9e11",
+     *           "full_name": "John Signer",
+     *           "email": null,
+     *           "whatsapp_phone_number": null,
+     *           "has_accepted_terms": false,
+     *           "verification_method": null,
+     *           "notification_methods": null,
+     *           "step": null,
+     *           "notified": null,
+     *           "completed": null,
+     *           "notification_history": null
+     *         }
+     *       ],
+     *       "copy_receivers": [
+     *         {}
+     *       ],
+     *       "items": [
+     *         {
+     *           "id": "id_example",
+     *           "page": null,
+     *           "signer": {},
+     *           "field": null,
+     *           "display_settings": null,
+     *           "value": null,
+     *           "completed": false
+     *         }
+     *       ],
+     *       "summary": {
+     *         "signer_count": 1,
+     *         "completed_count": 0,
+     *         "signers": [
+     *           {}
+     *         ]
+     *       },
+     *       "signing_urls": [
+     *         {
+     *           "signer_id": "signer_id_example",
+     *           "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.invalid"
+     *         }
+     *       ]
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 A page of assignments; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param params paging and filtering parameters, or {@code null}
      * @param accountId explicit account ID, or {@code null} to use the default/session context
@@ -87,6 +163,8 @@ public class AssignmentResource extends BaseResource {
 
     /**
      * List assignments with default paging and account context.
+     *
+     * <p>Wire contract, payloads and failures: {@link #list(ListParams, String)}.</p>
      *
      * @return matching assignments and pagination metadata
      */
@@ -104,6 +182,117 @@ public class AssignmentResource extends BaseResource {
      * digital-certificate signer must be alone in its step, and {@code collect} requires nonempty
      * entries. Returns the created {@link Assignment} (signers, items, summary and per-signer
      * signing URLs).
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/documents/{documentId}/assignments</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "method": "virtual",
+     *   "signers": [
+     *     {
+     *       "id": "615605f50e968054a5b7c9b8",
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "Email"
+     *       ],
+     *       "step": 1
+     *     }
+     *   ],
+     *   "entries": [
+     *     {
+     *       "page_id": "page_id_example",
+     *       "fields": [
+     *         {
+     *           "signer_id": "signer_id_example",
+     *           "field_id": "field_id_example",
+     *           "display_settings": {
+     *             "left": 69,
+     *             "top": 282,
+     *             "width": 421,
+     *             "height": 45.86,
+     *             "fontFamily": "Arial",
+     *             "fontSize": 22,
+     *             "backgroundColor": "#D5EBFF"
+     *           }
+     *         }
+     *       ]
+     *     }
+     *   ],
+     *   "message": "",
+     *   "expires_at": "2030-10-05T12:00:00Z",
+     *   "copy_receivers": [
+     *     "copy_receivers_example"
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "assignment",
+     *     "id": "615606ef81d199996981dbce",
+     *     "sender_email": "sender@example.invalid",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": null,
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "62d6ee35c7741ca4006b9e11",
+     *         "full_name": "John Signer",
+     *         "email": null,
+     *         "whatsapp_phone_number": null,
+     *         "has_accepted_terms": false,
+     *         "verification_method": null,
+     *         "notification_methods": null,
+     *         "step": null,
+     *         "notified": null,
+     *         "completed": null,
+     *         "notification_history": null
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "id_example",
+     *         "page": null,
+     *         "signer": {},
+     *         "field": null,
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": false
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 0,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "signer_id_example",
+     *         "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.invalid"
+     *       }
+     *     ]
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The created assignment; 400 One or more fields failed
+     * validation.; 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param documentId document receiving the assignment
      * @param request assignment method, signers, entries, and notification settings
@@ -136,6 +325,63 @@ public class AssignmentResource extends BaseResource {
      * {@code total_credits},
      * {@code document_balance}, {@code has_sufficient_resources}, …).
      *
+     * <p><strong>HTTP:</strong> <code>POST /v1/documents/{documentId}/assignments/estimate-cost</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "method": "virtual",
+     *   "signers": [
+     *     {
+     *       "verification_method": "Whatsapp",
+     *       "notification_methods": [
+     *         "Email"
+     *       ]
+     *     }
+     *   ],
+     *   "entries": [
+     *     {}
+     *   ]
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "documents": 1,
+     *     "credits": 1,
+     *     "needs_extra_document": false,
+     *     "extra_document_cost": 1,
+     *     "total_credits": 1,
+     *     "breakdown": [
+     *       {
+     *         "code": "NotificationWhatsapp",
+     *         "name": "Whatsapp Notification",
+     *         "cost": 0.9,
+     *         "quantity": 2,
+     *         "unit_cost": 0.45
+     *       }
+     *     ],
+     *     "document_balance": 1,
+     *     "credit_balance": 1,
+     *     "has_sufficient_resources": false,
+     *     "blocking_reason": null,
+     *     "message": null
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Cost estimate and balances; 400 One or more fields failed
+     * validation.; 401 Missing or invalid credentials.; 500 Unexpected server error. Non-2xx HTTP or
+     * numeric envelope statuses raise <code>ApiException</code>; 401/403 raise
+     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
+     * raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId document to estimate
      * @param request estimate inputs
      * @return the cost breakdown
@@ -152,6 +398,9 @@ public class AssignmentResource extends BaseResource {
     /**
      * Return a typed assignment cost estimate.
      *
+     * <p>Wire contract, payloads and failures: {@link #estimateCost(String, CreateAssignmentRequest)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param documentId document to estimate
      * @param request estimate inputs
      * @return the typed cost breakdown
@@ -165,6 +414,84 @@ public class AssignmentResource extends BaseResource {
      * {@code expires_at: null}; use that deployment extension only when the target supports
      * clearing expiration.
      *
+     * <p><strong>HTTP:</strong> <code>PUT
+     * /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>assignmentId</code> (path, required): The assignment ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "expires_at": "2030-10-05T12:00:00Z"
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "assignment",
+     *     "id": "615606ef81d199996981dbce",
+     *     "sender_email": "sender@example.invalid",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": null,
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "62d6ee35c7741ca4006b9e11",
+     *         "full_name": "John Signer",
+     *         "email": null,
+     *         "whatsapp_phone_number": null,
+     *         "has_accepted_terms": false,
+     *         "verification_method": null,
+     *         "notification_methods": null,
+     *         "step": null,
+     *         "notified": null,
+     *         "completed": null,
+     *         "notification_history": null
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "id_example",
+     *         "page": null,
+     *         "signer": {},
+     *         "field": null,
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": false
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 0,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "signer_id_example",
+     *         "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.invalid"
+     *       }
+     *     ]
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The updated assignment; 400 One or more fields failed
+     * validation.; 404 The requested resource does not exist.; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
      * @param expiresAt new ISO-8601 expiration timestamp (whole-second UTC recommended), or
@@ -174,6 +501,7 @@ public class AssignmentResource extends BaseResource {
     public Assignment resetExpiration(String documentId, String assignmentId, String expiresAt) {
         String docId = pathSegment(documentId, "Document ID");
         String asgId = pathSegment(assignmentId, "Assignment ID");
+        requireExpiration(expiresAt);
         Map<String, Object> body = new HashMap<>();
         body.put("expires_at", expiresAt);
         String json = serialise(body);
@@ -185,6 +513,34 @@ public class AssignmentResource extends BaseResource {
     /**
      * Resend the signature-request notification to one signer of an assignment
      * ({@code PUT /documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend}).
+     *
+     * <p><strong>HTTP:</strong> <code>PUT
+     * /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>assignmentId</code> (path, required): The assignment ID.</li>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "is_sent": false,
+     *     "document_id": "document_id_example",
+     *     "signer_id": "signer_id_example"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Resend result; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
@@ -204,6 +560,50 @@ public class AssignmentResource extends BaseResource {
      * Estimate the credit cost of resending a signer notification, without sending it
      * ({@code POST /documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost}).
      *
+     * <p><strong>HTTP:</strong> <code>POST
+     * /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>assignmentId</code> (path, required): The assignment ID.</li>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "documents": 1,
+     *     "credits": 1,
+     *     "needs_extra_document": false,
+     *     "extra_document_cost": 1,
+     *     "total_credits": 1,
+     *     "breakdown": [
+     *       {
+     *         "code": "NotificationWhatsapp",
+     *         "name": "Whatsapp Notification",
+     *         "cost": 0.9,
+     *         "quantity": 2,
+     *         "unit_cost": 0.45
+     *       }
+     *     ],
+     *     "document_balance": 1,
+     *     "credit_balance": 1,
+     *     "has_sufficient_resources": false,
+     *     "blocking_reason": null,
+     *     "message": null
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Cost estimate; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
      * @param signerId recipient signer ID
@@ -220,6 +620,9 @@ public class AssignmentResource extends BaseResource {
     /**
      * Return a typed resend cost estimate.
      *
+     * <p>Wire contract, payloads and failures: {@link #estimateResendCost(String, String, String)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
      * @param signerId recipient signer ID
@@ -235,6 +638,34 @@ public class AssignmentResource extends BaseResource {
      *
      * <p>Maps to {@code PUT /documents/{documentId}/assignments/{assignmentId}/reject}.
      *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>assignmentId</code> (path, required): The assignment ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "decline_reason": "I do not agree with clause 2."
+     * }</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     []
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Assignment declined; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
+     *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
      * @param signerAccessCode signer invitation access code
@@ -246,7 +677,7 @@ public class AssignmentResource extends BaseResource {
         String docId = pathSegment(documentId, "Document ID");
         String asgId = pathSegment(assignmentId, "Assignment ID");
         requireId(signerAccessCode, "Signer access code");
-        requireId(declineReason, "Decline reason");
+        requireText(declineReason, "Decline reason", 2000);
         String json = serialise(Map.of("decline_reason", declineReason));
         return callMap("Failed to decline assignment",
                 () -> http.put(withAccessCode(
@@ -259,6 +690,42 @@ public class AssignmentResource extends BaseResource {
      * tracked notification.
      *
      * <p>Maps to {@code GET /documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications}.
+     *
+     * <p><strong>HTTP:</strong> <code>GET
+     * /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>assignmentId</code> (path, required): The assignment ID.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": [
+     *     {
+     *       "sent_at": 1710000000,
+     *       "header": "Documento para assinatura: Contrato de Servico",
+     *       "body": "body_example",
+     *       "buttons": [
+     *         {
+     *           "text": "Abrir documento"
+     *         }
+     *       ],
+     *       "phone_number": "+5511999990001",
+     *       "signer_id": "a51edaee68a7"
+     *     }
+     *   ]
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 WhatsApp notifications; 401 Missing or invalid credentials.; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
@@ -277,6 +744,9 @@ public class AssignmentResource extends BaseResource {
     /**
      * Return typed WhatsApp delivery entries.
      *
+     * <p>Wire contract, payloads and failures: {@link #getWhatsappNotifications(String, String)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
      * @return typed notification delivery entries
@@ -292,6 +762,8 @@ public class AssignmentResource extends BaseResource {
      *
      * <p>Maps to {@code GET /sign?signer-access-code={code}}.
      *
+     * <p>Wire contract, payloads and failures: {@link #getForSigner(String, Boolean)}.</p>
+     *
      * @param signerAccessCode signer invitation access code
      * @return raw document and assignment data
      */
@@ -301,6 +773,8 @@ public class AssignmentResource extends BaseResource {
 
     /**
      * Return typed signer-facing document details.
+     *
+     * <p>Wire contract, payloads and failures: {@link #getForSignerTyped(String, Boolean)}.</p>
      *
      * @param signerAccessCode signer invitation access code
      * @return typed document and assignment data
@@ -313,6 +787,61 @@ public class AssignmentResource extends BaseResource {
      * Fetch the signer document and optionally send the documented terms-acceptance flag.
      * Digital-certificate signers must normally accept terms through {@code acceptTerms} before
      * this call because the document gate runs first.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/sign</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>has_accepted_terms</code> (query, optional): Set true to record terms acceptance.</li>
+     * </ul>
+     * <p>Request body: none.</p>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "resource": "document",
+     *     "id": "615601fab04c0a3147bb1246",
+     *     "account_id": "d199996981dbd199996981db",
+     *     "template_id": null,
+     *     "name": "document.pdf",
+     *     "status": "metadata_ready",
+     *     "artifacts": {
+     *       "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+     *     },
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [
+     *       {
+     *         "id": "id_example",
+     *         "name": "name_example"
+     *       }
+     *     ],
+     *     "assignment": null,
+     *     "pages": [
+     *       {
+     *         "id": "615601faf166d6d1d8e7dc30",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+     *       }
+     *     ],
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "updated_at": "2026-06-03T03:54:16Z"
+     *   }
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 The document with the signer&#x27;s assignment; 400 A
+     * digital-certificate signer has not yet confirmed their data or accepted the terms.; 409 The
+     * document is not ready to be viewed yet.; 401 Missing or invalid credentials.; 500 Unexpected
+     * server error. Non-2xx HTTP or numeric envelope statuses raise <code>ApiException</code>; 401/403
+     * raise <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O
+     * failures raise <code>NetworkException</code>. Invalid local arguments raise
+     * <code>ValidationException</code> before a request.</p>
      *
      * @param signerAccessCode signer invitation access code
      * @param hasAcceptedTerms optional terms-acceptance flag
@@ -330,6 +859,9 @@ public class AssignmentResource extends BaseResource {
     /**
      * Return typed signer-facing document details with an optional terms flag.
      *
+     * <p>Wire contract, payloads and failures: {@link #getForSigner(String, Boolean)}.
+     * This method converts the same payload to the declared response model.</p>
+     *
      * @param signerAccessCode signer invitation access code
      * @param hasAcceptedTerms optional terms-acceptance flag
      * @return typed document and assignment data
@@ -342,6 +874,39 @@ public class AssignmentResource extends BaseResource {
      * Signer-facing submission of completed assignment items.
      *
      * <p>Maps to {@code POST /documents/{documentId}/assignments/{assignmentId}?signer-access-code={code}}.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/documents/{documentId}/assignments/{assignmentId}</code>.
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>documentId</code> (path, required): Document ID.</li>
+     * <li><code>assignmentId</code> (path, required): The assignment ID.</li>
+     * </ul>
+     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>[
+     *   {
+     *     "itemId": "615606efcde1a39c9d21e30e",
+     *     "fieldId": "6152120297080d55bdd13197",
+     *     "pageId": "615213ed81b071f4293b2fc2",
+     *     "value": "Signed by Sonny Bayer"
+     *   }
+     * ]</pre>
+     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
+     * optional fields may be absent or null.</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {}
+     * }</pre>
+     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
+     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>Documented HTTP statuses: 200 Signing result; 400 Signer data must be confirmed before signing
+     * (virtual assignments), or the signer must sign with a digital certificate through the digital
+     * certificate endpoints.; 409 The document is not ready to be signed yet.; 401 Missing or invalid
+     * credentials.; 500 Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
+     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
+     * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
@@ -394,6 +959,7 @@ public class AssignmentResource extends BaseResource {
         body.put("signers", normalisedSigners);
         if (request.getEntries() != null) body.put("entries", request.getEntries());
         if (!estimate) {
+            requireExpiration(request.getExpiresAt());
             if (request.getMessage() != null) body.put("message", request.getMessage());
             if (request.getExpiresAt() != null) body.put("expires_at", request.getExpiresAt());
             if (request.getCopyReceivers() != null) body.put("copy_receivers", request.getCopyReceivers());

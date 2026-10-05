@@ -22,13 +22,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Thread-safe OkHttp transport for the Assinafy API.
  *
  * <p>The transport does not follow redirects. It prefers API-key authentication when both an API
- * key and bearer token are supplied.
+ * key and bearer token are supplied. Public, login, OAuth grant, and signer-access-code
+ * operations omit both workspace credential headers.
  */
 public class OkHttpApiClient implements ApiHttpClient {
 
@@ -37,6 +39,9 @@ public class OkHttpApiClient implements ApiHttpClient {
     private static final MediaType PNG = MediaType.parse("image/png");
     private static final MediaType JPEG = MediaType.parse("image/jpeg");
     private static final byte[] JPEG_MAGIC = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+    private static final Set<String> PUBLIC_PATHS = Set.of(
+            "/login", "/authentication/social-login", "/authentication/request-password-reset",
+            "/authentication/reset-password", "/oauth/token", "/oauth/revoke");
 
     /** Lenient mapper used only to extract an error message from a failed binary download. */
     private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
@@ -89,6 +94,8 @@ public class OkHttpApiClient implements ApiHttpClient {
                            boolean allowRetries) {
         if (timeoutMs <= 0) throw new IllegalArgumentException("timeoutMs must be greater than zero");
         this.baseUrl = normaliseBaseUrl(baseUrl);
+        String basePath = HttpUrl.get(this.baseUrl).encodedPath();
+        int pathPrefixLength = basePath.endsWith("/") ? basePath.length() - 1 : basePath.length();
         this.client = new OkHttpClient.Builder()
                 .connectionSpecs(CONNECTION_SPECS)
                 .retryOnConnectionFailure(allowRetries)
@@ -105,9 +112,14 @@ public class OkHttpApiClient implements ApiHttpClient {
                     if (request.header("Accept") == null) {
                         builder.header("Accept", "application/json");
                     }
-                    if (apiKey != null && !apiKey.isBlank()) {
+                    String path = request.url().encodedPath().substring(pathPrefixLength);
+                    boolean credentialFree = request.url().queryParameterNames().contains("signer-access-code")
+                            || PUBLIC_PATHS.contains(path) || path.startsWith("/public/")
+                            || path.matches("/documents/[^/]+/verify")
+                            || path.matches("/signers/[^/]+/documents/[^/]+/download/[^/]+");
+                    if (!credentialFree && apiKey != null && !apiKey.isBlank()) {
                         builder.header("X-Api-Key", apiKey);
-                    } else if (token != null && !token.isBlank()) {
+                    } else if (!credentialFree && token != null && !token.isBlank()) {
                         builder.header("Authorization", "Bearer " + token);
                     }
                     // retryOnConnectionFailure(false) does not stop OkHttp repeating a request

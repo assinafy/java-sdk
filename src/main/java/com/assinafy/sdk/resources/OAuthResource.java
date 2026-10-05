@@ -348,7 +348,8 @@ public class OAuthResource extends BaseResource {
      * @return the validated single-use authorization code
      * @throws ValidationException if the stored request has no {@code state} or issuer,
      *         {@code state} is missing or does not match, {@code iss} is absent or disagrees with
-     *         the stored issuer, or a successful response carries no {@code code}. In every case
+     *         the stored issuer, query parameters repeat or contain malformed percent encoding,
+     *         or a successful response carries no {@code code}. In every case
      *         the response is not yours — stop, do not exchange.
      * @throws OAuthException if the server reported an {@code error}, such as
      *         {@code access_denied}, {@code invalid_scope}, {@code invalid_request},
@@ -381,7 +382,7 @@ public class OAuthResource extends BaseResource {
         }
 
         String issuer = params.get("iss");
-        if (issuer == null || !stripTrailingSlashes(issuer).equals(stripTrailingSlashes(stored.issuer()))) {
+        if (issuer == null || !issuer.equals(stored.issuer())) {
             throw new ValidationException(
                     "OAuth callback issuer is missing or does not match the expected issuer",
                     Map.of("expected", stored.issuer(), "received", issuer != null ? issuer : "none"));
@@ -610,7 +611,7 @@ public class OAuthResource extends BaseResource {
      * {
      *   "sub": "d6zqpbyog2v3xvxerwn8la94",
      *   "name": "Maria Silva",
-     *   "email": "maria@example.com",
+     *   "email": "maria@example.invalid",
      *   "email_verified": true
      * }
      * }</pre>
@@ -772,6 +773,9 @@ public class OAuthResource extends BaseResource {
         if (scheme == null || host == null) {
             throw new ValidationException(name + " must be an absolute https URL");
         }
+        if (uri.getRawUserInfo() != null || uri.getRawFragment() != null) {
+            throw new ValidationException(name + " must not contain credentials or a fragment");
+        }
         boolean loopback = host.equals("localhost") || host.equals("127.0.0.1") || host.equals("[::1]");
         if (!scheme.equalsIgnoreCase("https") && !(scheme.equalsIgnoreCase("http") && loopback)) {
             throw new ValidationException(name + " must be an absolute https URL");
@@ -829,13 +833,18 @@ public class OAuthResource extends BaseResource {
             int eq = pair.indexOf('=');
             String name = decode(eq >= 0 ? pair.substring(0, eq) : pair);
             String value = eq >= 0 ? decode(pair.substring(eq + 1)) : "";
-            // OAuth defines no repeated parameters; the first value is the one the browser sent.
-            params.putIfAbsent(name, value);
+            if (params.putIfAbsent(name, value) != null) {
+                throw new ValidationException("OAuth callback parameters must not repeat: " + name);
+            }
         }
         return params;
     }
 
     private static String decode(String value) {
-        return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+        try {
+            return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException("OAuth callback contains invalid percent encoding");
+        }
     }
 }

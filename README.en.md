@@ -92,7 +92,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.11.0</version>
+    <version>1.12.0</version>
 </dependency>
 ```
 
@@ -222,8 +222,9 @@ AssinafyClient bearerClient = new AssinafyClient(
 
 When both are configured the API key wins. Signer-facing operations use a fourth credential, the
 signer access code, passed per call rather than configured on the client — see
-[Signer self-service](#signer-self-service). Public operations require no credential at all, so
-build a credential-free client for them.
+[Signer self-service](#signer-self-service). The default transport omits workspace credentials on
+public, login, password-reset, OAuth grant, and signer-access-code calls. Protected calls retain
+the configured credential.
 
 ## Configuration
 
@@ -273,6 +274,11 @@ Upload is asynchronous. The document moves through `metadata_processing` to `met
 which point its pages and thumbnail exist. `waitUntilReady` polls `details` until the document
 reaches a ready status, throwing `ValidationException` if it enters a failed status or the budget
 expires.
+
+`collect` requires `metadata_ready` because its fields reference processed pages. `virtual` also
+accepts `uploaded` and `metadata_processing`; the server promotes it to `pending_signature` when
+processing completes. Waiting first remains useful when you need pages or want to detect PDF
+processing failures before dispatching invitations.
 
 ```java
 Document ready = client.documents().waitUntilReady(document.getId());          // 30s / 2s poll
@@ -388,8 +394,8 @@ List<WhatsappNotification> delivery =
     client.assignments().getWhatsappNotificationsTyped(documentId, assignmentId);
 ```
 
-`assignments().list(...)` maps `GET /assignments`, which resolves the workspace from an interactive
-session. It is not reachable with API-key authentication; use a bearer token.
+`assignments().list(...)` maps `GET /assignments`. The API resolves the workspace from the
+authenticated session or API-key account context; bearer tokens are limited to the authorized workspace.
 
 ### 5. Track progress
 
@@ -419,6 +425,11 @@ byte[] pageImage    = client.documents().downloadPage(documentId, pageId);
 
 A download of an artifact that does not exist yet — the `certificated` file of an unsigned
 document, for example — throws `ApiException` rather than returning the error body as file bytes.
+
+`isFullySigned` can be true while final certification is still running. Schedule another status
+read until `details(documentId).getStatus()` is `certificated` before downloading finals.
+`waitUntilReady` handles initial metadata processing, not final certification. Store the final PDF
+and certificate page with `Files.write` before deleting a document.
 
 Anyone holding the signature hash can verify a finished document without credentials:
 
@@ -487,7 +498,7 @@ one, both, or neither, and the missing side is inferred. With neither, both defa
 | --- | --- | --- | --- |
 | `Email` *(default)* | A one-time code by email, required before signing | Signer has an email address | 0 credits |
 | `Whatsapp` | A one-time code over WhatsApp | Signer has a `whatsappPhoneNumber`; paid plans only | 0.45 credits (the WhatsApp notification this method requires) |
-| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | The account has the Digital Certificate feature; the signer has a CPF in `governmentId`; one certificate signer per step | 2 credits plus its notification |
+| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | The account has the Digital Certificate feature; the signer has a CPF/CNPJ in `governmentId`; one certificate signer per step | 2 credits plus its notification |
 
 | Notification | Delivers | Requirements | Cost per signer |
 | --- | --- | --- | --- |
@@ -534,8 +545,9 @@ String certificateHolder =
     client.signers().completeCertificateSignature(signerAccessCode, signedToken);
 ```
 
-> These two routes are production-only deployed extensions: the sandbox does not expose them and
-> they are absent from the published OpenAPI document.
+Both routes are available on production and sandbox, although absent from the published OpenAPI
+document. The workspace must have Digital Certificate enabled. The SDK does not read A1 key files
+or operate A3 devices: the private key stays on the signer's device and Web PKI performs the signing.
 
 Once the flow completes, downloading the `pades` artifact returns the qualified PAdES signature.
 
@@ -631,7 +643,8 @@ reusing a verifier or a `state` defeats PKCE and CSRF protection respectively. P
 `authorizationEndpoint` and `issuer` to skip discovery and its network round trip.
 
 `readAuthorizationCallback` checks, before anything else is trusted, that `state` matches (compared
-in constant time) and that `iss` is the expected issuer, and only then whether the server reported an
+in constant time) and that `iss` exactly matches the stored issuer. Repeated parameters and malformed
+percent encoding are rejected. Only then does it check whether the server reported an
 error. A declined consent arrives as `?error=access_denied` and surfaces as `OAuthException`, not a
 failed HTTP request. A missing `iss` is treated exactly like a wrong one, because the server always
 sends it (RFC 9207).
@@ -784,7 +797,8 @@ Document fromTemplate = client.documents().createFromTemplate(templateId, reques
 ```
 
 Template signers follow the same delivery and ordering rules as assignment signers, with one extra
-restriction: a template signer may use only one notification method.
+rule: each signer may use zero or one notification method; a selected channel must match
+Email/WhatsApp verification. DigitalCertificate permits either channel.
 
 Field definitions describe the typed inputs a signer fills in during a `collect` assignment:
 
@@ -922,6 +936,10 @@ PaginatedResult<WebhookDispatch> dispatches = client.webhooks().listDispatches(
 client.webhooks().retryDispatch(dispatchId);
 ```
 
+Return a `2xx` promptly, process asynchronously, deduplicate by event ID and check `account_id`
+against the stored connection. `document_ready` means the final signer completed; certificate
+generation can still be running, so confirm `certificated` through document details before downloading.
+
 On the receiving side, deserialize the delivery body into `WebhookPayload` with your own Jackson
 mapper. The SDK models the envelope but does not parse it for you, because a webhook arrives at
 your HTTP endpoint rather than through the SDK's transport:
@@ -984,8 +1002,11 @@ try {
 `getResponseHeaders()` / `getResponseHeader(name)`, both as immutable snapshots with case-insensitive
 header lookup. `getContext()` on any `AssinafyException` carries structured diagnostic fields.
 
-The SDK does not retry automatically; retry policy belongs to the caller, who knows whether an
-operation is safe to repeat.
+The SDK adds no application-level retry loop. The default OkHttp transport can retry connection
+failures and certain `408`/`503` responses. OAuth token and revocation requests use a separate
+transport with retries disabled and one-shot bodies. Define application retries only for operations
+whose outcome you can safely reconcile; after an ambiguous create response, check the remote state
+before sending another create request.
 
 ## Pagination
 
@@ -1054,15 +1075,75 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
 // request
 { "method": "virtual", "message": "Please sign",
   "signers": [ { "id": "signer_123", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 } ] }
-// response data (abridged)
-{ "resource": "assignment", "id": "assignment_123", "sender_email": "sender@example.invalid", "method": "virtual",
-  "expires_at": null, "message": "Please sign",
-  "signers": [ { "id": "signer_123", "full_name": "John Doe", "email": "john@example.invalid",
-                 "verification_method": "Email", "notification_methods": ["Email"], "step": 1,
-                 "notified": true, "completed": false, "notification_history": [] } ],
-  "items": [ { "id": "item_123", "page": null, "signer": { … }, "field": { … }, "value": null, "completed": false } ],
-  "summary": { "signer_count": 1, "completed_count": 0, "signers": [ … ] },
-  "signing_urls": [ { "signer_id": "signer_123", "url": "https://example.invalid/sign/document_123" } ] }
+// response data: all documented fields
+{
+  "resource": "assignment",
+  "id": "615606ef81d199996981dbce",
+  "sender_email": "sender@example.invalid",
+  "method": "virtual",
+  "expires_at": null,
+  "message": null,
+  "signers": [
+    {
+      "resource": "signer",
+      "id": "62d6ee35c7741ca4006b9e11",
+      "full_name": "John Signer",
+      "email": "john@example.invalid",
+      "whatsapp_phone_number": "+5548999990000",
+      "has_accepted_terms": false,
+      "verification_method": "Email",
+      "notification_methods": [
+        "notification_methods_example"
+      ],
+      "step": 1,
+      "notified": null,
+      "completed": null,
+      "notification_history": [
+        {
+          "event": "signature_request",
+          "status": "sent",
+          "error_code": null,
+          "error_message": null,
+          "sent_at": "2026-07-07T12:00:00Z",
+          "failed_at": null
+        }
+      ]
+    }
+  ],
+  "copy_receivers": [
+    {}
+  ],
+  "items": [
+    {
+      "id": "id_example",
+      "page": {
+        "id": "615601faf166d6d1d8e7dc30",
+        "number": 1,
+        "height": 2100,
+        "width": 1275,
+        "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+      },
+      "signer": {},
+      "field": null,
+      "display_settings": null,
+      "value": null,
+      "completed": false
+    }
+  ],
+  "summary": {
+    "signer_count": 1,
+    "completed_count": 0,
+    "signers": [
+      {}
+    ]
+  },
+  "signing_urls": [
+    {
+      "signer_id": "signer_id_example",
+      "url": "https://api.assinafy.com.br/v1/sign/doc1?email=joe@example.invalid"
+    }
+  ]
+}
 ```
 
 **Estimate cost** — the map-returning methods return `Map<String,Object>`; each has a
@@ -1170,7 +1251,7 @@ an ungranted claim is `null`:
 ```
 
 **Certificate signature** — `signers().startCertificateSignature(...)` /
-`completeCertificateSignature(...)` → `String`. Production-only routes; the access code travels in
+`completeCertificateSignature(...)` → `String`. Production and sandbox routes, subject to workspace-plan availability; the access code travels in
 both the query and the body:
 
 ```jsonc
@@ -1213,8 +1294,12 @@ export ASSINAFY_BASE_URL=https://sandbox.assinafy.com.br/v1
 The live profile rejects any base URL other than the exact sandbox URL. Only `ASSINAFY_API_KEY`
 and `ASSINAFY_ACCOUNT_ID` are required. The assignment-notification case additionally needs
 `ASSINAFY_TEST_EMAIL_PRIMARY` and `ASSINAFY_TEST_EMAIL_SECONDARY`, and the password-reset case needs
-`ASSINAFY_TEST_EMAIL_PRIMARY`; leave them unset to skip those cases, or point them at controlled
-sandbox recipients, because the cases send real messages. Writes use unique fixture names,
+`ASSINAFY_TEST_USER_EMAIL`, a registered sandbox user distinct from signer contacts; leave optional
+identities unset to skip those cases, or point them at controlled
+sandbox recipients, because the cases send real messages. Reserved `.invalid` signer addresses
+can exercise request creation without delivering mail; they cannot confirm an Email OTP. Tests are
+paced to leave room for multi-request lifecycles in the sandbox rate window. Side-effect-free
+checks use bounded `Retry-After` backoff for `429`; after three attempts the failure remains visible. Writes use unique fixture names,
 reverse-order cleanup, and retries for transient cleanup failures. Inspect the sandbox account after
 an interrupted run, since a process termination or service outage can still prevent cleanup.
 

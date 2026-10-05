@@ -14,7 +14,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * {
  *   "sub": "d6zqpbyog2v3xvxerwn8la94",
  *   "name": "Maria Silva",
- *   "email": "maria@example.com",
+ *   "email": "maria@example.invalid",
  *   "email_verified": true
  * }
  * }</pre>

@@ -98,12 +98,12 @@ class SignerResourceTest {
     @Test
     void listPassesSearchViaQueryParams() {
         mock.enqueue(200, EMPTY_LIST);
-        resource.list(ListParams.builder().search("john@example.com").build());
+        resource.list(ListParams.builder().search("john@example.invalid").build());
 
         MockApiHttpClient.CapturedRequest req = mock.lastCaptured();
         assertThat(req.getMethod()).isEqualTo("GET");
         assertThat(req.getPath()).isEqualTo("/accounts/test-account/signers");
-        assertThat(req.getQueryParams()).containsEntry("search", "john@example.com");
+        assertThat(req.getQueryParams()).containsEntry("search", "john@example.invalid");
     }
 
     @Test
@@ -143,25 +143,25 @@ class SignerResourceTest {
     @Test
     void findByEmailReturnsNullWhenNoMatch() {
         mock.enqueue(200, EMPTY_LIST);
-        Signer result = resource.findByEmail("nobody@example.com");
+        Signer result = resource.findByEmail("nobody@example.invalid");
         assertThat(result).isNull();
     }
 
     @Test
     void findByEmailReturnsMatchingSigner() {
-        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"1\",\"full_name\":\"John\",\"email\":\"JOHN@EXAMPLE.COM\"}]}");
-        Signer result = resource.findByEmail("john@example.com");
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"1\",\"full_name\":\"John\",\"email\":\"JOHN@EXAMPLE.INVALID\"}]}");
+        Signer result = resource.findByEmail("john@example.invalid");
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo("1");
     }
 
     @Test
     void findOrCreateReusesExistingSignerByEmail() {
-        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"John\",\"email\":\"john@example.com\"}]}");
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"existing\",\"full_name\":\"John\",\"email\":\"john@example.invalid\"}]}");
 
         Signer result = resource.findOrCreate(CreateSignerRequest.builder()
                 .fullName("John")
-                .email("john@example.com")
+                .email("john@example.invalid")
                 .cpf("123.456.789-00")
                 .build());
 
@@ -175,7 +175,7 @@ class SignerResourceTest {
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
-                .email("john@example.com")
+                .email("john@example.invalid")
                 .phone("+5548999990000")
                 .build());
 
@@ -252,7 +252,7 @@ class SignerResourceTest {
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
-                .email("john@example.com")
+                .email("john@example.invalid")
                 .cpf("123.456.789-00")
                 .build());
 
@@ -322,7 +322,7 @@ class SignerResourceTest {
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
-                .email("john@example.com")
+                .email("john@example.invalid")
                 .build());
 
         assertThat(mock.capturedCount()).isEqualTo(1);
@@ -333,7 +333,7 @@ class SignerResourceTest {
     @Test
     void createRequiresFullName() {
         assertThatThrownBy(() -> resource.create(CreateSignerRequest.builder()
-                .email("john@example.com")
+                .email("john@example.invalid")
                 .build()))
                 .isInstanceOf(ValidationException.class);
     }
