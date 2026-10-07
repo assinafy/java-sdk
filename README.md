@@ -3,9 +3,10 @@
 *Português · [Read in English](README.en.md)*
 
 Cliente Java para a [API Assinafy](https://api.assinafy.com.br/v1/docs) — plataforma brasileira de
-assinatura eletrônica de documentos. Cobre as 93 operações documentadas — upload e certificação de
+assinatura eletrônica de documentos. Cobre as 106 operações documentadas — upload e certificação de
 documentos, gestão de signatários, solicitações de assinatura, templates, definições de campo, tags,
-workspaces, webhooks, OAuth 2.1 e os fluxos self-service do signatário — atrás de modelos tipados,
+workspaces, webhooks assinados com múltiplos endpoints, login com dois fatores, OAuth 2.1 e os fluxos
+self-service do signatário — atrás de modelos tipados,
 exceções tipadas e um único cliente thread-safe.
 
 Este documento é o guia completo em português: leia de cima para baixo e você terá percorrido o
@@ -82,7 +83,7 @@ Depois adicione o repositório e a dependência ao seu projeto:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.12.0</version>
+    <version>1.13.0</version>
 </dependency>
 ```
 
@@ -122,9 +123,37 @@ AssinafyClient bearerClient = new AssinafyClient(
 
 Quando as duas estão configuradas, a chave de API vence. As operações voltadas ao signatário usam uma
 quarta credencial — o código de acesso do signatário — passada por chamada, e não configurada no
-cliente. O transporte padrão omite `X-Api-Key` e `Authorization` nas rotas públicas, de login e
-recuperação de senha, nos grants OAuth e nas chamadas com código do signatário. Chamadas autenticadas
+cliente. O transporte padrão omite `X-Api-Key` e `Authorization` nas rotas públicas, de login, segundo
+fator e recuperação de senha, nos grants OAuth e nas chamadas com código do signatário. Chamadas autenticadas
 continuam usando a credencial configurada.
+
+### Login com dois fatores
+
+`authentication().login(...)` devolve o token de acesso direto, ou — quando o usuário tem um segundo
+fator confirmado — apenas um desafio `mfa_token`, válido por 5 minutos e de uso único:
+
+```java
+AuthSession sessao = client.authentication().login("usuario@example.invalid", senha);
+if (sessao.getMfaToken() != null) {
+    sessao = client.authentication().verifyMfa(sessao.getMfaToken(), codigoDoApp);   // ou um código de recuperação
+}
+String jwt = sessao.getAccessToken();
+```
+
+O próprio usuário gerencia o segundo fator em `users()`:
+
+```java
+TotpEnrollment inscricao = client.users().startTotpEnrollment("Celular");   // segredo exibido uma única vez
+// mostre inscricao.getProvisioningUri() como QR code e peça um código do app
+List<String> recuperacao = client.users().confirmTotpEnrollment(inscricao.getId(), codigo, null, null);
+
+MfaStatus status = client.users().listMfaMethods();
+client.users().regenerateRecoveryCodes(senha, null);                 // invalida o conjunto anterior
+client.users().removeMfaMethod(metodoId, null, codigoDoApp);         // exige senha ou código
+```
+
+Substituir um método já confirmado exige reautenticação (`password` ou `reauthCode`). Remover o
+último método também descarta os códigos de recuperação.
 
 ## Configuração
 
@@ -410,8 +439,10 @@ Exige o recurso **Certificado Digital** na conta (planos Standard e Pro), CPF ou
 exige o certificado daquela pessoa (e-CPF, ou e-CNPJ que a nomeie como representante legal); um CNPJ
 exige um e-CNPJ da empresa. O SDK valida a regra de "um por passo" antes de enviar.
 
-Antes de abrir o assignment, o signatário precisa confirmar os dados de identidade
-(`signers().confirmSignerData(...)`) e aceitar os termos (`signers().acceptTerms(...)`). O endpoint
+Antes de abrir o documento (`GET /v1/sign`), o signatário precisa confirmar os dados de identidade
+e aceitar os termos — sem isso a API responde `400`. Uma chamada a `signers().confirmSignerData(...)`
+com `has_accepted_terms: true` resolve as duas coisas; `signers().acceptTerms(...)` também serve. O
+parâmetro `has_accepted_terms` do próprio `GET /v1/sign` chega tarde demais. O endpoint
 comum de assinatura **rejeita** signatários por certificado com `400` — a assinatura deles é
 produzida por um handshake de dois passos com a extensão Web PKI:
 
@@ -720,30 +751,69 @@ de uma vez (`signMultiple`, `declineMultiple`).
 
 ## Webhooks
 
+Um workspace tem **1 endpoint de webhook**, ou **até 3** nos planos pagos. Cada endpoint tem URL,
+lista de eventos e assinatura próprias, e todo endpoint ativo inscrito em um evento o recebe. A URL
+precisa ser única no workspace; criar um endpoint além do limite do plano responde `403`
+(`AuthenticationException`).
+
 ```java
-client.webhooks().register(RegisterWebhookRequest.builder()
+WebhookEndpoint erp = client.webhooks().createEndpoint(WebhookEndpointRequest.builder()
     .url("https://meuapp.com/webhooks/assinafy")
     .email("operacoes@example.invalid")
+    .name("ERP")
     .events(List.of("document_ready", "signer_signed_document", "document_processing_failed"))
+    .signingEnabled(true)          // entregas com assinatura Standard Webhooks
     .build());
 
-WebhookSubscription atual = client.webhooks().get();
+List<WebhookEndpoint> endpoints = client.webhooks().listEndpoints();   // do mais antigo ao mais novo
+client.webhooks().updateEndpoint(erp.getId(),
+    WebhookEndpointRequest.builder().isActive(false).build());          // só os campos enviados mudam
+client.webhooks().deleteEndpoint(erp.getId());                          // libera a vaga
+
 List<WebhookEventTypeInfo> tipos = client.webhooks().listEventTypes();
-
-PaginatedResult<WebhookDispatch> entregas = client.webhooks().listDispatches();
+PaginatedResult<WebhookDispatch> entregas = client.webhooks().listDispatches();  // getEndpointId() indica o destino
 client.webhooks().retryDispatch(dispatchId);
-
-client.webhooks().inactivate();   // para a entrega sem apagar a inscrição
 ```
 
-Há uma inscrição por workspace: registrar de novo substitui a anterior.
+Sem `events`, o SDK inscreve o mesmo conjunto padrão de `register(...)`. `register(...)`, `get()` e
+`inactivate()` continuam funcionando e agem sobre o endpoint mais antigo do workspace.
 
-O endpoint recebe um `POST` JSON, responde `2xx` rapidamente e processa o evento em segundo plano.
-Guarde o `id` do evento para evitar processamento duplicado e confirme o `account_id` da conexão.
-`subject` e `object` são objetos polimórficos; `object` contém a entidade com seus relacionamentos.
-O evento `document_ready` informa que a última pessoa assinou, enquanto a certificação final ainda
-pode estar em processamento. Consulte `documents().details(...)` antes de baixar o arquivo final.
-O contrato da API não define uma assinatura HMAC de webhook; não invente um header de autenticação.
+### Verificar a assinatura
+
+Com `signing_enabled`, cada entrega leva os headers `webhook-id`, `webhook-timestamp` e
+`webhook-signature` da especificação [Standard Webhooks](https://www.standardwebhooks.com): um
+HMAC-SHA256 de `{webhook-id}.{webhook-timestamp}.{corpo}` com o segredo `whsec_` do endpoint.
+
+```java
+String segredo = client.webhooks().getEndpointSecret(erp.getId());    // guarde no cofre de segredos
+
+// No receptor: use o corpo bruto, exatamente como chegou — nunca o JSON re-serializado.
+@PostMapping("/webhooks/assinafy")
+ResponseEntity<Void> receber(@RequestHeader Map<String, String> headers, @RequestBody byte[] corpo)
+        throws IOException {
+    if (!WebhookSignature.verify(segredo, headers, corpo)) {
+        return ResponseEntity.status(401).build();
+    }
+    WebhookPayload evento = mapper.readValue(corpo, WebhookPayload.class);
+    fila.publicar(headers.get("webhook-id"), evento);   // processe em segundo plano
+    return ResponseEntity.ok().build();
+}
+```
+
+`verify` compara em tempo constante, aceita qualquer entrada `v1,` do header e rejeita timestamps a
+mais de 5 minutos do relógio local (replays). `rotateEndpointSecret(id)` troca o segredo na hora — o
+antigo para de valer imediatamente, então atualize o receptor em seguida. Com `signingEnabled(false)`
+o segredo é descartado. Os endpoints de segredo não estão disponíveis para aplicações OAuth.
+
+### Contrato de entrega
+
+O endpoint recebe um `POST` JSON e deve responder `2xx` rapidamente, processando o evento em segundo
+plano. São até 2 tentativas por evento, com 3 segundos de intervalo; após 10 eventos seguidos com
+falha a entrega é pausada e só cerca de 5% dos eventos são testados até um dar certo. Deduplique pelo
+header `webhook-id`, que se repete em toda tentativa do mesmo evento para o mesmo endpoint, e confirme
+o `account_id` do corpo. `subject` e `object` são polimórficos; `object` traz a entidade com seus
+relacionamentos. `document_ready` informa que a última pessoa assinou, enquanto a certificação final
+ainda pode estar em processamento: consulte `documents().details(...)` antes de baixar o arquivo final.
 
 ## Workspaces, usuários e chaves de API
 

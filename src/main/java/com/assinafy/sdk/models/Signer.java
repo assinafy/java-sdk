@@ -28,6 +28,9 @@ public class Signer {
     @JsonProperty("cpf")
     private String cpf;
 
+    @JsonProperty("government_id")
+    private String governmentId;
+
     @JsonProperty("has_accepted_terms")
     private Boolean hasAcceptedTerms;
 
@@ -121,8 +124,23 @@ public class Signer {
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
     /**
-     * @deprecated Signer responses do not provide this value. Use
-     * {@code UpdateSignerRequest.governmentId(...)} when updating a signer.
+     * Returns the signer's normalized CPF (11 digits) or CNPJ (14 characters, possibly
+     * alphanumeric).
+     *
+     * @return the CPF/CNPJ, or {@code null} when none is recorded
+     */
+    public String getGovernmentId() { return governmentId; }
+
+    /**
+     * Sets the signer's CPF/CNPJ.
+     *
+     * @param governmentId the CPF/CNPJ
+     */
+    public void setGovernmentId(String governmentId) { this.governmentId = governmentId; }
+
+    /**
+     * @deprecated Signer responses carry the CPF/CNPJ as {@code government_id}; use
+     * {@link #getGovernmentId()}.
      * @return a retained CPF/CNPJ response value, or {@code null}
      */
     @Deprecated

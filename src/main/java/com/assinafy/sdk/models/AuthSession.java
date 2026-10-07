@@ -16,6 +16,9 @@ public class AuthSession {
     private AuthUser user;
     private List<AuthAccount> accounts;
 
+    @JsonProperty("mfa_token")
+    private String mfaToken;
+
     /**
      * Creates an empty authentication session.
      */
@@ -48,6 +51,22 @@ public class AuthSession {
      * @param user the user
      */
     public void setUser(AuthUser user) { this.user = user; }
+
+    /**
+     * Returns the two-factor challenge that {@code POST /login} issues instead of an access token
+     * when the user has a confirmed two-factor method. Complete it within 5 minutes with
+     * {@code AuthenticationResource.verifyMfa(mfaToken, code)}.
+     *
+     * @return the single-use challenge, or {@code null} when login completed in one step
+     */
+    public String getMfaToken() { return mfaToken; }
+
+    /**
+     * Sets the two-factor challenge.
+     *
+     * @param mfaToken the single-use challenge
+     */
+    public void setMfaToken(String mfaToken) { this.mfaToken = mfaToken; }
 
     /**
      * Returns the authenticated user's account memberships.

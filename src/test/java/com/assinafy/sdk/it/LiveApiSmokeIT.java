@@ -17,6 +17,7 @@ import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.models.Tag;
 import com.assinafy.sdk.models.Template;
 import com.assinafy.sdk.models.UploadAndRequestSignaturesResult;
+import com.assinafy.sdk.models.WebhookEndpoint;
 import com.assinafy.sdk.models.WebhookEventTypeInfo;
 import com.assinafy.sdk.models.Workspace;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
@@ -29,6 +30,8 @@ import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.request.UpdateFieldRequest;
 import com.assinafy.sdk.request.UpdateSignerRequest;
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
+import com.assinafy.sdk.request.WebhookEndpointRequest;
+import com.assinafy.sdk.util.WebhookSignature;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -412,6 +415,7 @@ class LiveApiSmokeIT {
         probeDocumentedRoute(() -> read(() -> client.workspaces().stats(accountId)));
         probeDocumentedRoute(() -> read(() -> client.users().stats()));
         probeDocumentedRoute(() -> read(() -> client.users().getNotificationPreferences()));
+        probeDocumentedRoute(() -> read(() -> client.users().listMfaMethods()));
     }
 
     @Test
@@ -578,6 +582,55 @@ class LiveApiSmokeIT {
             }
             assertThat(result.getSignerIds()).containsExactly(expectedSigner.getId());
             assertThat(resultSignerId).isNotBlank();
+        }
+    }
+
+    @Test
+    @Order(23)
+    void webhookEndpointLifecycleWithSigningSecret() throws Exception {
+        try {
+            read(() -> client.webhooks().listEndpoints());
+        } catch (ApiException error) {
+            Assumptions.assumeTrue(error.getStatusCode() != 404, "Webhook endpoints are not routed on this environment");
+            throw error;
+        }
+        WebhookEndpoint created;
+        try {
+            created = client.webhooks().createEndpoint(WebhookEndpointRequest.builder()
+                    .url("https://example.com/sdk-it-" + UUID.randomUUID())
+                    .email("sdk-it@example.invalid")
+                    .name("sdk-it-endpoint")
+                    .events(List.of("document_ready"))
+                    .signingEnabled(true)
+                    .build());
+        } catch (com.assinafy.sdk.exceptions.AuthenticationException limit) {
+            Assumptions.abort("The plan's webhook endpoint limit is reached: " + limit.getMessage());
+            return;
+        }
+        try {
+            assertThat(created.getSigningEnabled()).isTrue();
+            String secret = read(() -> client.webhooks().getEndpointSecret(created.getId()));
+            String rotated = client.webhooks().rotateEndpointSecret(created.getId());
+            assertThat(secret).startsWith("whsec_");
+            assertThat(rotated).startsWith("whsec_").isNotEqualTo(secret);
+
+            byte[] body = "{\"event\":\"document_ready\"}".getBytes(StandardCharsets.UTF_8);
+            String timestamp = Long.toString(Instant.now().getEpochSecond());
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    java.util.Base64.getDecoder().decode(rotated.substring(6)), "HmacSHA256"));
+            mac.update(("msg_sdk_it." + timestamp + ".").getBytes(StandardCharsets.UTF_8));
+            String signature = "v1," + java.util.Base64.getEncoder().encodeToString(mac.doFinal(body));
+            assertThat(WebhookSignature.verify(rotated, Map.of("webhook-id", "msg_sdk_it",
+                    "webhook-timestamp", timestamp, "webhook-signature", signature), body)).isTrue();
+            assertThat(WebhookSignature.verify(secret, Map.of("webhook-id", "msg_sdk_it",
+                    "webhook-timestamp", timestamp, "webhook-signature", signature), body)).isFalse();
+
+            WebhookEndpoint updated = client.webhooks().updateEndpoint(created.getId(),
+                    WebhookEndpointRequest.builder().isActive(false).build());
+            assertThat(updated.getIsActive()).isFalse();
+        } finally {
+            client.webhooks().deleteEndpoint(created.getId());
         }
     }
 

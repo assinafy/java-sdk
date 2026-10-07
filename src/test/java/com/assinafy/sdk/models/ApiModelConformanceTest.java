@@ -22,7 +22,7 @@ class ApiModelConformanceTest {
                  "secondary_color":"445566","notification_sender_type":"Account"}
                 """, Workspace.class);
         Signer signer = decode("""
-                {"resource":"signer","id":"s1"}
+                {"resource":"signer","id":"s1","government_id":"39053344705"}
                 """, Signer.class);
         FieldDefinition field = decode("""
                 {"resource":"field","id":"f1"}
@@ -42,6 +42,7 @@ class ApiModelConformanceTest {
         assertThat(workspace.getSecondaryColor()).isEqualTo("445566");
         assertThat(workspace.getNotificationSenderType()).isEqualTo("Account");
         assertThat(signer.getResource()).isEqualTo("signer");
+        assertThat(signer.getGovernmentId()).isEqualTo("39053344705");
         assertThat(field.getResource()).isEqualTo("field");
         assertThat(template.getResource()).isEqualTo("template");
         assertThat(template.getDefaultDocumentTags())

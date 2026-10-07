@@ -51,7 +51,7 @@ class OkHttpApiClientTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"/login", "/authentication/social-login", "/authentication/reset-password",
-            "/authentication/request-password-reset", "/public/documents/doc",
+            "/authentication/request-password-reset", "/authentication/mfa/verify", "/public/documents/doc",
             "/public/documents/doc/send-token", "/documents/hash/verify", "/oauth/token", "/oauth/revoke",
             "/signers/self?signer-access-code=code", "/sign?signer-access-code=code",
             "/signers/signer/documents/doc/download/bundle"})

@@ -1,12 +1,12 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **93** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **106** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
 
 ## Conventions
 
 - Build a client with `new AssinafyClient(AssinafyClientOptions.builder()...build())`; each operation names its client accessor and exact current public signature.
 - Custom API base URLs must use HTTPS. Plain HTTP is accepted only for loopback hosts used in local tests, so credentials are not sent over cleartext networks.
-- Authenticated operations accept either `X-Api-Key` (recommended for server integrations) or `Authorization: Bearer <JWT>`. Signer-facing operations use the `signer-access-code` query credential. The default transport omits workspace credentials on public, login, OAuth grant, and signer-access-code requests.
+- Authenticated operations accept either `X-Api-Key` (recommended for server integrations) or `Authorization: Bearer <JWT>`. Signer-facing operations use the `signer-access-code` query credential. The default transport omits workspace credentials on public, login, two-factor verification, OAuth grant, and signer-access-code requests.
 - JSON success bodies use `{ "status": integer, "message": string, "data": ... }`. The SDK returns `data`. A Java `void` method discards the success envelope and also accepts an empty 2xx body. Binary methods return raw `byte[]`, not JSON.
 - A `!` after an inline JSON field name means required. `?` after a type means explicitly nullable. “Required: no” means the OpenAPI schema does not require the field; it does not imply the server always omits it.
 - Linked component schemas are part of the operation payload; follow the link for every nested field. List methods return `PaginatedResult<T>` when pagination headers are exposed.
@@ -264,6 +264,31 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [A
 
 Documented statuses: `200` The generated API key (shown in full only once); `401` Missing or invalid credentials; `500` Unexpected server error.
 
+### 105. Complete a two-factor login
+
+- **Java:** `client.authentication()` — `AuthenticationResource: public AuthSession verifyMfa(String mfaToken, String code)`. The code is trimmed before sending.
+- **HTTP:** `POST /v1/authentication/mfa/verify`
+- **Auth:** Public (no SDK credential)
+- **Side effects:** Creates an authenticated session; consumes the single-use challenge, and a recovery code when one is used.
+- **Contract notes:** Exchanges the `mfa_token` returned by login for an access token. `code` is either the 6-digit code from the authenticator app or one of the recovery codes issued at enrollment. The challenge is single-use and expires 5 minutes after login.
+
+Request body `application/json` (required):
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `mfa_token` | `string` | yes | no | The token returned by the login response. |
+| `code` | `string` | yes | no | A 6-digit authenticator code, or a recovery code such as ABCD-EFGH-JKMN. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [AuthSession](#schema-authsession)}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | [AuthSession](#schema-authsession) | no | no |  |
+
+Documented statuses: `200` Access token, user and accounts; `400` Invalid or already-used code; `401` The challenge expired, was already used, or too many codes were tried; `500` Unexpected server error.
+
 ## Accounts
 
 ### 10. List my accounts
@@ -272,7 +297,7 @@ Documented statuses: `200` The generated API key (shown in full only once); `401
 - **HTTP:** `GET /v1/accounts`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** List the workspace accounts the authenticated user belongs to.
+- **Contract notes:** List the workspace accounts the authenticated user belongs to.  Called with an OAuth application token, this returns exactly one workspace: the one the user chose when they authorized the application. Use its `id` as the `{accountId}` segment of every other endpoint — a token is bound to a single workspace, and any request naming a different one is refused. This endpoint needs no particular scope.
 
 Parameters: none.
 
@@ -1526,7 +1551,7 @@ Documented statuses: `200` Token sent; `500` Unexpected server error.
 - **HTTP:** `GET /v1/sign`
 - **Auth:** `signer-access-code` query credential
 - **Side effects:** Marks the signer document as viewed; otherwise read-only.
-- **Contract notes:** Retrieve the invited document using the signer access code and mark it viewed. A 409 means processing is still in progress. The `has_accepted_terms` query can record acceptance; `PUT /v1/signers/accept-terms` is the explicit alternative. Confirm-data accepts `full_name`, `email`, and `government_id`.
+- **Contract notes:** Retrieve the invited document using the signer access code and mark it viewed. A 409 means processing is still in progress. The `has_accepted_terms` query can record acceptance; `PUT /v1/signers/accept-terms` is the explicit alternative. Confirm-data accepts `full_name`, `email`, and `government_id`. Signers verified by `DigitalCertificate` must have confirmed their data *and* accepted the terms before this returns the document, otherwise it is `400`; one `confirm-data` call with `has_accepted_terms: true` satisfies both, and the `has_accepted_terms` query parameter here is too late to open the gate.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2357,7 +2382,7 @@ Authorization-response errors: `access_denied` (the user declined), `invalid_sco
 - **HTTP:** `GET /v1/accounts/{accountId}/webhooks`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** Retrieve the delivery history for webhooks sent to the account's configured endpoint — use it to monitor status, debug failures, and verify payloads. Pagination is returned in the `X-Pagination-*` response headers.
+- **Contract notes:** Retrieve the delivery history for webhooks sent to the account's endpoints — use it to monitor status, debug failures, and verify payloads. Pagination is returned in the `X-Pagination-*` response headers. Requires the `documents:read` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2387,7 +2412,7 @@ Documented statuses: `200` Delivery history; `401` Missing or invalid credential
 - **HTTP:** `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: retry webhook delivery.
-- **Contract notes:** Manually retry a webhook delivery for a specific entry, without waiting for automatic retries. Returns the newly created dispatch entry.
+- **Contract notes:** Manually retry a webhook delivery for a specific entry, without waiting for automatic retries. The event is sent again only to the endpoint of that entry. Returns the newly created dispatch entry.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2412,7 +2437,7 @@ Documented statuses: `200` The new dispatch entry; `400` One or more fields fail
 - **HTTP:** `PUT /v1/accounts/{accountId}/webhooks/inactivate`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: inactivate webhook subscription.
-- **Contract notes:** Deactivate the webhook integration for the account. While inactive, no events are sent to the configured endpoint.
+- **Contract notes:** Deactivate the account's oldest webhook endpoint. While inactive, no events are sent to it; other endpoints are unaffected. Requires the `webhooks:write` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2436,7 +2461,7 @@ Documented statuses: `200` The inactivated subscription; `401` Missing or invali
 - **HTTP:** `GET /v1/accounts/{accountId}/webhooks/subscriptions`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** Retrieve the current webhook subscription for the account — which events it is subscribed to and the delivery configuration.
+- **Contract notes:** Retrieve the account's oldest webhook endpoint — which events it is subscribed to and the delivery configuration. Accounts with several endpoints should use **List webhook endpoints**. Requires the `account:read` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2460,7 +2485,7 @@ Documented statuses: `200` The subscription; `401` Missing or invalid credential
 - **HTTP:** `PUT /v1/accounts/{accountId}/webhooks/subscriptions`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: update webhook subscription.
-- **Contract notes:** Update the webhook subscription settings for the account — which events are monitored, whether delivery is enabled, and the delivery/contact details.
+- **Contract notes:** Update the account's oldest webhook endpoint (creating it if the account has none) — which events are monitored, whether delivery is enabled, and the delivery/contact details. Accounts with several endpoints should use **Update webhook endpoint**. Requires the `webhooks:write` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2493,7 +2518,7 @@ Documented statuses: `200` The updated subscription; `400` One or more fields fa
 - **HTTP:** `GET /v1/webhooks/event-types`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** List all available event types that can be subscribed to via webhooks.
+- **Contract notes:** List all available event types that can be subscribed to via webhooks. Requires the `documents:read` OAuth scope.
 
 Parameters: none.
 
@@ -2508,6 +2533,197 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: ar
 | `data` | array<[WebhookEventType](#schema-webhookeventtype)> | no | no |  |
 
 Documented statuses: `200` Event types; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 98. List webhook endpoints
+
+- **Java:** `client.webhooks()` — `WebhookResource: public List<WebhookEndpoint> listEndpoints()`; `client.webhooks()` — `WebhookResource: public List<WebhookEndpoint> listEndpoints(String accountId)`
+- **HTTP:** `GET /v1/accounts/{accountId}/webhooks/endpoints`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** List the account's webhook endpoints, oldest first. Requires the `account:read` OAuth scope.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: array<[WebhookEndpoint](#schema-webhookendpoint)>}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | array<[WebhookEndpoint](#schema-webhookendpoint)> | no | no |  |
+
+Documented statuses: `200` The endpoints; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 99. Create webhook endpoint
+
+- **Java:** `client.webhooks()` — `WebhookResource: public WebhookEndpoint createEndpoint(WebhookEndpointRequest request)`; `client.webhooks()` — `WebhookResource: public WebhookEndpoint createEndpoint(WebhookEndpointRequest request, String accountId)`. When `events` is null the SDK sends the same default set as `register`; a `403` past the plan limit raises `AuthenticationException`.
+- **HTTP:** `POST /v1/accounts/{accountId}/webhooks/endpoints`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: create webhook endpoint.
+- **Contract notes:** Register a URL to receive the account's webhook events. An account can have 1 endpoint, or up to 3 on paid plans; creating one past the limit returns `403`. Each endpoint of a workspace must have a different `url` (`400` otherwise). When `signing_enabled` is `true`, a signing secret is generated: read it with **Get webhook endpoint signing secret**. Requires the `webhooks:write` OAuth scope.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+
+Request body `application/json` (required):
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `url` | `string(uri)` | yes | no | URL that receives the events (http or https). |
+| `email` | `string(email)` | yes | no | Contact email for delivery-failure notices. |
+| `events` | array<`string`> | yes | no | Event types to deliver (see `GET /v1/webhooks/event-types`). |
+| `name` | `string` | no | no | Label to tell endpoints apart. |
+| `is_active` | `boolean` | no | no | Whether events are delivered. Defaults to `true`. |
+| `signing_enabled` | `boolean` | no | no | Sign deliveries with a Standard Webhooks signature. Defaults to `false`. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [WebhookEndpoint](#schema-webhookendpoint)}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | [WebhookEndpoint](#schema-webhookendpoint) | no | no |  |
+
+Documented statuses: `200` The created endpoint; `400` One or more fields failed validation; `403` The account already has as many endpoints as its plan allows; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 100. Get webhook endpoint
+
+- **Java:** `client.webhooks()` — `WebhookResource: public WebhookEndpoint getEndpoint(String endpointId)`; `client.webhooks()` — `WebhookResource: public WebhookEndpoint getEndpoint(String endpointId, String accountId)`
+- **HTTP:** `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** Retrieve one webhook endpoint. Requires the `account:read` OAuth scope.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `endpointId` | path | `string` | yes | no | The webhook endpoint ID. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [WebhookEndpoint](#schema-webhookendpoint)}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | [WebhookEndpoint](#schema-webhookendpoint) | no | no |  |
+
+Documented statuses: `200` The endpoint; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 101. Update webhook endpoint
+
+- **Java:** `client.webhooks()` — `WebhookResource: public WebhookEndpoint updateEndpoint(String endpointId, WebhookEndpointRequest request)`; `client.webhooks()` — `WebhookResource: public WebhookEndpoint updateEndpoint(String endpointId, WebhookEndpointRequest request, String accountId)`. Only non-null request fields are sent; an empty request raises `ValidationException`.
+- **HTTP:** `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: update webhook endpoint.
+- **Contract notes:** Change a webhook endpoint. Only the fields sent are updated; `url` cannot be one another endpoint of the workspace already uses (`400`). Setting `signing_enabled` to `true` generates a secret if the endpoint has none and keeps the current one otherwise; setting it to `false` discards the secret. Requires the `webhooks:write` OAuth scope.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `endpointId` | path | `string` | yes | no | The webhook endpoint ID. |
+
+Request body `application/json` (required):
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `url` | `string(uri)` | no | no |  |
+| `email` | `string(email)` | no | no |  |
+| `events` | array<`string`> | no | no |  |
+| `name` | `string` | no | no |  |
+| `is_active` | `boolean` | no | no |  |
+| `signing_enabled` | `boolean` | no | no |  |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [WebhookEndpoint](#schema-webhookendpoint)}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | [WebhookEndpoint](#schema-webhookendpoint) | no | no |  |
+
+Documented statuses: `200` The updated endpoint; `400` One or more fields failed validation; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 102. Delete webhook endpoint
+
+- **Java:** `client.webhooks()` — `WebhookResource: public void deleteEndpoint(String endpointId)`; `client.webhooks()` — `WebhookResource: public void deleteEndpoint(String endpointId, String accountId)`
+- **HTTP:** `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: delete webhook endpoint.
+- **Contract notes:** Stop delivering events to an endpoint and free its slot. Requires the `webhooks:write` OAuth scope.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `endpointId` | path | `string` | yes | no | The webhook endpoint ID. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: array<`None`>}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | array<`None`> | no | no |  |
+
+Documented statuses: `200` Endpoint deleted; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 103. Get webhook endpoint signing secret
+
+- **Java:** `client.webhooks()` — `WebhookResource: public String getEndpointSecret(String endpointId)`; `client.webhooks()` — `WebhookResource: public String getEndpointSecret(String endpointId, String accountId)`. Returns `data.secret`; verify deliveries with `WebhookSignature.verify(...)`.
+- **HTTP:** `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** Return the secret used to sign deliveries to this endpoint (see **Webhook Payloads → Verifying signatures**). Returns `400` when signing is disabled. Not available to OAuth applications.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `endpointId` | path | `string` | yes | no | The webhook endpoint ID. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [WebhookEndpointSecret](#schema-webhookendpointsecret)}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | [WebhookEndpointSecret](#schema-webhookendpointsecret) | no | no |  |
+
+Documented statuses: `200` The secret; `400` Signing is not enabled for this endpoint; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 104. Rotate webhook endpoint signing secret
+
+- **Java:** `client.webhooks()` — `WebhookResource: public String rotateEndpointSecret(String endpointId)`; `client.webhooks()` — `WebhookResource: public String rotateEndpointSecret(String endpointId, String accountId)`. Returns the new `data.secret`.
+- **HTTP:** `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: replaces the signing secret; the old one stops working immediately.
+- **Contract notes:** Replace the endpoint's signing secret and return the new one. The old secret stops working immediately, so update your receiver right away. Returns `400` when signing is disabled. Not available to OAuth applications.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `endpointId` | path | `string` | yes | no | The webhook endpoint ID. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [WebhookEndpointSecret](#schema-webhookendpointsecret)}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | [WebhookEndpointSecret](#schema-webhookendpointsecret) | no | no |  |
+
+Documented statuses: `200` The new secret; `400` Signing is not enabled for this endpoint; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
 
 ## Users
 
@@ -2616,6 +2832,174 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: ar
 
 Documented statuses: `200` KPI series; `400` One or more fields failed validation; `401` Missing or invalid credentials; `500` Unexpected server error.
 
+### 106. List two-factor methods
+
+- **Java:** `client.users()` — `UserResource: public MfaStatus listMfaMethods()`
+- **HTTP:** `GET /v1/users/self/mfa`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** The authenticated user's enrolled two-factor methods and how many recovery codes remain unused.
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: `object`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | `object` | no | no |  |
+
+`data` fields:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `methods` | array<`object`> | no | no |  |
+| `recovery_codes_remaining` | `integer` | no | no |  |
+
+`data.methods[]` fields:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `id` | `string` | no | no |  |
+| `type` | `string` | no | no |  |
+| `label` | `string` | no | no |  |
+| `confirmed_at` | `string(date-time)` | no | no |  |
+| `last_used_at` | `string(date-time)` | no | no |  |
+
+Documented statuses: `200` Enrolled methods; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 107. Start authenticator enrollment
+
+- **Java:** `client.users()` — `UserResource: public TotpEnrollment startTotpEnrollment(String label)`. A null or blank label sends `{}`.
+- **HTTP:** `POST /v1/users/self/mfa/totp`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: creates an unconfirmed authenticator method.
+- **Contract notes:** Creates an unconfirmed authenticator method and returns the shared secret. The secret is returned only by this call and cannot be retrieved again. Two-factor authentication is not active until the enrollment is confirmed.
+
+Request body `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `label` | `string` | no | no |  |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: `object`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | `object` | no | no |  |
+
+`data` fields:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `id` | `string` | no | no |  |
+| `secret` | `string` | no | no |  |
+| `provisioning_uri` | `string` | no | no |  |
+
+Documented statuses: `200` Enrollment started; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 108. Confirm authenticator enrollment
+
+- **Java:** `client.users()` — `UserResource: public List<String> confirmTotpEnrollment(String methodId, String code, String password, String reauthCode)`. Returns `data.recovery_codes`.
+- **HTTP:** `PUT /v1/users/self/mfa/totp/confirm`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: enables two-factor authentication; replaces an existing confirmed method of the same type.
+- **Contract notes:** Activates the method by proving one live code from the NEW device (`code`). Returns the recovery codes, which are shown only once and cannot be retrieved again. From this point every login requires a second factor. If the user already has a confirmed method of the same type, confirming REPLACES it — the old one is soft-deleted and recovery codes are reissued — so this call additionally requires re-authentication via `password` or `reauth_code` (a live code from the CURRENT device, or one of the existing recovery codes), exactly like disabling a method. First-time enrollment needs neither.
+
+Request body `application/json` (required):
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `id` | `string` | yes | no |  |
+| `code` | `string` | yes | no | Live code from the NEW device being confirmed. |
+| `password` | `string(password)` | no | no | Re-authentication proof, required only when replacing an existing confirmed method. |
+| `reauth_code` | `string` | no | no | Re-authentication proof alternative to password: a live code from the CURRENT device, or a recovery code. Required only when replacing an existing confirmed method. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: `object`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | `object` | no | no |  |
+
+`data` fields:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `recovery_codes` | array<`string`> | no | no |  |
+
+Documented statuses: `200` Two-factor enabled; `400` Invalid enrollment code, or — when replacing an existing method — missing or invalid re-authentication; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 109. Regenerate recovery codes
+
+- **Java:** `client.users()` — `UserResource: public List<String> regenerateRecoveryCodes(String password, String code)`. At least one of `password` or `code` is required locally. Returns `data.recovery_codes`.
+- **HTTP:** `POST /v1/users/self/mfa/recovery-codes`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: invalidates the previous recovery codes.
+- **Contract notes:** Issues a fresh set of ten recovery codes and invalidates the previous set. Requires the current password, a live authenticator code, or one of the existing recovery codes (which is then consumed).
+
+Request body `application/json` (required):
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `password` | `string(password)` | no | no |  |
+| `code` | `string` | no | no | A live 6-digit authenticator code, or one of the existing recovery codes. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: `object`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | `object` | no | no |  |
+
+`data` fields:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `recovery_codes` | array<`string`> | no | no |  |
+
+Documented statuses: `200` New recovery codes; `400` One or more fields failed validation; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 110. Remove a two-factor method
+
+- **Java:** `client.users()` — `UserResource: public boolean removeMfaMethod(String methodId, String password, String code)`. At least one of `password` or `code` is required locally. Returns `data.is_mfa_enabled`.
+- **HTTP:** `DELETE /v1/users/self/mfa/{customId}`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Mutates server state: removes the method; removing the last one discards the recovery codes.
+- **Contract notes:** Removes an enrolled method. Requires the current password, a live authenticator code, or one of the existing recovery codes (which is then consumed), so that a stolen session cannot silently disable two-factor authentication. Removing the last method also discards the recovery codes.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `customId` | path | `string` | yes | no |  |
+
+Request body `application/json` (required):
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `password` | `string(password)` | no | no |  |
+| `code` | `string` | no | no | A live 6-digit authenticator code, or one of the existing recovery codes. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: `object`}.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
+| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `data` | `object` | no | no |  |
+
+`data` fields:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `is_mfa_enabled` | `boolean` | no | no |  |
+
+Documented statuses: `200` Method removed; `400` One or more fields failed validation; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
+
 ## Component payload schemas
 
 These tables complete every component referenced by the operation response/request sections above. Fields are wire JSON names.
@@ -2681,6 +3065,7 @@ A signing party belonging to a workspace account.
 | `full_name` | `string` | no | no |  |
 | `email` | `string(email)`? | no | yes |  |
 | `whatsapp_phone_number` | `string`? | no | yes | E.164 format; normalized on save. |
+| `government_id` | `string`? | no | yes | Signer's normalized CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Exposed as `Signer.getGovernmentId()`. |
 | `has_accepted_terms` | `boolean` | no | no |  |
 
 ### Schema: SignerSelf
@@ -2742,7 +3127,7 @@ A document and its current lifecycle state.
 | `template_id` | `string`? | no | yes |  |
 | `name` | `string` | no | no |  |
 | `status` | `string` | no | no | Status code — see GET /v1/documents/statuses. |
-| `artifacts` | [DocumentArtifacts](#documentartifacts) | no | no | Available artifact download URLs, including thumbnail and PAdES when applicable. |
+| `artifacts` | [DocumentArtifacts](#documentartifacts) | no | no | Artifact download URLs keyed by name. Always `original`, plus `thumbnail` once one exists. A certificated document also carries `certificated`, `certificate-page` and `bundle`, and `pades` when it was signed with a digital certificate — the PAdES version holds the signers' ICP-Brasil signatures, which certification flattens out of the certificated PDF. |
 | `is_closed` | `boolean` | no | no |  |
 | `signing_url` | `string` | no | no |  |
 | `decline_reason` | `string`? | no | yes |  |
@@ -2848,7 +3233,7 @@ A single notification delivery record for a signer channel.
 | `signer` | `object` | no | no | Signer responsible for this item. |
 | `field` | `object`? | no | yes | Field definition associated with the item. |
 | `display_settings` | `any` | no | no | Rendering metadata for the item. Collect items use the DisplaySettings schema; virtual and legacy items may return an empty or non-object value. |
-| `value` | `any`? | no | yes | Captured value when completed. |
+| `value` | `any`? | no | yes | Captured value when completed; `null` until then. |
 | `completed` | `boolean` | no | no |  |
 
 ### Schema: AssignmentSummary
@@ -2979,6 +3364,7 @@ A single webhook delivery-history entry.
 | `id` | `string` | no | no | Dispatch entry ID. |
 | `event` | `string` | no | no | Event type that triggered the dispatch. |
 | `activity_id` | `integer` | no | no | Internal activity ID associated with the dispatch. |
+| `endpoint_id` | `string`? | no | yes | ID of the webhook endpoint the delivery was sent to (`null` once that endpoint is deleted). |
 | `endpoint` | `string`? | no | yes | URL that received the request. |
 | `payload` | `object`? | no | yes | JSON payload sent to the endpoint. |
 | `delivered` | `boolean` | no | no | Whether delivery succeeded. |
@@ -2988,6 +3374,29 @@ A single webhook delivery-history entry.
 | `created_at` | `string(date-time)` | no | no |  |
 | `updated_at` | `string(date-time)` | no | no |  |
 
+### Schema: WebhookEndpoint
+
+A URL that receives the account's webhook events. Every active endpoint subscribed to an event receives it.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `id` | `string` | no | no | Endpoint ID. |
+| `name` | `string`? | no | yes | Label to tell endpoints apart. |
+| `url` | `string(uri)` | no | no | URL that receives the events (http or https). |
+| `email` | `string(email)` | no | no | Contact email for delivery-failure notices. |
+| `events` | array<`string`> | no | no | Event types delivered to this endpoint (see **List webhook event types**). |
+| `is_active` | `boolean` | no | no | Whether events are delivered to this endpoint. |
+| `signing_enabled` | `boolean` | no | no | Whether deliveries carry a `webhook-signature` header (see **Webhook Payloads → Verifying signatures**). |
+| `created_at` | `string(date-time)` | no | no |  |
+| `updated_at` | `string(date-time)` | no | no |  |
+
+### Schema: WebhookEndpointSecret
+
+An endpoint's signing secret.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `secret` | `string` | no | no | Standard Webhooks secret: `whsec_` followed by the base64-encoded key. |
 ### Schema: WebhookEventType
 
 A subscribable webhook event type.
@@ -3058,7 +3467,7 @@ The verification result for a document looked up by signature hash. When not ver
 
 ### Schema: DocumentActivity
 
-A document activity event.
+A document activity/audit event.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
@@ -3091,10 +3500,10 @@ A JWT access token plus the authenticated user and the accounts they belong to.
 | `access_token` | `string` | no | no |  |
 | `user` | [AuthUser](#schema-authuser) | no | no |  |
 | `accounts` | array<[AuthAccount](#schema-authaccount)> | no | no |  |
-
+| `mfa_token` | `string` | no | no | Returned by `POST /v1/login` instead of an access token when the user has a confirmed two-factor method; complete it with `POST /v1/authentication/mfa/verify` within 5 minutes. Exposed as `AuthSession.getMfaToken()`. |
 ### Schema: DocumentStatsRow
 
-One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or `YYYY-MM-DD` (daily); series are zero-filled, no gaps. Notification counters split requests by every channel used, so a request notified through multiple channels appears in each channel count. Verification counters are mutually exclusive and add up to `signature_requests`.
+One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or `YYYY-MM-DD` (daily); series are zero-filled, no gaps. Signature requests come with two independent breakdowns: the `signature_requests_notification_*` counters split them by the channels the signer was notified on — a signer reached on more than one channel counts once per channel, so these add up to at least `signature_requests` — while the `signature_requests_verification_*` counters split them by how the signer's identity is verified, and since each request has exactly one verification method those four always add up to `signature_requests`.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
@@ -3102,17 +3511,16 @@ One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or
 | `documents_uploaded` | `integer` | no | no |  |
 | `documents_sent` | `integer` | no | no |  |
 | `signature_requests` | `integer` | no | no |  |
-| `signature_requests_notification_email` | `integer` | no | no | Requests notified by email. |
+| `signature_requests_notification_email` | `integer` | no | no | Requests notified by e-mail. |
 | `signature_requests_notification_whatsapp` | `integer` | no | no | Requests notified by WhatsApp. |
 | `signature_requests_notification_bypass` | `integer` | no | no | Requests with no notification sent (`Bypass`). |
-| `signature_requests_verification_email` | `integer` | no | no | Requests verified by an email token. |
+| `signature_requests_verification_email` | `integer` | no | no | Requests verified by an e-mail token. |
 | `signature_requests_verification_whatsapp` | `integer` | no | no | Requests verified by a WhatsApp token. |
 | `signature_requests_verification_bypass` | `integer` | no | no | Requests signed without token verification (`Bypass`). |
-| `signature_requests_verification_digital_certificate` | `integer` | no | no | Requests signed with the signer's ICP-Brasil digital certificate. |
+| `signature_requests_verification_digital_certificate` | `integer` | no | no | Requests signed with the signer's own ICP-Brasil digital certificate. |
 | `signature_requests_viewed` | `integer` | no | no | Signature requests whose document was first viewed during the period. |
 | `signature_requests_completed` | `integer` | no | no | Signature requests completed by individual signers during the period. |
 | `documents_certified` | `integer` | no | no |  |
-
 ### Schema: NotificationPreferences
 
 Owner-facing document notifications, keyed by notification type. `true` means the e-mail is sent.
@@ -3212,6 +3620,7 @@ Statuses: `200` Signature completed; `400` Invalid signed token or signing state
 - Field validation overloads can add the deployment-specific `signer-access-code` query input.
 - `SignerResource.uploadSignature` accepts PNG or JPEG bytes. Use PNG unless the target tenant accepts JPEG uploads.
 - `WebhookResource.get` returns `null` when no subscription exists (HTTP 404).
+- `WebhookSignature.verify(secret, headers, rawBody)` checks a signed delivery locally (Standard Webhooks HMAC-SHA256 over `{webhook-id}.{webhook-timestamp}.{body}`, constant-time comparison, 5-minute replay window); `verify(secret, id, timestamp, signature, rawBody, tolerance, now)` takes the header values, tolerance and clock explicitly. A secret that is not `whsec_` base64 raises `ValidationException`; a missing header returns `false`.
 - `CreateWorkspaceRequest` and `UpdateWorkspaceRequest` expose optional deployment theme fields through `primaryColor` and `secondaryColor`; use `WorkspaceResource.getTheme` and the logo methods for the remaining branding operations.
 
 ## SDK convenience payloads

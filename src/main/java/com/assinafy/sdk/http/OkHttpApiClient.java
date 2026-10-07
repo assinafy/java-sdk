@@ -41,7 +41,7 @@ public class OkHttpApiClient implements ApiHttpClient {
     private static final byte[] JPEG_MAGIC = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
     private static final Set<String> PUBLIC_PATHS = Set.of(
             "/login", "/authentication/social-login", "/authentication/request-password-reset",
-            "/authentication/reset-password", "/oauth/token", "/oauth/revoke");
+            "/authentication/reset-password", "/authentication/mfa/verify", "/oauth/token", "/oauth/revoke");
 
     /** Lenient mapper used only to extract an error message from a failed binary download. */
     private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();

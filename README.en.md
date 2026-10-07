@@ -3,9 +3,9 @@
 *[Leia em português](README.md) · English*
 
 A Java client for the [Assinafy API](https://api.assinafy.com.br/v1/docs), the Brazilian digital
-signature platform. It covers all 93 documented operations — document upload and certification,
-signer management, signature requests, templates, field definitions, tags, workspaces, webhooks,
-and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
+signature platform. It covers all 106 documented operations — document upload and certification,
+signer management, signature requests, templates, field definitions, tags, workspaces, signed
+webhooks with multiple endpoints, two-factor login, OAuth 2.1, and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
 thread-safe client.
 
 This README is written to be read top to bottom: install the SDK, understand how it is organized,
@@ -92,7 +92,7 @@ Then add the repository and the dependency to your project:
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.12.0</version>
+    <version>1.13.0</version>
 </dependency>
 ```
 
@@ -223,7 +223,7 @@ AssinafyClient bearerClient = new AssinafyClient(
 When both are configured the API key wins. Signer-facing operations use a fourth credential, the
 signer access code, passed per call rather than configured on the client — see
 [Signer self-service](#signer-self-service). The default transport omits workspace credentials on
-public, login, password-reset, OAuth grant, and signer-access-code calls. Protected calls retain
+public, login, two-factor verification, password-reset, OAuth grant, and signer-access-code calls. Protected calls retain
 the configured credential.
 
 ## Configuration
@@ -528,8 +528,10 @@ step** — the SDK enforces that last rule before sending. A CPF requires that p
 certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ requires the
 company's e-CNPJ.
 
-Before the assignment opens, the signer must confirm their identity data
-(`signers().confirmSignerData(...)`) and accept the terms (`signers().acceptTerms(...)`). The
+Before the signer opens the document (`GET /v1/sign`), they must confirm their identity data and
+accept the terms, or the API answers `400`. One `signers().confirmSignerData(...)` call with
+`has_accepted_terms: true` satisfies both; `signers().acceptTerms(...)` also works. The
+`has_accepted_terms` query parameter on `GET /v1/sign` itself is too late to open the gate. The
 ordinary signing endpoint **rejects** certificate signers with `400`: their signature is produced by
 a two-step handshake with the Web PKI extension.
 
@@ -878,6 +880,9 @@ List<DocumentStatsRow> daily = client.workspaces().stats(accountId, "daily", "20
 
 ```java
 AuthSession session = client.authentication().login("user@example.invalid", "password");
+if (session.getMfaToken() != null) {   // the user has a confirmed second factor
+    session = client.authentication().verifyMfa(session.getMfaToken(), "123456");   // or a recovery code
+}
 client.authentication().changePassword("user@example.invalid", "old", "new");
 client.authentication().requestPasswordReset("user@example.invalid");
 client.authentication().resetPassword("user@example.invalid", "token", "new");
@@ -885,6 +890,24 @@ client.authentication().resetPassword("user@example.invalid", "token", "new");
 AuthUser user = client.users().get();
 List<DocumentStatsRow> crossAccount = client.users().stats();   // every accessible workspace
 ```
+
+When the user has a confirmed two-factor method, `login` returns only an `mfa_token` challenge,
+single-use and valid for 5 minutes; `verifyMfa` exchanges it and a 6-digit authenticator code (or a
+recovery code) for the session. The user manages their own second factor:
+
+```java
+TotpEnrollment enrollment = client.users().startTotpEnrollment("Phone");   // secret shown only once
+// render enrollment.getProvisioningUri() as a QR code, then ask for a live code
+List<String> recoveryCodes = client.users().confirmTotpEnrollment(enrollment.getId(), code, null, null);
+
+MfaStatus status = client.users().listMfaMethods();            // methods + recovery codes remaining
+List<String> fresh = client.users().regenerateRecoveryCodes("password", null);
+boolean stillEnabled = client.users().removeMfaMethod(methodId, null, "123456");
+```
+
+Replacing an already-confirmed method requires `password` or `reauthCode` (a live code from the
+current device, or a recovery code). Regenerating and removing always require the password or a
+code; a recovery code used this way is consumed. Removing the last method discards the recovery codes.
 
 Notification preferences use the exact case-sensitive codes the API publishes. Updates merge, so
 omitted switches keep their current values, and the response always returns all nine.
@@ -907,60 +930,113 @@ client.apiKeys().delete();
 
 ## Webhooks
 
-Register one subscription per workspace, then receive deliveries at your endpoint.
+A workspace has **1 webhook endpoint**, or **up to 3** on paid plans. Each endpoint has its own URL,
+event list and signing setting, and every active endpoint subscribed to an event receives it. URLs
+must be unique within the workspace; creating an endpoint past the plan's limit answers `403`
+(`AuthenticationException`).
 
 ```java
-WebhookSubscription sub = client.webhooks().register(
-    RegisterWebhookRequest.builder()
-        .url("https://example.invalid/webhook")
-        .email("admin@example.invalid")
-        .events(List.of("document_ready", "signer_signed_document"))
-        .build()
-);
+WebhookEndpoint erp = client.webhooks().createEndpoint(WebhookEndpointRequest.builder()
+    .url("https://example.invalid/webhooks/assinafy")
+    .email("ops@example.invalid")
+    .name("ERP")
+    .events(List.of("document_ready", "signer_signed_document", "document_processing_failed"))
+    .signingEnabled(true)          // Standard Webhooks signatures on every delivery
+    .build());
+
+List<WebhookEndpoint> endpoints = client.webhooks().listEndpoints();    // oldest first
+WebhookEndpoint one = client.webhooks().getEndpoint(erp.getId());
+client.webhooks().updateEndpoint(erp.getId(),
+    WebhookEndpointRequest.builder().isActive(false).build());          // only set fields change
+client.webhooks().deleteEndpoint(erp.getId());                          // frees the slot
 
 List<WebhookEventTypeInfo> types = client.webhooks().listEventTypes();
+```
+
+When `events` is null the SDK subscribes to `document_ready`, `document_prepared`,
+`signer_signed_document`, `signer_rejected_document` and `document_processing_failed`. The API
+defaults `is_active` to `true` and `signing_enabled` to `false`. Every method also takes an explicit
+account ID as its last argument.
+
+The single-subscription operations still work and act on the workspace's **oldest** endpoint
+(creating it when none exists):
+
+```java
+WebhookSubscription sub = client.webhooks().register(RegisterWebhookRequest.builder()
+    .url("https://example.invalid/webhook")
+    .email("ops@example.invalid")
+    .build());                                          // isActive defaults to true
 WebhookSubscription active = client.webhooks().get();   // null when none is registered
 client.webhooks().inactivate();                         // stop delivery
 ```
 
-When `events` is null or empty the SDK subscribes to `document_ready`, `document_prepared`,
-`signer_signed_document`, `signer_rejected_document`, and `document_processing_failed`; `isActive`
-defaults to `true`. Pass explicit values to override either default.
-
-Deliveries are recorded and can be inspected or replayed:
+Deliveries are recorded per endpoint and can be inspected or replayed:
 
 ```java
 PaginatedResult<WebhookDispatch> dispatches = client.webhooks().listDispatches(
-    ListParams.builder().page(1).perPage(20).build()
+    ListParams.builder().extra("delivered", false).perPage(20).build()
 );
+String endpointId = dispatches.getData().getFirst().getEndpointId();   // null once deleted
 client.webhooks().retryDispatch(dispatchId);
 ```
 
-Return a `2xx` promptly, process asynchronously, deduplicate by event ID and check `account_id`
-against the stored connection. `document_ready` means the final signer completed; certificate
-generation can still be running, so confirm `certificated` through document details before downloading.
+### Verifying signatures
 
-On the receiving side, deserialize the delivery body into `WebhookPayload` with your own Jackson
-mapper. The SDK models the envelope but does not parse it for you, because a webhook arrives at
-your HTTP endpoint rather than through the SDK's transport:
+With `signing_enabled`, each delivery carries `webhook-id`, `webhook-timestamp` and
+`webhook-signature` headers following [Standard Webhooks](https://www.standardwebhooks.com): an
+HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}` keyed by the endpoint's `whsec_` secret.
+`WebhookSignature` checks it locally with the JDK alone.
+
+```java
+String secret = client.webhooks().getEndpointSecret(erp.getId());   // store it in your secret manager
+
+// Receiver: verify the raw body exactly as received — never re-serialized JSON.
+@PostMapping("/webhooks/assinafy")
+ResponseEntity<Void> receive(@RequestHeader Map<String, String> headers, @RequestBody byte[] body)
+        throws IOException {
+    if (!WebhookSignature.verify(secret, headers, body)) {
+        return ResponseEntity.status(401).build();
+    }
+    WebhookPayload event = mapper.readValue(body, WebhookPayload.class);
+    queue.publish(headers.get("webhook-id"), event);   // process asynchronously
+    return ResponseEntity.ok().build();
+}
+```
+
+`verify` matches header names case-insensitively, accepts any `v1,` entry in the header, compares in
+constant time, and rejects timestamps more than five minutes from the local clock. A missing header
+returns `false`; a secret that is not `whsec_` base64 raises `ValidationException`. For a custom
+tolerance or clock, use `verify(secret, id, timestamp, signature, body, tolerance, now)`.
+
+`rotateEndpointSecret(id)` returns a new secret and the old one stops working immediately, so update
+the receiver right away. `signingEnabled(false)` discards the secret, and the secret endpoints
+answer `400` while signing is disabled. They are not available to OAuth applications.
+
+### Delivery contract
+
+Each delivery is a JSON `POST`. Return a `2xx` promptly and process asynchronously. Each event gets
+up to 2 attempts, 3 seconds apart; after 10 consecutive failed events the endpoint's delivery pauses
+and only about 5% of events are probed until one succeeds — use `retryDispatch` to force redelivery.
+Deduplicate by the `webhook-id` header, which is identical on every attempt of the same event to the
+same endpoint, and check `account_id` against the stored connection. `document_ready` means the final
+signer completed; certificate generation can still be running, so confirm `certificated` through
+document details before downloading.
+
+Deserialize the body into `WebhookPayload` with your own Jackson mapper:
 
 ```java
 ObjectMapper mapper = new ObjectMapper()
     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-WebhookPayload event = mapper.readValue(requestBody, WebhookPayload.class);
-String eventType = event.getEvent();          // e.g. "signer_signed_document"
+WebhookPayload event = mapper.readValue(body, WebhookPayload.class);
+String eventType = event.getEvent();               // e.g. "signer_signed_document"
 Map<String, Object> subject = event.getSubject();  // who acted
 Map<String, Object> object = event.getObject();    // the affected entity
 ```
 
-> **Authenticate deliveries at a trusted network boundary.** Assinafy publishes no webhook signature
-> header, no signing scheme, and no place on the subscription to register a shared secret, so there
-> is nothing in the delivery for a client library to verify. Restrict your endpoint to the sender's
-> network, put it behind a gateway that authenticates the caller, or use an unguessable endpoint
-> path — and treat the payload as a notification to act on, not as trusted data. Re-read the
-> affected entity through the API (`documents().details(id)`) before acting on anything that
-> matters.
+Endpoints without signing carry no proof of origin: verify signatures where possible, and otherwise
+treat the payload as a notification and re-read the affected entity (`documents().details(id)`)
+before acting on anything that matters.
 
 ## Error handling
 

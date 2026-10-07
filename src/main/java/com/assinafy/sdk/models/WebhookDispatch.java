@@ -25,6 +25,9 @@ public class WebhookDispatch {
     @JsonProperty("endpoint")
     private String endpoint;
 
+    @JsonProperty("endpoint_id")
+    private String endpointId;
+
     @JsonProperty("payload")
     private Object payload;
 
@@ -50,6 +53,20 @@ public class WebhookDispatch {
      * Creates an empty webhook dispatch.
      */
     public WebhookDispatch() {}
+
+    /**
+     * Returns the ID of the webhook endpoint the delivery was sent to.
+     *
+     * @return the endpoint ID, or {@code null} once that endpoint is deleted
+     */
+    public String getEndpointId() { return endpointId; }
+
+    /**
+     * Sets the endpoint ID.
+     *
+     * @param endpointId the endpoint ID
+     */
+    public void setEndpointId(String endpointId) { this.endpointId = endpointId; }
 
     /**
      * Returns the resource type.

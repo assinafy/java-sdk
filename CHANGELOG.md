@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-07
+
+### Added
+
+- Webhook endpoints: an account has 1 endpoint, or up to 3 on paid plans. `WebhookResource` gains `listEndpoints`, `createEndpoint`, `getEndpoint`, `updateEndpoint`, `deleteEndpoint`, `getEndpointSecret` and `rotateEndpointSecret`, with the `WebhookEndpoint` model and the `WebhookEndpointRequest` builder. `createEndpoint` applies the same default events as `register` when none are given; `updateEndpoint` sends only the fields that are set.
+- `WebhookSignature.verify(...)` checks signed deliveries (Standard Webhooks HMAC-SHA256 over `{webhook-id}.{webhook-timestamp}.{body}`) using the JDK alone, in constant time, with a 5-minute replay window.
+- Two-factor login: `AuthSession.getMfaToken()` carries the challenge `login` returns for users with a confirmed method, and `AuthenticationResource.verifyMfa(mfaToken, code)` completes it. The default transport sends `verifyMfa` without workspace credentials.
+- Two-factor management on `UserResource`: `listMfaMethods`, `startTotpEnrollment`, `confirmTotpEnrollment`, `regenerateRecoveryCodes` and `removeMfaMethod`, with the `MfaStatus`, `MfaMethod` and `TotpEnrollment` models.
+- `WebhookDispatch.getEndpointId()` identifies the endpoint a delivery was sent to.
+- `Signer.getGovernmentId()` returns the signer's CPF/CNPJ from `government_id`.
+
+### Changed
+
+- `register`, `get` and `inactivate` on `WebhookResource` act on the account's oldest webhook endpoint.
+- `Signer.getCpf()` remains deprecated; signer responses carry the value as `government_id`. Migration: read `getGovernmentId()`.
+- Docs: certificate (A1/A3) signers must confirm their data and accept the terms before `GET /v1/sign` returns the document; one `confirmSignerData` call with `has_accepted_terms: true` satisfies both.
+
 ## [1.12.0] - 2026-10-05
 
 ### Changed

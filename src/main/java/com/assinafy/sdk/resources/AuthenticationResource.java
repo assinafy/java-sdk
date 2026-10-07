@@ -78,7 +78,9 @@ public class AuthenticationResource extends BaseResource {
      *
      * @param email account email address
      * @param password account password
-     * @return {@code {access_token, user: AuthUser, accounts: AuthAccount[]}}
+     * @return {@code {access_token, user: AuthUser, accounts: AuthAccount[]}}; when the user has a
+     *         confirmed two-factor method, only {@link AuthSession#getMfaToken()} is set — complete the
+     *         login with {@link #verifyMfa(String, String)}
      * @throws ValidationException if the email or password is invalid
      */
     public AuthSession login(String email, String password) {
@@ -86,6 +88,36 @@ public class AuthenticationResource extends BaseResource {
         requireId(password, "Password");
         return call("Login failed",
                 () -> http.post("/login", serialise(Map.of("email", email, "password", password))),
+                AuthSession.class);
+    }
+
+    /**
+     * Complete a two-factor login by exchanging the {@code mfa_token} that {@link #login} returned
+     * for an access token. The challenge is single-use and expires 5 minutes after login.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/authentication/mfa/verify</code>.
+     * <strong>Authentication:</strong> Public (no SDK credential).</p>
+     * <p>Request body:</p>
+     * <pre>{
+     *   "mfa_token": "challenge-from-login",
+     *   "code": "123456"
+     * }</pre>
+     * <p>Success 200: the same session payload as {@link #login(String, String)}.</p>
+     * <p>Documented HTTP statuses: 200 Access token, user and accounts; 400 Validation failed; 401
+     * The challenge expired, was already used, or too many codes were tried; 500 Unexpected server
+     * error. 401 raises <code>AuthenticationException</code>.</p>
+     *
+     * @param mfaToken the challenge from {@link AuthSession#getMfaToken()}
+     * @param code a 6-digit authenticator code, or a recovery code such as {@code ABCD-EFGH-JKMN}
+     * @return {@code {access_token, user: AuthUser, accounts: AuthAccount[]}}
+     * @throws ValidationException if the challenge or code is blank
+     */
+    public AuthSession verifyMfa(String mfaToken, String code) {
+        requireId(mfaToken, "MFA token");
+        requireId(code, "MFA code");
+        return call("Two-factor verification failed",
+                () -> http.post("/authentication/mfa/verify",
+                        serialise(Map.of("mfa_token", mfaToken, "code", code.strip()))),
                 AuthSession.class);
     }
 

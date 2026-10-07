@@ -6,7 +6,9 @@ import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.AuthUser;
 import com.assinafy.sdk.models.DocumentStatsRow;
+import com.assinafy.sdk.models.MfaStatus;
 import com.assinafy.sdk.models.NotificationPreferences;
+import com.assinafy.sdk.models.TotpEnrollment;
 import com.assinafy.sdk.util.ResponseHandler;
 
 import java.util.LinkedHashMap;
@@ -262,5 +264,171 @@ public class UserResource extends BaseResource {
         return call("Failed to update notification preferences",
                 () -> http.put("/users/self/notification-preferences", serialise(body)),
                 NotificationPreferences.class);
+    }
+
+    /**
+     * List the authenticated user's enrolled two-factor methods and remaining recovery codes.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/users/self/mfa</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: none. Success 200:</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "methods": [
+     *       {
+     *         "id": "m1",
+     *         "type": "Totp",
+     *         "label": "Phone",
+     *         "confirmed_at": "2026-10-01T12:00:00Z",
+     *         "last_used_at": null
+     *       }
+     *     ],
+     *     "recovery_codes_remaining": 10
+     *   }
+     * }</pre>
+     * <p>Documented HTTP statuses: 200 Enrolled methods; 401 Missing or invalid credentials; 500
+     * Unexpected server error.</p>
+     *
+     * @return enrolled methods and the unused recovery-code count
+     */
+    public MfaStatus listMfaMethods() {
+        return call("Failed to list two-factor methods", () -> http.get("/users/self/mfa"), MfaStatus.class);
+    }
+
+    /**
+     * Start authenticator-app enrollment. The returned secret is shown only once; two-factor
+     * authentication is not active until {@link #confirmTotpEnrollment} succeeds.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/users/self/mfa/totp</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>{"label": "Phone"}</code>, or <code>{}</code> without a label.</p>
+     * <p>Success 200:</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": {
+     *     "id": "m1",
+     *     "secret": "JBSWY3DPEHPK3PXP",
+     *     "provisioning_uri": "otpauth://totp/Assinafy:user%40example.invalid?secret=JBSWY3DPEHPK3PXP&amp;issuer=Assinafy"
+     *   }
+     * }</pre>
+     * <p>Documented HTTP statuses: 200 Enrollment started; 400 Validation failed; 401 Missing or
+     * invalid credentials; 500 Unexpected server error.</p>
+     *
+     * @param label optional label for the device, or {@code null}
+     * @return the method ID, shared secret, and {@code otpauth://} provisioning URI
+     */
+    public TotpEnrollment startTotpEnrollment(String label) {
+        String json = serialise(label == null || label.isBlank() ? Map.of() : Map.of("label", label));
+        return call("Failed to start authenticator enrollment", () -> http.post("/users/self/mfa/totp", json), TotpEnrollment.class);
+    }
+
+    /**
+     * Activate an authenticator enrollment by proving a live code from the new device. From then
+     * on every login requires a second factor. First-time enrollment needs no re-authentication;
+     * replacing an existing confirmed method requires {@code password} or {@code reauthCode} (a
+     * live code from the current device, or a recovery code).
+     *
+     * <p><strong>HTTP:</strong> <code>PUT /v1/users/self/mfa/totp/confirm</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body:</p>
+     * <pre>{
+     *   "id": "m1",
+     *   "code": "123456",
+     *   "password": "only when replacing a method",
+     *   "reauth_code": "or this instead of password"
+     * }</pre>
+     * <p>Success 200 (the recovery codes are shown only once):</p>
+     * <pre>{
+     *   "status": 200,
+     *   "message": "",
+     *   "data": { "recovery_codes": ["ABCD-EFGH-JKMN", "..."] }
+     * }</pre>
+     * <p>Documented HTTP statuses: 200 Two-factor enabled; 400 Validation failed or wrong code; 401
+     * Missing or invalid credentials; 500 Unexpected server error.</p>
+     *
+     * @param methodId the ID from {@link #startTotpEnrollment(String)}
+     * @param code a live code from the new device
+     * @param password current password when replacing a method, or {@code null}
+     * @param reauthCode alternative re-authentication when replacing a method, or {@code null}
+     * @return the new recovery codes
+     * @throws ValidationException if the method ID or code is blank
+     */
+    public List<String> confirmTotpEnrollment(String methodId, String code, String password, String reauthCode) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", requireId(methodId, "MFA method ID"));
+        body.put("code", requireId(code, "MFA code").strip());
+        if (password != null) body.put("password", password);
+        if (reauthCode != null) body.put("reauth_code", reauthCode);
+        String json = serialise(body);
+        return recoveryCodes(callMap("Failed to confirm authenticator enrollment",
+                () -> http.put("/users/self/mfa/totp/confirm", json)));
+    }
+
+    /**
+     * Issue ten new recovery codes, invalidating the previous set. Requires re-authentication with
+     * the current password or a {@code code} (a live authenticator code, or an existing recovery
+     * code, which is then consumed).
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/users/self/mfa/recovery-codes</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>{"password": "..."}</code> or <code>{"code": "123456"}</code>.</p>
+     * <p>Success 200: <code>{"status": 200, "message": "", "data": {"recovery_codes": ["ABCD-EFGH-JKMN", "..."]}}</code>.</p>
+     * <p>Documented HTTP statuses: 200 New recovery codes; 400 Validation failed or wrong
+     * re-authentication; 401 Missing or invalid credentials; 500 Unexpected server error.</p>
+     *
+     * @param password current password, or {@code null}
+     * @param code live authenticator code or existing recovery code, or {@code null}
+     * @return the new recovery codes
+     * @throws ValidationException if neither password nor code is given
+     */
+    public List<String> regenerateRecoveryCodes(String password, String code) {
+        String json = serialise(reauth(password, code));
+        return recoveryCodes(callMap("Failed to regenerate recovery codes",
+                () -> http.post("/users/self/mfa/recovery-codes", json)));
+    }
+
+    /**
+     * Remove an enrolled two-factor method. Requires re-authentication with the current password
+     * or a {@code code}, so a stolen session cannot silently disable two-factor authentication.
+     * Removing the last method also discards the recovery codes.
+     *
+     * <p><strong>HTTP:</strong> <code>DELETE /v1/users/self/mfa/{customId}</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body: <code>{"password": "..."}</code> or <code>{"code": "123456"}</code>.</p>
+     * <p>Success 200: <code>{"status": 200, "message": "", "data": {"is_mfa_enabled": false}}</code>.</p>
+     * <p>Documented HTTP statuses: 200 Method removed; 400 Validation failed or wrong
+     * re-authentication; 401 Missing or invalid credentials; 404 No such method; 500 Unexpected
+     * server error.</p>
+     *
+     * @param methodId the method ID from {@link #listMfaMethods()}
+     * @param password current password, or {@code null}
+     * @param code live authenticator code or existing recovery code, or {@code null}
+     * @return whether two-factor authentication is still enabled
+     * @throws ValidationException if the method ID is blank or neither password nor code is given
+     */
+    public boolean removeMfaMethod(String methodId, String password, String code) {
+        String path = "/users/self/mfa/" + pathSegment(methodId, "MFA method ID");
+        String json = serialise(reauth(password, code));
+        return Boolean.TRUE.equals(callMap("Failed to remove two-factor method",
+                () -> http.delete(path, json)).get("is_mfa_enabled"));
+    }
+
+    private static Map<String, String> reauth(String password, String code) {
+        Map<String, String> body = new LinkedHashMap<>();
+        if (password != null && !password.isEmpty()) body.put("password", password);
+        if (code != null && !code.isBlank()) body.put("code", code.strip());
+        if (body.isEmpty()) {
+            throw new ValidationException("Re-authentication requires the current password or a two-factor code");
+        }
+        return body;
+    }
+
+    private static List<String> recoveryCodes(Map<String, Object> data) {
+        return data.get("recovery_codes") instanceof List<?> codes
+                ? codes.stream().map(String::valueOf).toList()
+                : List.of();
     }
 }
