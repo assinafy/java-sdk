@@ -57,44 +57,24 @@ Runtime dependencies are OkHttp and Jackson. The published jar declares
 
 ## Installation
 
-Release tags publish to GitHub Packages, and GitHub requires authentication even for public Maven
-packages. Export a GitHub username and a classic personal access token with `read:packages`:
-
-```bash
-export GITHUB_ACTOR=your-github-username
-export GITHUB_TOKEN=your-classic-personal-access-token
-```
-
-Reference those variables from `~/.m2/settings.xml`:
+The SDK is published to Maven Central, with no repository configuration or authentication. Maven:
 
 ```xml
-<settings>
-    <servers>
-        <server>
-            <id>github</id>
-            <username>${env.GITHUB_ACTOR}</username>
-            <password>${env.GITHUB_TOKEN}</password>
-        </server>
-    </servers>
-</settings>
-```
-
-Then add the repository and the dependency to your project:
-
-```xml
-<repositories>
-    <repository>
-        <id>github</id>
-        <url>https://maven.pkg.github.com/assinafy/java-sdk</url>
-    </repository>
-</repositories>
-
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.13.0</version>
+    <version>1.14.0</version>
 </dependency>
 ```
+
+Gradle:
+
+```kotlin
+implementation("com.assinafy:assinafy-sdk:1.14.0")
+```
+
+The same versions are also published to GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
+which requires a classic personal access token with `read:packages`.
 
 Working from a source checkout instead? Install the artifact into your local repository first:
 

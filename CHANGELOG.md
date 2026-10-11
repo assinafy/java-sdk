@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-10-11
+
+### Added
+- Published to Maven Central as `com.assinafy:assinafy-sdk`. Installing no longer needs a repository entry
+  or a GitHub token; GitHub Packages keeps receiving the same versions.
+
 ## [1.13.0] - 2026-10-07
 
 ### Added
