@@ -28,6 +28,9 @@ public class AssignmentSigner {
     @JsonProperty("whatsapp_phone_number")
     private String whatsappPhoneNumber;
 
+    @JsonProperty("government_id")
+    private String governmentId;
+
     @JsonProperty("has_accepted_terms")
     private Boolean hasAcceptedTerms;
 
@@ -123,6 +126,20 @@ public class AssignmentSigner {
      * @param whatsappPhoneNumber the WhatsApp phone number
      */
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
+
+    /**
+     * Returns the signer's CPF or CNPJ.
+     *
+     * @return the CPF or CNPJ, or {@code null} when not set
+     */
+    public String getGovernmentId() { return governmentId; }
+
+    /**
+     * Sets the signer's CPF or CNPJ.
+     *
+     * @param governmentId the CPF or CNPJ
+     */
+    public void setGovernmentId(String governmentId) { this.governmentId = governmentId; }
 
     /**
      * Returns the terms-acceptance flag.

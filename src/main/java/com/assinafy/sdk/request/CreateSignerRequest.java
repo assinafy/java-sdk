@@ -1,11 +1,22 @@
 package com.assinafy.sdk.request;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 
 /**
- * Request payload for creating a signer.
+ * Request payload for creating a signer ({@code POST /v1/accounts/{accountId}/signers}).
+ *
+ * <pre>{
+ *   "full_name": "John Dove",
+ *   "email": "signer@example.com",
+ *   "whatsapp_phone_number": "+5548999990000",
+ *   "government_id": "390.533.447-05"
+ * }</pre>
+ *
+ * <p>{@code full_name} is required; every other field is optional and omitted when unset.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CreateSignerRequest {
@@ -20,12 +31,12 @@ public class CreateSignerRequest {
     private String whatsappPhoneNumber;
 
     /**
-     * Brazilian CPF or CNPJ. After signer creation, {@code SignerResource.create} stores this value
-     * through the signer update operation's {@code government_id} field; non-digits are stripped
-     * there.
+     * Brazilian CPF (11 digits) or CNPJ (14 characters, possibly alphanumeric). Formatting is
+     * accepted; the API normalizes the value on save.
      */
-    @JsonProperty("cpf")
-    private String cpf;
+    @JsonProperty("government_id")
+    @JsonAlias("cpf")
+    private String governmentId;
 
     /**
      * Creates an empty signer-creation request.
@@ -84,18 +95,38 @@ public class CreateSignerRequest {
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
     /**
-     * Returns the CPF or CNPJ.
+     * Returns the CPF or CNPJ sent as {@code government_id}.
      *
      * @return the CPF or CNPJ
      */
-    public String getCpf() { return cpf; }
+    public String getGovernmentId() { return governmentId; }
+
+    /**
+     * Sets the CPF or CNPJ sent as {@code government_id}.
+     *
+     * @param governmentId the CPF or CNPJ
+     */
+    public void setGovernmentId(String governmentId) { this.governmentId = governmentId; }
+
+    /**
+     * Returns the CPF or CNPJ.
+     *
+     * @return the CPF or CNPJ
+     * @deprecated Use {@link #getGovernmentId()}; the API wire field is {@code government_id}.
+     */
+    @Deprecated
+    @JsonIgnore
+    public String getCpf() { return governmentId; }
 
     /**
      * Sets the CPF or CNPJ.
      *
      * @param cpf the CPF or CNPJ
+     * @deprecated Use {@link #setGovernmentId(String)}.
      */
-    public void setCpf(String cpf) { this.cpf = cpf; }
+    @Deprecated
+    @JsonIgnore
+    public void setCpf(String cpf) { this.governmentId = cpf; }
 
     /**
      * Builder for {@link CreateSignerRequest}.
@@ -139,12 +170,22 @@ public class CreateSignerRequest {
         public Builder phone(String phone) { req.setWhatsappPhoneNumber(phone); return this; }
 
         /**
-         * Sets the CPF or CNPJ for the object being built.
+         * Sets the CPF or CNPJ sent as {@code government_id}.
+         *
+         * @param governmentId the CPF or CNPJ
+         * @return this builder
+         */
+        public Builder governmentId(String governmentId) { req.setGovernmentId(governmentId); return this; }
+
+        /**
+         * Sets the CPF or CNPJ.
          *
          * @param cpf the CPF or CNPJ
          * @return this builder
+         * @deprecated Use {@link #governmentId(String)}.
          */
-        public Builder cpf(String cpf) { req.setCpf(cpf); return this; }
+        @Deprecated
+        public Builder cpf(String cpf) { req.setGovernmentId(cpf); return this; }
 
         /**
          * Builds the configured signer-creation request.

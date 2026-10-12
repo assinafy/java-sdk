@@ -54,14 +54,14 @@ O SDK é publicado no Maven Central, sem configuração de repositório nem aute
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.14.0</version>
+    <version>1.14.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:1.14.0")
+implementation("com.assinafy:assinafy-sdk:1.14.1")
 ```
 
 As mesmas versões continuam publicadas no GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -273,15 +273,15 @@ ou cria um novo. `signers().create(...)` sempre cria.
 
 O cadastro exige `fullName`. Para solicitar uma assinatura, o signatário também precisa do canal
 compatível com a verificação escolhida: `email` ou `whatsappPhoneNumber`.
-O CPF/CNPJ vai em `cpf` e é gravado pelo SDK através do update documentado
-(`government_id`), com os não-dígitos removidos.
+O CPF/CNPJ vai em `governmentId` e é enviado como `government_id` na própria criação; a API aceita
+a formatação e normaliza o valor.
 
 ```java
 Signer porWhatsapp = client.signers().findOrCreate(
     CreateSignerRequest.builder()
         .fullName("João Souza")
         .whatsappPhoneNumber("+5511999999999")
-        .cpf("123.456.789-09")
+        .governmentId("123.456.789-09")
         .build()
 );
 ```
@@ -692,9 +692,11 @@ outra causa: outro workspace, o papel do usuário, ou uma área que tokens OAuth
 verificação/notificação e de ordem de assinatura valem aqui.
 
 **Definições de campo** (`fields()`) são tipos de campo reutilizáveis do workspace — CPF, data, texto
-livre. `fields().validate(fieldId, valor, signerAccessCode)` e
-`fields().validateMultiple(entradas, signerAccessCode)` conferem valores contra a definição antes de
-você enviá-los. `fields().listTypes()` lista os tipos disponíveis.
+livre. `fields().validateAsWorkspace(fieldId, valor)` e
+`fields().validateMultipleAsWorkspace(entradas)` conferem valores contra a definição com a
+credencial do workspace; `fields().validate(fieldId, valor, signerAccessCode)` e
+`fields().validateMultiple(entradas, signerAccessCode)` fazem o mesmo como signatário, enviando só o
+código de acesso. `fields().listTypes()` lista os tipos disponíveis.
 
 **Tags** (`tags()`) são rótulos do workspace. Documentos recebem tags **por nome**: a plataforma
 vincula uma tag existente pelo nome e cria uma nova quando o nome não existe.
@@ -727,7 +729,14 @@ client.assignments().decline(documentId, assignmentId, codigo, "Valores divergen
 ```
 
 Também há listagem, busca e download dos documentos do signatário, além de assinar ou recusar vários
-de uma vez (`signMultiple`, `declineMultiple`).
+de uma vez (`signMultiple`, `declineMultiple`). Todo método que recebe o código de acesso exige um
+código não vazio e envia só ele, nunca a chave de API ou o token do workspace. Para ler os documentos
+de um signatário do workspace com a credencial do workspace, use
+`signers().listDocumentsAsWorkspace(signerId)` e `signers().searchDocumentsAsWorkspace(signerId, termo)`.
+
+`publicDocuments().sendToken(documentId, email)` envia um token de acesso por e-mail a um signatário
+que ainda não assinou, com o corpo `{"channel": "email", "recipient": email}`;
+`sendTokenTyped(...)` devolve o resumo do documento, o canal e o destinatário.
 
 ## Webhooks
 
@@ -831,7 +840,8 @@ AssinafyException
 try {
     client.assignments().create(documentId, pedido);
 } catch (RateLimitException e) {
-    // recuar e repetir
+    // aguarde Retry-After (segundos) antes de repetir
+    int espera = e.getRetryAfter().orElse(e.getRateLimitReset().orElse(60));
 } catch (AuthenticationException e) {
     // credencial ausente, expirada ou sem permissão
 } catch (ApiException e) {
@@ -840,6 +850,10 @@ try {
     log.error("Requisição inválida: {}", e.getErrors());
 }
 ```
+
+Toda resposta limitada informa a cota em `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining` e
+`X-Rate-Limit-Reset`; `ApiException` expõe esses valores em `getRateLimitLimit()`,
+`getRateLimitRemaining()` e `getRateLimitReset()`, e um `429` traz `getRetryAfter()`.
 
 ## Paginação
 

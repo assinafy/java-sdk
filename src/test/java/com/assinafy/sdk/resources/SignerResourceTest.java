@@ -162,7 +162,7 @@ class SignerResourceTest {
         Signer result = resource.findOrCreate(CreateSignerRequest.builder()
                 .fullName("John")
                 .email("john@example.invalid")
-                .cpf("123.456.789-00")
+                .governmentId("123.456.789-00")
                 .build());
 
         assertThat(result.getId()).isEqualTo("existing");
@@ -247,26 +247,37 @@ class SignerResourceTest {
     }
 
     @Test
-    void createNormalisesCpfByStrippingNonDigits() {
-        mock.enqueue(200, SIGNER_123).enqueue(200, SIGNER_123);
+    void createSendsGovernmentIdAsGivenInOneRequest() {
+        mock.enqueue(200, SIGNER_123);
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
-                .email("john@example.invalid")
-                .cpf("123.456.789-00")
+                .email("signer@example.com")
+                .governmentId("123.456.789-00")
                 .build());
 
+        assertThat(mock.capturedCount()).isEqualTo(1);
         assertThat(mock.capturedAt(0).getJsonBody())
-                .doesNotContain("cpf", "government_id", "metadata");
-        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("PUT");
-        assertThat(mock.capturedAt(1).getPath())
-                .isEqualTo("/accounts/test-account/signers/123");
-        assertThat(mock.capturedAt(1).getJsonBody())
-                .contains("\"government_id\":\"12345678900\"");
+                .contains("\"government_id\":\"123.456.789-00\"")
+                .doesNotContain("\"cpf\"", "metadata");
     }
 
     @Test
-    void updateSerializesAndNormalisesGovernmentId() {
+    @SuppressWarnings("deprecation")
+    void deprecatedCpfCreateAliasUsesGovernmentIdWireField() {
+        mock.enqueue(200, SIGNER_123);
+
+        CreateSignerRequest request = CreateSignerRequest.builder().fullName("John").cpf("123").build();
+        resource.create(request);
+
+        assertThat(request.getCpf()).isEqualTo("123");
+        assertThat(mock.lastCaptured().getJsonBody())
+                .contains("\"government_id\":\"123\"")
+                .doesNotContain("\"cpf\"");
+    }
+
+    @Test
+    void updateSendsGovernmentIdAsGiven() {
         mock.enqueue(200, SIGNER_123);
 
         resource.update("123", UpdateSignerRequest.builder()
@@ -277,8 +288,31 @@ class SignerResourceTest {
         assertThat(mock.lastCaptured().getPath())
                 .isEqualTo("/accounts/test-account/signers/123");
         assertThat(mock.lastCaptured().getJsonBody())
-                .contains("\"government_id\":\"39053344705\"")
-                .doesNotContain("\"cpf\"");
+                .isEqualTo("{\"government_id\":\"390.533.447-05\"}");
+    }
+
+    @Test
+    void workspaceDocumentListingSendsNoAccessCode() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}").enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        resource.listDocumentsAsWorkspace("s1", ListParams.builder().page(2).build());
+        resource.searchDocumentsAsWorkspace("s1", "contract");
+
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/signers/s1/documents");
+        assertThat(mock.capturedAt(0).getQueryParams()).containsExactly(Map.entry("page", 2));
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/signers/s1/documents/search");
+        assertThat(mock.capturedAt(1).getQueryParams()).containsExactly(Map.entry("search", "contract"));
+    }
+
+    @Test
+    void accessCodeDocumentListingRejectsBlankCode() {
+        for (String code : new String[]{null, "", " "}) {
+            assertThatThrownBy(() -> resource.listDocuments("s1", code))
+                    .isInstanceOf(ValidationException.class);
+            assertThatThrownBy(() -> resource.searchDocuments("s1", code, "x"))
+                    .isInstanceOf(ValidationException.class);
+        }
+        assertThat(mock.capturedCount()).isZero();
     }
 
     @Test
@@ -295,7 +329,7 @@ class SignerResourceTest {
         assertThat(ResponseHandler.convert(Map.of("cpf", "123"), UpdateSignerRequest.class)
                 .getGovernmentId()).isEqualTo("123");
         assertThat(mock.lastCaptured().getJsonBody())
-                .contains("\"government_id\":\"39053344705\"")
+                .contains("\"government_id\":\"390.533.447-05\"")
                 .doesNotContain("\"cpf\"");
     }
 

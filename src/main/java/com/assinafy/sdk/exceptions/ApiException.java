@@ -6,12 +6,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalInt;
 
 /**
  * Indicates an HTTP or response-envelope error returned by the Assinafy API.
  *
  * <p>Response collections and headers are exposed as immutable snapshots. Header lookup is
  * case-insensitive.
+ *
+ * <p>The API rate-limits requests per minute and reports the quota on every limited response with
+ * {@code X-Rate-Limit-Limit}, {@code X-Rate-Limit-Remaining} and {@code X-Rate-Limit-Reset}; a
+ * {@code 429 Too Many Requests} also carries {@code Retry-After}. {@link #getRateLimitLimit()},
+ * {@link #getRateLimitRemaining()}, {@link #getRateLimitReset()} and {@link #getRetryAfter()}
+ * return those values.
  */
 public class ApiException extends AssinafyException {
 
@@ -154,6 +161,41 @@ public class ApiException extends AssinafyException {
      */
     public String getResponseHeader(String name) {
         return name != null ? responseHeaders.get(name.toLowerCase(Locale.ROOT)) : null;
+    }
+
+    /** {@return {@code X-Rate-Limit-Limit}, the requests allowed in the current window, when sent} */
+    public OptionalInt getRateLimitLimit() {
+        return intHeader("x-rate-limit-limit");
+    }
+
+    /** {@return {@code X-Rate-Limit-Remaining}, the requests left in the current window, when sent} */
+    public OptionalInt getRateLimitRemaining() {
+        return intHeader("x-rate-limit-remaining");
+    }
+
+    /** {@return {@code X-Rate-Limit-Reset}, the seconds until the window resets, when sent} */
+    public OptionalInt getRateLimitReset() {
+        return intHeader("x-rate-limit-reset");
+    }
+
+    /**
+     * Return the {@code Retry-After} delay a {@code 429 Too Many Requests} response carries.
+     *
+     * @return the seconds to wait before retrying, or empty when the header is absent or is not a
+     *         number of seconds
+     */
+    public OptionalInt getRetryAfter() {
+        return intHeader("retry-after");
+    }
+
+    private OptionalInt intHeader(String name) {
+        String value = responseHeaders.get(name);
+        if (value == null) return OptionalInt.empty();
+        try {
+            return OptionalInt.of(Integer.parseInt(value.trim()));
+        } catch (NumberFormatException e) {
+            return OptionalInt.empty();
+        }
     }
 
     private static Object snapshot(Object value) {

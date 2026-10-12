@@ -13,6 +13,8 @@ This is the Java mapping of the official production OpenAPI document published a
 - Raw `Map<String,Object>` methods expose object-valued `data` fields directly. A scalar or array `data` value is returned as `{ "data": value }`; missing data or an empty success body becomes an empty map. Typed alternatives are listed beside their map-returning methods.
 - Operation request tables describe the production OpenAPI wire contract. Additional Java helpers are identified at the end of this reference.
 - Non-2xx responses and non-2xx numeric envelope statuses throw `ApiException`; 401/403 use `AuthenticationException`, 429 uses `RateLimitException`, I/O failures use `NetworkException`, and local argument failures use `ValidationException`. An RFC 6749 `{error, error_description}` body from an OAuth endpoint throws `OAuthException`, a subtype of `ApiException`.
+- Every rate-limited response carries `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining` and `X-Rate-Limit-Reset`, and a `429` adds `Retry-After` (seconds). `ApiException` (and so `RateLimitException`) returns them from `getRateLimitLimit()`, `getRateLimitRemaining()`, `getRateLimitReset()` and `getRetryAfter()`, each an `OptionalInt`.
+- Every method that takes a signer access code rejects a null or blank code with `ValidationException` and sends only that code — never the workspace API key or bearer token. Routes that also accept workspace credentials have separate `...AsWorkspace` methods.
 - The OAuth endpoints are the deliberate exception to the envelope rule. RFC 6749 §5.1/§5.2, OIDC Core §5.3.2 and RFC 8615 all require flat JSON, so `/oauth/token`, `/oauth/revoke`, `/oauth/userinfo` and the `.well-known` documents are neither wrapped nor unwrapped — the SDK decodes them as-is.
 
 ## Authentication
@@ -590,13 +592,14 @@ Documented statuses: `200` A page of signers; `401` Missing or invalid credentia
 
 Request body: **required**.
 
-`application/json`: object{full_name!: `string`; email: `string(email)`; whatsapp_phone_number: `string`}.
+`application/json`: object{full_name!: `string`; email: `string(email)`; whatsapp_phone_number: `string`; government_id: `string`}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
 | `full_name` | `string` | yes | no |  |
 | `email` | `string(email)` | no | no |  |
 | `whatsapp_phone_number` | `string` | no | no | E.164; normalized on save. |
+| `government_id` | `string` | no | no | Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save. Set with `CreateSignerRequest.Builder.governmentId(...)`. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [Signer](#schema-signer)}.
 
@@ -680,7 +683,7 @@ Request body: **required**.
 | `full_name` | `string` | no | no |  |
 | `email` | `string(email)` | no | no |  |
 | `whatsapp_phone_number` | `string` | no | no | E.164; normalized on save. |
-| `government_id` | `string` | no | no | Signer's CPF/CNPJ; digits only on save. |
+| `government_id` | `string` | no | no | Signer's CPF (11 digits) or CNPJ (14 characters; may be alphanumeric). Formatting is accepted and the value is normalized on save. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [Signer](#schema-signer)}.
 
@@ -1252,7 +1255,7 @@ Documented statuses: `200` The created assignment; `400` One or more fields fail
 - **HTTP:** `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Changes signing state: reset assignment expiration.
-- **Contract notes:** Set a new expiration date for an assignment.
+- **Contract notes:** Set a new expiration date for an assignment, or remove its expiration by sending `expires_at: null`. Not allowed once the document is closed. `resetExpiration(..., null)` sends `{"expires_at": null}`.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1261,11 +1264,11 @@ Documented statuses: `200` The created assignment; `400` One or more fields fail
 
 Request body: **required**.
 
-`application/json`: object{expires_at: `string(date-time)`}.
+`application/json`: object{expires_at!: `string(date-time)`?}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `expires_at` | `string(date-time)` | no | no | New expiration date (ISO 8601). |
+| `expires_at` | `string(date-time)`? | yes | yes | New expiration date (ISO 8601), at least one hour in the future. `null` removes the expiration; the key itself is required. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [Assignment](#schema-assignment)}.
 
@@ -1518,32 +1521,38 @@ Documented statuses: `200` The public document; `404` The requested resource doe
 
 ### 54. Send access token for public document
 
-- **Java:** `client.publicDocuments()` — `PublicDocumentResource: public Map<String, Object> sendToken(String documentId, String email)`; `client.publicDocuments()` — `PublicDocumentResource: public Map<String, Object> sendToken(String documentId)`; `client.publicDocuments()` — `PublicDocumentResource: public Map<String, Object> sendToken(String documentId, String recipient, String channel)`
+- **Java:** `client.publicDocuments()` — `PublicDocumentResource: public Map<String, Object> sendToken(String documentId, String email)`; `PublicDocumentResource: public TokenDelivery sendTokenTyped(String documentId, String email)`; `PublicDocumentResource: public Map<String, Object> sendToken(String documentId, String recipient, String channel)`
 - **HTTP:** `PUT /v1/public/documents/{documentId}/send-token`
 - **Auth:** Public (no SDK credential)
-- **Side effects:** Sends a notification/token and may consume credits.
-- **Contract notes:** Send a one-time access token (email/WhatsApp) to view a public document. Public endpoint.
+- **Side effects:** Sends a one-time access token by email.
+- **Contract notes:** Send a one-time access token to a signer of a public document, so they can view it. The document must be pending signature, and `recipient` must belong to a signer of the document who has not signed yet. Only the `email` channel is supported; any other channel raises `ValidationException` before a request. Public endpoint.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
 | `documentId` | path | `string` | yes | no | The document ID. |
 
-Request body: optional.
+Request body: **required**.
 
-`application/json`: object{email: `string(email)`}.
-
-| JSON field | Type | Required | Nullable | Notes |
-|---|---|---:|---:|---|
-| `email` | `string(email)` | no | no |  |
-
-Success `200` `application/json`: [Envelope](#schema-envelope).
+`application/json`: object{channel!: `string enum[email]`; recipient!: `string`}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
-| `message` | `string` | no | no | Human-readable message; empty on success. |
+| `channel` | `string enum[email]` | yes | no | Where to send the token. Only `email` is supported. |
+| `recipient` | `string` | yes | no | The signer's email address. |
 
-Documented statuses: `200` Token sent; `500` Unexpected server error.
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: object{document; channel; recipient}}. `sendTokenTyped` returns it as `TokenDelivery`.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `data.document.resource` | `string` | no | no | `document`. |
+| `data.document.id` | `string` | no | no |  |
+| `data.document.name` | `string` | no | no |  |
+| `data.document.page_count` | `integer` | no | no |  |
+| `data.document.created_by` | `string` | no | no | Name of the user who created the document. |
+| `data.channel` | `string` | no | no | `email`. |
+| `data.recipient` | `string` | no | no | The address the token was sent to. |
+
+Documented statuses: `200` Token sent; `400` One or more fields failed validation; `404` The requested resource does not exist; `500` Unexpected server error.
 
 ### 55. View document to sign
 
@@ -1639,11 +1648,11 @@ Documented statuses: `200` The document with the signer's items; `401` Missing o
 
 ### 59. List signer's documents
 
-- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode)`; `client.signers()` — `SignerResource: public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode, ListParams params)`
+- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode)`; `client.signers()` — `SignerResource: public PaginatedResult<Document> listDocuments(String signerId, String signerAccessCode, ListParams params)`; workspace: `SignerResource: public PaginatedResult<Document> listDocumentsAsWorkspace(String signerId)`; `SignerResource: public PaginatedResult<Document> listDocumentsAsWorkspace(String signerId, ListParams params)`
 - **HTTP:** `GET /v1/signers/{signerId}/documents`
-- **Auth:** `signer-access-code` query credential
+- **Auth:** `signer-access-code` query credential (`listDocuments`), or Bearer JWT / `X-Api-Key` (`listDocumentsAsWorkspace`)
 - **Side effects:** None; read-only.
-- **Contract notes:** List the documents a signer is party to. Uses the signer access code.
+- **Contract notes:** List the documents a signer is party to. Accepts either the signer access code or the account's own credentials — with account credentials, the signer must belong to that account's workspace.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1685,11 +1694,11 @@ Documented statuses: `200` The artifact binary; `404` The requested resource doe
 
 ### 61. Search signer's documents
 
-- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<Document> searchDocuments(String signerId, String signerAccessCode, String search)`
+- **Java:** `client.signers()` — `SignerResource: public PaginatedResult<Document> searchDocuments(String signerId, String signerAccessCode, String search)`; workspace: `SignerResource: public PaginatedResult<Document> searchDocumentsAsWorkspace(String signerId, String search)`
 - **HTTP:** `GET /v1/signers/{signerId}/documents/search`
-- **Auth:** `signer-access-code` query credential
+- **Auth:** `signer-access-code` query credential (`searchDocuments`), or Bearer JWT / `X-Api-Key` (`searchDocumentsAsWorkspace`)
 - **Side effects:** None; read-only.
-- **Contract notes:** Search the documents a signer is party to (compact representation). Uses the signer access code.
+- **Contract notes:** Search the documents a signer is party to (compact representation). Accepts either the signer access code or the account's own credentials — with account credentials, the signer must belong to that account's workspace.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2018,9 +2027,9 @@ Documented statuses: `200` The updated field; `401` Missing or invalid credentia
 
 ### 73. Validate field value
 
-- **Java:** `client.fields()` — `FieldResource: public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode)`; `client.fields()` — `FieldResource: public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode, String accountId)`
+- **Java:** signer: `client.fields()` — `FieldResource: public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode)`; `FieldResource: public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode, String accountId)`; workspace: `FieldResource: public FieldValidationResult validateAsWorkspace(String fieldId, Object value)`; `FieldResource: public FieldValidationResult validateAsWorkspace(String fieldId, Object value, String accountId)`
 - **HTTP:** `POST /v1/accounts/{accountId}/fields/{fieldId}/validate`
-- **Auth:** Bearer JWT or `X-Api-Key`
+- **Auth:** Bearer JWT or `X-Api-Key` (`validateAsWorkspace`), or the `signer-access-code` query credential alone (`validate`, which requires a nonblank code)
 - **Side effects:** Mutates server state: validate field value.
 - **Contract notes:** Validate an input value against a field definition. Typically called with a signer access code during the signing flow.
 
@@ -2049,9 +2058,9 @@ Documented statuses: `200` Validation result; `401` Missing or invalid credentia
 
 ### 74. Validate multiple field values
 
-- **Java:** `client.fields()` — `FieldResource: public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode)`; `client.fields()` — `FieldResource: public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode, String accountId)`
+- **Java:** signer: `client.fields()` — `FieldResource: public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode)`; `FieldResource: public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode, String accountId)`; workspace: `FieldResource: public List<FieldValidationResult> validateMultipleAsWorkspace(List<Map<String, Object>> entries)`; `FieldResource: public List<FieldValidationResult> validateMultipleAsWorkspace(List<Map<String, Object>> entries, String accountId)`
 - **HTTP:** `POST /v1/accounts/{accountId}/fields/validate-multiple`
-- **Auth:** Bearer JWT or `X-Api-Key`
+- **Auth:** Bearer JWT or `X-Api-Key` (`validateMultipleAsWorkspace`), or the `signer-access-code` query credential alone (`validateMultiple`, which requires a nonblank code)
 - **Side effects:** Mutates server state: validate multiple field values.
 - **Contract notes:** Validate multiple input values at once. The request body is a JSON array of `{field_id, value}` objects.
 
@@ -2259,7 +2268,7 @@ Documented statuses: `200` The protected resource metadata; `500` Unexpected ser
 - **HTTP:** `POST /v1/oauth/token`
 - **Auth:** public — the application authenticates itself with `client_id`/`client_secret` in the body (`client_secret_post`). The SDK sends no `X-Api-Key` or `Authorization` header here.
 - **Side effects:** Issues tokens; a refresh rotates the refresh token and retires the one sent. The SDK sends each token request once and never re-sends it on its own — not after a connection failure, a `408`, or a `503` with `Retry-After: 0` — because a re-sent refresh would replay the retired token; a timeout or dropped connection raises `NetworkException`, and such a response `ApiException`. Do not re-send a refresh token after a failure that may have reached the server either: re-read storage, and if it still holds the token you sent, ask the user to reconnect. Only a `NetworkException` caused by `UnknownHostException`, `ConnectException` or `SSLHandshakeException` happened before sending and is safe to retry.
-- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour. A refresh token is valid for 30 days, and every refresh returns a new one with a fresh 30 days, so a connection only expires after 30 days without a refresh. The token-exchange grant advertised by discovery is reserved for internal Assinafy service clients; marketplace integrations use authorization code and refresh grants. `refreshToken` rejects a `2xx` response without a new `refresh_token` — missing, blank, or the one sent — with `ValidationException`: the token sent may already be retired, so ask the user to reconnect.
+- **Contract notes:** Implements the RFC 6749 §5.1/§5.2 token-endpoint body contract in both directions: a successful exchange returns a flat JSON object with `access_token` at the top level, and a failure returns a flat `{error, error_description}` object — neither is wrapped in this API's usual response envelope. An authorization code is single-use and expires 60 seconds after approval. Access tokens last one hour. A refresh token is valid for 30 days, and every refresh returns a new one with a fresh 30 days, so a connection only expires after 30 days without a refresh. The `urn:ietf:params:oauth:grant-type:token-exchange` grant (RFC 8693, with `subject_token`, `subject_token_type` and `requested_token_type`) is restricted to a confidential internal-service client and is out of scope for this SDK; integrations use the authorization code and refresh grants. `refreshToken` rejects a `2xx` response without a new `refresh_token` — missing, blank, or the one sent — with `ValidationException`: the token sent may already be retired, so ask the user to reconnect.
 
 Parameters: none.
 
@@ -2283,6 +2292,7 @@ Success `200` `application/json`: bare object — **no envelope**.
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
 | `access_token` | `string` | no | no |  |
+| `issued_token_type` | `string` | no | no | RFC 8693 token type of the issued token. `OAuthTokens.getIssuedTokenType()`. |
 | `token_type` | `string` | no | no | `Bearer`. |
 | `expires_in` | `integer` | no | no | Normally `3600`. |
 | `refresh_token` | `string` | no | yes | Present only when the `offline_access` scope was requested AND consented. A refresh always returns a new one. |
@@ -3203,6 +3213,7 @@ A signer within an assignment: the base Signer plus per-assignment verification/
 | `full_name` | `string` | no | no |  |
 | `email` | `string(email)`? | no | yes |  |
 | `whatsapp_phone_number` | `string`? | no | yes | E.164 format; normalized on save. |
+| `government_id` | `string`? | no | yes | Signer's normalized CPF or CNPJ. `AssignmentSigner.getGovernmentId()`. |
 | `has_accepted_terms` | `boolean` | no | no |  |
 | `verification_method` | `string`? | no | yes |  |
 | `notification_methods` | array<`string`>? | no | yes |  |
@@ -3603,21 +3614,20 @@ Statuses: `200` Signature completed; `400` Invalid signed token or signing state
 ## Java convenience APIs
 
 - `DocumentResource: public Document get(String documentId)` aliases `details`. `public Document waitUntilReady(String documentId)`, `public Document waitUntilReady(String documentId, long maxWaitMs, long pollIntervalMs)`, `public boolean isFullySigned(String documentId)`, and `public SigningProgress getSigningProgress(String documentId)` compose documented document reads locally.
-- `DocumentResource.download(String)` and `SignerResource.downloadDocument(...)` supply the `certificated` artifact default; signer-download overloads also accept an access code for deployments that require it.
+- `DocumentResource.download(String)` and `SignerResource.downloadDocument(...)` supply the `certificated` artifact default. The documented signer download is public: `downloadDocument(signerId, documentId, artifactName)` sends no credential, and the overload taking an access code sends only that code.
 - `DocumentResource.upload(byte[], String, Map<String,Object>, String)` sends multipart `file`, `name`, and optional `metadata` parts.
 - `DocumentResource.appendTagIds(...)` and `replaceTagIds(...)` resolve workspace tag IDs before
   changing a document. The existing `appendTags(...)` and `replaceTags(...)` methods accept tag
   names. Returned `Tag` records carry the attached-tag IDs accepted by `detachTag(...)`.
 - `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer resolution, and assignment creation. On an ordinary later-step failure, it attempts to delete the uploaded document and signer records whose create responses returned valid IDs; cleanup failures are suppressed on the original exception. Signers recovered after an indeterminate create response are not updated or deleted. A recovered entry containing CPF/CNPJ fails before assignment creation. If assignment creation has an indeterminate result and reconciliation cannot find it, the resources are retained to avoid deleting a potentially active request.
-- `SignerResource.create(...)` always sends the create POST. A supplied `CreateSignerRequest.cpf` (CPF or CNPJ) is persisted through a follow-up `government_id` update; if that update fails, the new signer is deleted. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
+- `SignerResource.create(...)` always sends the create POST, including `government_id` when `CreateSignerRequest.governmentId` (CPF or CNPJ) is set. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
 - `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call `GET /accounts/{accountId}/templates/{templateId}`, a live route that the published OpenAPI document does not list — see [Deployed extensions](#deployed-extensions).
 - Assignment/template creation and expiration reset validate timestamps with an offset at least one hour ahead; estimates ignore expiration. Rename and decline enforce 255 and 2,000 Unicode-character limits.
 - A password-reset request for an unknown user returns `404`, with no user found; a signer contact does not establish a registered user identity.
-- `AssignmentResource.resetExpiration(..., null)` sends `expires_at: null`; use this form only where clearing expiration is supported.
-- `PublicDocumentResource.sendToken(String)` follows the optional/bodyless form, and `sendToken(String, String)` sends only `email`. The deployment-specific `sendToken(String, String, String)` sends `email`, `recipient`, and `channel` for the email channel, and `recipient` plus `channel` for other channels.
-- `AssignmentResource.list(..., accountId)` adds optional `accountId` query context.
+- `AssignmentResource.resetExpiration(..., null)` sends `{"expires_at": null}`, which removes the expiration.
+- `AssignmentResource.list(..., accountId)` adds an `accountId` query parameter that the published document does not list. The sandbox answers `400` ("account context is required") to an API-key request without it, so the SDK sends the explicit or default account.
 - `CreateFieldRequest` exposes optional deployment fields `is_active`, `is_read_only`, and `is_visible`. `UpdateFieldRequest` also exposes `type`, `is_required`, `is_read_only`, and `is_visible` for deployments that accept them.
-- Field validation overloads can add the deployment-specific `signer-access-code` query input.
+- Field validation: `validate`/`validateMultiple` take a required signer access code and send only it; `validateAsWorkspace`/`validateMultipleAsWorkspace` use the workspace credential.
 - `SignerResource.uploadSignature` accepts PNG or JPEG bytes. Use PNG unless the target tenant accepts JPEG uploads.
 - `WebhookResource.get` returns `null` when no subscription exists (HTTP 404).
 - `WebhookSignature.verify(secret, headers, rawBody)` checks a signed delivery locally (Standard Webhooks HMAC-SHA256 over `{webhook-id}.{webhook-timestamp}.{body}`, constant-time comparison, 5-minute replay window); `verify(secret, id, timestamp, signature, rawBody, tolerance, now)` takes the header values, tolerance and clock explicitly. A secret that is not `whsec_` base64 raises `ValidationException`; a missing header returns `false`.

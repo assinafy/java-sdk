@@ -376,36 +376,38 @@ public class FieldResource extends BaseResource {
     }
 
     /**
-     * Validate a single value against a field definition. Authenticated callers may omit
-     * {@code signerAccessCode}; signer self-service callers must supply it.
+     * Validate a single value against a field definition as a signer, authenticated by the
+     * signer access code alone.
      *
      * <p>Wire contract, payloads and failures: {@link #validate(String, Object, String, String)}.</p>
      *
      * @param fieldId field definition ID
      * @param value value to validate; may be {@code null}
-     * @param signerAccessCode signer query credential, or {@code null} for normal authentication
+     * @param signerAccessCode signer query credential; required
      * @return validation result
+     * @throws ValidationException if the field ID or access code is blank
      */
     public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode) {
         return validate(fieldId, value, signerAccessCode, null);
     }
 
     /**
-     * Validate one value in an explicit or default account.
+     * Validate one value in an explicit or default account as a signer. The request carries only
+     * the {@code signer-access-code} query parameter, never the workspace API key or bearer token;
+     * use {@link #validateAsWorkspace(String, Object, String)} for workspace access.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields/{fieldId}/validate</code>.
-     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
      * <p>Wire parameters:</p><ul>
      * <li><code>accountId</code> (path, required): Workspace account ID.</li>
      * <li><code>fieldId</code> (path, required): The field ID.</li>
+     * <li><code>signer-access-code</code> (query, required): The signer access code.</li>
      * </ul>
-     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
+     * <p>Request body: <code>application/json</code>; <code>value</code> is required.</p>
      * <pre>{
      *   "value": "400.676.228-36"
      * }</pre>
-     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
+     * <p>Success 200: <code>application/json</code>.</p>
      * <pre>{
      *   "status": 200,
      *   "message": "",
@@ -415,8 +417,7 @@ public class FieldResource extends BaseResource {
      *     "error_message": ""
      *   }
      * }</pre>
-     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
-     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>The SDK unwraps the envelope and returns <code>data</code>.</p>
      * <p>Documented HTTP statuses: 200 Validation result; 401 Missing or invalid credentials.; 500
      * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
      * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
@@ -425,58 +426,96 @@ public class FieldResource extends BaseResource {
      *
      * @param fieldId field definition ID
      * @param value value to validate; may be {@code null}
-     * @param signerAccessCode signer query credential, or {@code null} for normal authentication
+     * @param signerAccessCode signer query credential; required
      * @param accountId explicit account ID, or {@code null} for the default
      * @return validation result
+     * @throws ValidationException if the field ID, account ID or access code is blank
      */
     public FieldValidationResult validate(String fieldId, Object value, String signerAccessCode, String accountId) {
-        String id = pathSegment(accountId(accountId), "Account ID");
-        String fid = pathSegment(fieldId, "Field ID");
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("value", value);
-        String body = serialise(payload);
-        String path = "/accounts/" + id + "/fields/" + fid + "/validate";
-        if (signerAccessCode != null && !signerAccessCode.isBlank()) {
-            path = withAccessCode(path, signerAccessCode);
-        }
-        String finalPath = path;
-        return call("Failed to validate field",
-                () -> http.post(finalPath, body),
-                FieldValidationResult.class);
+        requireId(signerAccessCode, "Signer access code");
+        return validateValue(withAccessCode(validatePath(fieldId, accountId), signerAccessCode), value);
     }
 
     /**
-     * Validate multiple values in one round-trip. {@code entries} is the list of
+     * Validate a single value in the default account with the workspace API key or bearer token.
+     *
+     * <p>Wire contract, payloads and failures: {@link #validateAsWorkspace(String, Object, String)}.</p>
+     *
+     * @param fieldId field definition ID
+     * @param value value to validate; may be {@code null}
+     * @return validation result
+     * @throws ValidationException if the field ID is blank or no account ID is available
+     */
+    public FieldValidationResult validateAsWorkspace(String fieldId, Object value) {
+        return validateAsWorkspace(fieldId, value, null);
+    }
+
+    /**
+     * Validate one value in an explicit or default account with the workspace API key or bearer
+     * token.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields/{fieldId}/validate</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body, response and statuses are the same as
+     * {@link #validate(String, Object, String, String)}, without the access code.</p>
+     *
+     * @param fieldId field definition ID
+     * @param value value to validate; may be {@code null}
+     * @param accountId explicit account ID, or {@code null} for the default
+     * @return validation result
+     * @throws ValidationException if the field ID is blank or no account ID is available
+     */
+    public FieldValidationResult validateAsWorkspace(String fieldId, Object value, String accountId) {
+        return validateValue(validatePath(fieldId, accountId), value);
+    }
+
+    private String validatePath(String fieldId, String accountId) {
+        String id = pathSegment(accountId(accountId), "Account ID");
+        return "/accounts/" + id + "/fields/" + pathSegment(fieldId, "Field ID") + "/validate";
+    }
+
+    private FieldValidationResult validateValue(String path, Object value) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("value", value);
+        String body = serialise(payload);
+        return call("Failed to validate field", () -> http.post(path, body), FieldValidationResult.class);
+    }
+
+    /**
+     * Validate multiple values in one round-trip as a signer. {@code entries} is the list of
      * {@code {field_id, value}} objects to validate.
      *
      * <p>Wire contract, payloads and failures: {@link #validateMultiple(List, String, String)}.</p>
      *
      * @param entries field IDs and values; {@code null} sends an empty array
-     * @param signerAccessCode signer query credential, or {@code null} for normal authentication
+     * @param signerAccessCode signer query credential; required
      * @return one result per submitted field
+     * @throws ValidationException if the access code is blank or an entry is malformed
      */
     public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode) {
         return validateMultiple(entries, signerAccessCode, null);
     }
 
     /**
-     * Validate multiple values in an explicit or default account.
+     * Validate multiple values in an explicit or default account as a signer. The request carries
+     * only the {@code signer-access-code} query parameter, never the workspace API key or bearer
+     * token; use {@link #validateMultipleAsWorkspace(List, String)} for workspace access.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields/validate-multiple</code>.
-     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
      * <p>Wire parameters:</p><ul>
      * <li><code>accountId</code> (path, required): Workspace account ID.</li>
+     * <li><code>signer-access-code</code> (query, required): The signer access code.</li>
      * </ul>
-     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
+     * <p>Request body: <code>application/json</code> array; every item requires
+     * <code>field_id</code> and <code>value</code>.</p>
      * <pre>[
      *   {
      *     "field_id": "63488ffb7adf435aba319787",
      *     "value": "1111111111111"
      *   }
      * ]</pre>
-     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
+     * <p>Success 200: <code>application/json</code>.</p>
      * <pre>{
      *   "status": 200,
      *   "message": "",
@@ -489,8 +528,7 @@ public class FieldResource extends BaseResource {
      *     }
      *   ]
      * }</pre>
-     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
-     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
+     * <p>The SDK unwraps the envelope and returns <code>data</code>.</p>
      * <p>Documented HTTP statuses: 200 Validation results; 401 Missing or invalid credentials.; 500
      * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
      * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
@@ -498,20 +536,63 @@ public class FieldResource extends BaseResource {
      * local arguments raise <code>ValidationException</code> before a request.</p>
      *
      * @param entries field IDs and values; {@code null} sends an empty array
-     * @param signerAccessCode signer query credential, or {@code null} for normal authentication
+     * @param signerAccessCode signer query credential; required
      * @param accountId explicit account ID, or {@code null} for the default
      * @return one result per submitted field
+     * @throws ValidationException if the account ID or access code is blank, or an entry lacks a
+     *         {@code field_id} or {@code value}
      */
     public List<FieldValidationResult> validateMultiple(List<Map<String, Object>> entries, String signerAccessCode, String accountId) {
-        String id = pathSegment(accountId(accountId), "Account ID");
-        String body = serialise(entries != null ? entries : List.of());
-        String path = "/accounts/" + id + "/fields/validate-multiple";
-        if (signerAccessCode != null && !signerAccessCode.isBlank()) {
-            path = withAccessCode(path, signerAccessCode);
+        requireId(signerAccessCode, "Signer access code");
+        return validateEntries(withAccessCode(validateMultiplePath(accountId), signerAccessCode), entries);
+    }
+
+    /**
+     * Validate multiple values in the default account with the workspace API key or bearer token.
+     *
+     * <p>Wire contract, payloads and failures: {@link #validateMultipleAsWorkspace(List, String)}.</p>
+     *
+     * @param entries field IDs and values; {@code null} sends an empty array
+     * @return one result per submitted field
+     * @throws ValidationException if no account ID is available or an entry is malformed
+     */
+    public List<FieldValidationResult> validateMultipleAsWorkspace(List<Map<String, Object>> entries) {
+        return validateMultipleAsWorkspace(entries, null);
+    }
+
+    /**
+     * Validate multiple values in an explicit or default account with the workspace API key or
+     * bearer token.
+     *
+     * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/fields/validate-multiple</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <p>Request body, response and statuses are the same as
+     * {@link #validateMultiple(List, String, String)}, without the access code.</p>
+     *
+     * @param entries field IDs and values; {@code null} sends an empty array
+     * @param accountId explicit account ID, or {@code null} for the default
+     * @return one result per submitted field
+     * @throws ValidationException if no account ID is available, or an entry lacks a
+     *         {@code field_id} or {@code value}
+     */
+    public List<FieldValidationResult> validateMultipleAsWorkspace(List<Map<String, Object>> entries, String accountId) {
+        return validateEntries(validateMultiplePath(accountId), entries);
+    }
+
+    private String validateMultiplePath(String accountId) {
+        return "/accounts/" + pathSegment(accountId(accountId), "Account ID") + "/fields/validate-multiple";
+    }
+
+    private List<FieldValidationResult> validateEntries(String path, List<Map<String, Object>> entries) {
+        List<Map<String, Object>> items = entries != null ? entries : List.of();
+        for (Map<String, Object> entry : items) {
+            if (entry == null || !(entry.get("field_id") instanceof String fieldId) || fieldId.isBlank()
+                    || !entry.containsKey("value")) {
+                throw new ValidationException("Every entry requires a field_id and a value");
+            }
         }
-        String finalPath = path;
-        return callList("Failed to validate fields",
-                () -> http.post(finalPath, body),
+        String body = serialise(items);
+        return callList("Failed to validate fields", () -> http.post(path, body),
                 FieldValidationResult.class).getData();
     }
 

@@ -1,10 +1,12 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.Document;
+import com.assinafy.sdk.models.TokenDelivery;
+import com.assinafy.sdk.util.ResponseHandler;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -12,6 +14,9 @@ import java.util.Map;
  * require an authenticated session; the default transport omits configured workspace credentials.
  */
 public class PublicDocumentResource extends BaseResource {
+
+    /** The only delivery channel the send-token operation supports. */
+    private static final String EMAIL_CHANNEL = "email";
 
     /**
      * Create public-document operations with a logger.
@@ -100,84 +105,88 @@ public class PublicDocumentResource extends BaseResource {
     }
 
     /**
-     * {@code PUT /public/documents/{documentId}/send-token} — send a one-time access token by
-     * email so the recipient can view/sign a public document. Sends the documented
-     * {@code {"email":"..."}} request body.
+     * Send a one-time access token by email to a signer of a public document
+     * ({@code PUT /public/documents/{documentId}/send-token} with {@code channel = "email"}).
      *
      * <p>Wire contract, payloads and failures: {@link #sendToken(String, String, String)}.</p>
      *
      * @param documentId target document ID
-     * @param email      recipient email address
-     * @return the API response payload
+     * @param email      email address of a signer of the document who has not signed yet
+     * @return the response {@code data}: {@code document}, {@code channel} and {@code recipient}
+     * @throws ValidationException if the document ID is blank or the email is invalid
      */
     public Map<String, Object> sendToken(String documentId, String email) {
-        String id = pathSegment(documentId, "Document ID");
-        requireEmail(email);
-        return callMap("Failed to send signer token",
-                () -> http.put("/public/documents/" + id + "/send-token",
-                        serialise(Map.of("email", email))));
+        return sendToken(documentId, email, EMAIL_CHANNEL);
     }
 
     /**
-     * Send a token using the document's configured recipient, omitting the request body.
+     * Send a one-time access token by email and return the typed result.
      *
      * <p>Wire contract, payloads and failures: {@link #sendToken(String, String, String)}.</p>
      *
      * @param documentId target document ID
-     * @return the API response payload
+     * @param email      email address of a signer of the document who has not signed yet
+     * @return the document summary, channel and recipient the token was sent to
+     * @throws ValidationException if the document ID is blank or the email is invalid
      */
-    public Map<String, Object> sendToken(String documentId) {
-        String id = pathSegment(documentId, "Document ID");
-        return callMap("Failed to send signer token",
-                () -> http.put("/public/documents/" + id + "/send-token", null));
+    public TokenDelivery sendTokenTyped(String documentId, String email) {
+        return ResponseHandler.convert(sendToken(documentId, email), TokenDelivery.class);
     }
 
     /**
-     * Send a token through an explicitly selected delivery channel. For {@code email}, the request
-     * contains {@code email}, {@code recipient}, and {@code channel}; other channels send
-     * {@code recipient} and {@code channel}.
+     * Send a one-time access token to a signer of a public document so they can view it. The
+     * document must be pending signature, and {@code recipient} must belong to a signer of the
+     * document who has not signed yet. Only the {@code email} channel is supported.
      *
      * <p><strong>HTTP:</strong> <code>PUT /v1/public/documents/{documentId}/send-token</code>.
      * <strong>Authentication:</strong> Public (no SDK credential).</p>
      * <p>Wire parameters:</p><ul>
      * <li><code>documentId</code> (path, required): The document ID.</li>
      * </ul>
-     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
+     * <p>Request body: <code>application/json</code>; both fields are required.</p>
      * <pre>{
-     *   "email": "signer@example.invalid"
+     *   "channel": "email",
+     *   "recipient": "signer@example.com"
      * }</pre>
-     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
+     * <p>Success 200: <code>application/json</code>.</p>
      * <pre>{
      *   "status": 200,
-     *   "message": ""
+     *   "message": "",
+     *   "data": {
+     *     "document": {
+     *       "resource": "document",
+     *       "id": "615601fab04c0a3147bb1246",
+     *       "name": "contract.pdf",
+     *       "page_count": 1,
+     *       "created_by": "Workspace owner"
+     *     },
+     *     "channel": "email",
+     *     "recipient": "signer@example.com"
+     *   }
      * }</pre>
-     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
-     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
-     * <p>Documented HTTP statuses: 200 Token sent; 500 Unexpected server error. Non-2xx HTTP or numeric
-     * envelope statuses raise <code>ApiException</code>; 401/403 raise
-     * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
-     * raise <code>NetworkException</code>. Invalid local arguments raise
-     * <code>ValidationException</code> before a request.</p>
+     * <p>The SDK returns the <code>data</code> object as a map.</p>
+     * <p>Documented HTTP statuses: 200 Token sent; 400 The document is not pending signature or the
+     * request failed validation; 404 The document or a matching unsigned signer was not found; 500
+     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
+     * <code>ApiException</code>; 429 raises <code>RateLimitException</code>, and I/O failures raise
+     * <code>NetworkException</code>. Invalid local arguments raise <code>ValidationException</code>
+     * before a request.</p>
      *
      * @param documentId target document ID
-     * @param recipient  recipient email address or phone number
-     * @param channel    delivery channel, such as {@code email} or {@code whatsapp}
-     * @return the API response payload
+     * @param recipient  email address of a signer of the document who has not signed yet
+     * @param channel    delivery channel; must be {@code email}
+     * @return the response {@code data}: {@code document}, {@code channel} and {@code recipient}
+     * @throws ValidationException if the document ID is blank, the channel is not {@code email}, or
+     *         the recipient is not a valid email address
      */
     public Map<String, Object> sendToken(String documentId, String recipient, String channel) {
         String id = pathSegment(documentId, "Document ID");
-        requireId(recipient, "Recipient");
-        requireId(channel, "Channel");
-        Map<String, Object> body = new LinkedHashMap<>();
-        if ("email".equalsIgnoreCase(channel)) {
-            requireEmail(recipient);
-            body.put("email", recipient);
+        if (!EMAIL_CHANNEL.equals(channel)) {
+            throw new ValidationException("Channel must be email");
         }
-        body.put("recipient", recipient);
-        body.put("channel", channel);
+        requireEmail(recipient);
+        String body = serialise(Map.of("channel", channel, "recipient", recipient));
         return callMap("Failed to send signer token",
-                () -> http.put("/public/documents/" + id + "/send-token", serialise(body)));
+                () -> http.put("/public/documents/" + id + "/send-token", body));
     }
 }

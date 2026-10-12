@@ -31,6 +31,9 @@ public class OAuthTokens {
     @JsonProperty("access_token")
     private String accessToken;
 
+    @JsonProperty("issued_token_type")
+    private String issuedTokenType;
+
     @JsonProperty("token_type")
     private String tokenType;
 
@@ -58,6 +61,19 @@ public class OAuthTokens {
      * @param accessToken the bearer access token
      */
     public void setAccessToken(String accessToken) { this.accessToken = accessToken; }
+
+    /**
+     * {@return the RFC 8693 {@code issued_token_type}, such as
+     * {@code urn:ietf:params:oauth:token-type:access_token}, or {@code null} when not sent}
+     */
+    public String getIssuedTokenType() { return issuedTokenType; }
+
+    /**
+     * Sets the issued token type.
+     *
+     * @param issuedTokenType the issued token type
+     */
+    public void setIssuedTokenType(String issuedTokenType) { this.issuedTokenType = issuedTokenType; }
 
     /** {@return the token type, always {@code Bearer}} */
     public String getTokenType() { return tokenType; }

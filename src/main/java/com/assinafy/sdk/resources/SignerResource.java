@@ -70,8 +70,8 @@ public class SignerResource extends BaseResource {
     /**
      * Create a signer ({@code POST /accounts/{id}/signers}). This method always issues the POST;
      * use {@link #findOrCreate(CreateSignerRequest, String)} when reuse by email is intended. A
-     * supplied CPF/CNPJ is applied through the documented signer update after creation; if that
-     * update fails, the newly created signer is deleted.
+     * supplied CPF/CNPJ is sent as {@code government_id}; the API accepts formatting and normalizes
+     * the value on save.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/signers</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
@@ -82,8 +82,9 @@ public class SignerResource extends BaseResource {
      * optional fields may be absent or null.</p>
      * <pre>{
      *   "full_name": "John Dove",
-     *   "email": "john@example.invalid",
-     *   "whatsapp_phone_number": "+5548999990000"
+     *   "email": "signer@example.com",
+     *   "whatsapp_phone_number": "+5548999990000",
+     *   "government_id": "390.533.447-05"
      * }</pre>
      * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
      * optional fields may be absent or null.</p>
@@ -93,9 +94,10 @@ public class SignerResource extends BaseResource {
      *   "data": {
      *     "resource": "signer",
      *     "id": "62d6ee35c7741ca4006b9e11",
-     *     "full_name": "John Signer",
-     *     "email": null,
-     *     "whatsapp_phone_number": null,
+     *     "full_name": "John Dove",
+     *     "email": "signer@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "39053344705",
      *     "has_accepted_terms": false
      *   }
      * }</pre>
@@ -114,42 +116,16 @@ public class SignerResource extends BaseResource {
     public Signer create(CreateSignerRequest request, String accountId) {
         String account = accountId(accountId);
         validateCreateRequest(request);
-        Signer signer = postSigner(request, account);
-        return applyGovernmentId(request, signer, account);
+        return postSigner(request, account);
     }
 
     private Signer postSigner(CreateSignerRequest request, String accountId) {
         String id = pathSegment(accountId, "Account ID");
         logInfo("Creating signer", Map.of("hasEmail", request.getEmail() != null));
-        Map<String, Object> createBody = new HashMap<>();
-        createBody.put("full_name", request.getFullName());
-        if (request.getEmail() != null) createBody.put("email", request.getEmail());
-        if (request.getWhatsappPhoneNumber() != null) {
-            createBody.put("whatsapp_phone_number", request.getWhatsappPhoneNumber());
-        }
-        String body = serialise(createBody);
+        String body = serialise(request);
         return requireSignerId(call("Failed to create signer",
                         () -> http.post("/accounts/" + id + "/signers", body), Signer.class),
                 "Signer creation");
-    }
-
-    private Signer applyGovernmentId(CreateSignerRequest request, Signer signer,
-                                     String accountId) {
-        if (request.getCpf() != null && !request.getCpf().isBlank()) {
-            try {
-                return update(signer.getId(), UpdateSignerRequest.builder()
-                        .governmentId(request.getCpf())
-                        .build(), accountId);
-            } catch (RuntimeException error) {
-                try {
-                    delete(signer.getId(), accountId);
-                } catch (RuntimeException cleanupError) {
-                    error.addSuppressed(cleanupError);
-                }
-                throw error;
-            }
-        }
-        return signer;
     }
 
     /**
@@ -190,9 +166,8 @@ public class SignerResource extends BaseResource {
             return existing;
         }
 
-        Signer created;
         try {
-            created = postSigner(request, account);
+            return postSigner(request, account);
         } catch (ApiException e) {
             if (isDuplicateCreate(e)) {
                 Signer duplicate = findByEmail(email, account);
@@ -203,7 +178,6 @@ public class SignerResource extends BaseResource {
             }
             throw e;
         }
-        return applyGovernmentId(request, created, account);
     }
 
     private static boolean isDuplicateCreate(ApiException error) {
@@ -405,7 +379,7 @@ public class SignerResource extends BaseResource {
     public Signer update(String signerId, UpdateSignerRequest request, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         String sid = pathSegment(signerId, "Signer ID");
-        String body = serialise(signerBody(request));
+        String body = serialise(request != null ? request : Map.of());
         return requireSignerId(call("Failed to update signer",
                         () -> http.put("/accounts/" + id + "/signers/" + sid, body), Signer.class),
                 "Signer update");
@@ -500,18 +474,6 @@ public class SignerResource extends BaseResource {
             if (e.getStatusCode() == 404) return null;
             throw e;
         }
-    }
-
-    /** Serialise a signer DTO and digit-strip its CPF/CNPJ wire field. */
-    private Map<String, Object> signerBody(Object dto) {
-        Map<String, Object> body = toMap(dto);
-        for (String key : List.of("cpf", "government_id")) {
-            Object value = body.get(key);
-            if (value instanceof String s) {
-                body.put(key, s.replaceAll("\\D", ""));
-            }
-        }
-        return body;
     }
 
     /**
@@ -956,7 +918,9 @@ public class SignerResource extends BaseResource {
     }
 
     /**
-     * List the documents assigned to a signer ({@code GET /signers/{signerId}/documents}). The
+     * List the documents assigned to a signer ({@code GET /signers/{signerId}/documents}),
+     * authenticated by the signer access code alone; the workspace API key or bearer token is never
+     * sent. Use {@link #listDocumentsAsWorkspace(String, ListParams)} for workspace access. The
      * endpoint documents only {@code page}/{@code per-page} paging (supply via {@link ListParams});
      * for server-side text search use {@link #searchDocuments(String, String, String)}.
      *
@@ -1034,7 +998,8 @@ public class SignerResource extends BaseResource {
 
     /**
      * Search the documents a signer is party to, returning a compact representation
-     * ({@code GET /signers/{signerId}/documents/search}). Authenticated by the signer access code.
+     * ({@code GET /signers/{signerId}/documents/search}), authenticated by the signer access code
+     * alone. Use {@link #searchDocumentsAsWorkspace(String, String)} for workspace access.
      *
      * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/documents/search</code>.
      * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
@@ -1103,6 +1068,73 @@ public class SignerResource extends BaseResource {
         Map<String, Object> query = new HashMap<>();
         query.put("signer-access-code", signerAccessCode);
         if (search != null && !search.isBlank()) query.put("search", search);
+        return callList("Failed to search signer's documents",
+                () -> http.get("/signers/" + sid + "/documents/search", query),
+                Document.class);
+    }
+
+    /**
+     * List a signer's documents with the workspace API key or bearer token, using default paging.
+     *
+     * <p>Wire contract, payloads and failures: {@link #listDocumentsAsWorkspace(String, ListParams)}.</p>
+     *
+     * @param signerId ID of a signer in the authenticated workspace
+     * @return paginated documents
+     * @throws ValidationException if the signer ID is blank
+     */
+    public PaginatedResult<Document> listDocumentsAsWorkspace(String signerId) {
+        return listDocumentsAsWorkspace(signerId, null);
+    }
+
+    /**
+     * List the documents a signer of the authenticated workspace is party to, using the workspace
+     * API key or bearer token instead of a signer access code.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/documents</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; the signer must belong to
+     * that workspace.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * <li><code>page</code> (query, optional): Page number.</li>
+     * <li><code>per-page</code> (query, optional): Records per page (max 100).</li>
+     * </ul>
+     * <p>Response and statuses are the same as {@link #listDocuments(String, String, ListParams)}:
+     * a <code>data</code> array of documents with <code>X-Pagination-*</code> headers.</p>
+     *
+     * @param signerId ID of a signer in the authenticated workspace
+     * @param params paging options; {@code null} sends none
+     * @return paginated documents
+     * @throws ValidationException if the signer ID is blank or paging is out of range
+     */
+    public PaginatedResult<Document> listDocumentsAsWorkspace(String signerId, ListParams params) {
+        String sid = pathSegment(signerId, "Signer ID");
+        Map<String, Object> query = params != null ? params.toQueryParams() : Map.of();
+        return callList("Failed to list signer's documents",
+                () -> http.get("/signers/" + sid + "/documents", query),
+                Document.class);
+    }
+
+    /**
+     * Search the documents a signer of the authenticated workspace is party to, using the
+     * workspace API key or bearer token instead of a signer access code.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/signers/{signerId}/documents/search</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; the signer must belong to
+     * that workspace.</p>
+     * <p>Wire parameters:</p><ul>
+     * <li><code>signerId</code> (path, required): The signer ID.</li>
+     * <li><code>search</code> (query, optional): Search term.</li>
+     * </ul>
+     * <p>Response and statuses are the same as {@link #searchDocuments(String, String, String)}.</p>
+     *
+     * @param signerId ID of a signer in the authenticated workspace
+     * @param search free-text query, or {@code null} to omit it
+     * @return matching documents
+     * @throws ValidationException if the signer ID is blank
+     */
+    public PaginatedResult<Document> searchDocumentsAsWorkspace(String signerId, String search) {
+        String sid = pathSegment(signerId, "Signer ID");
+        Map<String, Object> query = search != null && !search.isBlank() ? Map.of("search", search) : Map.of();
         return callList("Failed to search signer's documents",
                 () -> http.get("/signers/" + sid + "/documents/search", query),
                 Document.class);

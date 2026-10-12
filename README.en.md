@@ -63,14 +63,14 @@ The SDK is published to Maven Central, with no repository configuration or authe
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.14.0</version>
+    <version>1.14.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:1.14.0")
+implementation("com.assinafy:assinafy-sdk:1.14.1")
 ```
 
 The same versions are also published to GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -288,9 +288,8 @@ List<DocumentStatusInfo> statuses = client.documents().getStatuses();  // which 
 
 `create` always issues the create request. Use `findOrCreate` when reusing an existing signer with
 the same email address is what you want; it returns an exact case-insensitive match unchanged,
-without overwriting the stored name, phone, or CPF/CNPJ. A supplied `cpf` (CPF or CNPJ) is persisted
-after creation through the signer's `government_id` update, with non-digits stripped; if that update
-fails, the new signer is deleted.
+without overwriting the stored name, phone, or CPF/CNPJ. A supplied `governmentId` (CPF or CNPJ) is
+sent as `government_id` in the create request; the API accepts formatting and normalizes the value.
 
 ```java
 Signer created = client.signers().create(
@@ -298,7 +297,7 @@ Signer created = client.signers().create(
         .fullName("John Doe")
         .email("john@example.invalid")
         .whatsappPhoneNumber("+5548999990000")
-        .cpf("123.456.789-00")
+        .governmentId("123.456.789-00")
         .build()
 );
 
@@ -745,6 +744,8 @@ client.assignments().decline(documentId, assignmentId, signerAccessCode, "Unfavo
 Document currentDoc = client.signers().getCurrentDocumentTyped(signerId, signerAccessCode);
 PaginatedResult<Document> mine = client.signers().listDocuments(signerId, signerAccessCode);
 PaginatedResult<Document> hits = client.signers().searchDocuments(signerId, signerAccessCode, "invoice");
+// The same lists read with the workspace API key or bearer token instead of an access code
+PaginatedResult<Document> asWorkspace = client.signers().listDocumentsAsWorkspace(signerId);
 byte[] pdf = client.signers().downloadDocument(signerId, documentId, "certificated", signerAccessCode);
 
 // Bulk actions across several pending documents
@@ -752,11 +753,15 @@ client.signers().signMultiple(signerAccessCode, List.of(documentId1, documentId2
 client.signers().declineMultiple(signerAccessCode, List.of(documentId1), "Reason");
 ```
 
+Every method that takes a signer access code rejects a null or blank code before sending anything,
+and sends only that code, never the workspace API key or bearer token.
+
 Two operations need no credential at all, which is what makes an embedded signing page possible:
 
 ```java
 Document basic = client.publicDocuments().getBasicInfo(documentId);
-client.publicDocuments().sendToken(documentId, "signer@example.invalid");  // sends { "email": ... }
+// sends { "channel": "email", "recipient": ... } to a signer who has not signed yet
+TokenDelivery sent = client.publicDocuments().sendTokenTyped(documentId, "signer@example.com");
 ```
 
 ## Templates and field definitions
@@ -798,10 +803,12 @@ client.fields().delete(fieldId);
 
 List<FieldType> types = client.fields().listTypes();
 
-// Validate before submitting. Omit the access code when calling as an authenticated user.
-FieldValidationResult result = client.fields().validate(fieldId, "400.676.228-36", null);
-List<FieldValidationResult> bulk = client.fields().validateMultiple(
-    List.of(Map.of("field_id", fieldId, "value", "12345")), null);
+// Validate before submitting, with the workspace credential...
+FieldValidationResult result = client.fields().validateAsWorkspace(fieldId, "400.676.228-36");
+List<FieldValidationResult> bulk = client.fields().validateMultipleAsWorkspace(
+    List.of(Map.of("field_id", fieldId, "value", "12345")));
+// ...or as the signer, sending only the access code
+FieldValidationResult asSigner = client.fields().validate(fieldId, "400.676.228-36", signerAccessCode);
 ```
 
 ## Tags
@@ -1027,7 +1034,7 @@ more specific handlers react to particular conditions.
 |---------------------------|-------------|
 | `ValidationException`     | Local argument validation failed before any request was sent. |
 | `AuthenticationException` | HTTP 401 or 403. Subtype of `ApiException`. |
-| `RateLimitException`      | HTTP 429. Subtype of `ApiException`; back off and retry. |
+| `RateLimitException`      | HTTP 429. Subtype of `ApiException`; wait `getRetryAfter()` seconds and retry. |
 | `OAuthException`          | An OAuth endpoint returned an RFC 6749 `{error, error_description}` body, or an authorization response carried `?error=`. Subtype of `ApiException`; read `getError()`. |
 | `ApiException`            | Any other non-2xx status, or a non-2xx status inside a 200 envelope. |
 | `NetworkException`        | Transport or I/O failure, including an interrupted poll. |
@@ -1041,7 +1048,7 @@ try {
 } catch (AuthenticationException e) {
     System.err.println("Auth error " + e.getStatusCode() + ": " + e.getMessage());
 } catch (RateLimitException e) {
-    System.err.println("Rate limited: " + e.getResponseHeader("retry-after"));
+    System.err.println("Rate limited; retry in " + e.getRetryAfter().orElse(60) + "s");
 } catch (OAuthException e) {
     System.err.println("OAuth error " + e.getError() + ": " + e.getErrorDescription());
 } catch (ApiException e) {
@@ -1053,6 +1060,10 @@ try {
     System.err.println("SDK error: " + e.getMessage() + " " + e.getContext());
 }
 ```
+
+Every limited response reports the quota in `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining` and
+`X-Rate-Limit-Reset`; `ApiException` returns them from `getRateLimitLimit()`,
+`getRateLimitRemaining()` and `getRateLimitReset()`, and a `429` adds `getRetryAfter()`.
 
 `ApiException` exposes the decoded body through `getResponseData()` and the response headers through
 `getResponseHeaders()` / `getResponseHeader(name)`, both as immutable snapshots with case-insensitive
@@ -1119,10 +1130,11 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
 
 ```jsonc
 // request
-{ "full_name": "John Doe", "email": "john@example.invalid", "whatsapp_phone_number": "+5548999990000" }
+{ "full_name": "John Doe", "email": "john@example.invalid", "whatsapp_phone_number": "+5548999990000",
+  "government_id": "123.456.789-00" }
 // response data
 { "resource": "signer", "id": "signer_123", "full_name": "John Doe", "email": "john@example.invalid",
-  "whatsapp_phone_number": "+5548999990000", "has_accepted_terms": false }
+  "whatsapp_phone_number": "+5548999990000", "government_id": "12345678900", "has_accepted_terms": false }
 ```
 
 **Create assignment** — `assignments().create(documentId, ...)` → `Assignment`:

@@ -341,7 +341,7 @@ class AssinafyClientWorkflowTest {
         assertThat(result.getSignerIds()).containsExactly("sig1");
         assertThat(http.capturedAt(3).getMethod()).isEqualTo("PUT");
         assertThat(http.capturedAt(3).getJsonBody())
-                .contains("\"government_id\":\"40067622836\"");
+                .contains("\"government_id\":\"400.676.228-36\"");
     }
 
     @Test

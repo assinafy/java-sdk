@@ -287,12 +287,13 @@ class LiveApiSmokeIT {
                             .fullName(fullName)
                             .email(email)
                             .whatsappPhoneNumber("+5548999990000")
-                            .cpf("400.676.228-36")
+                            .governmentId("400.676.228-36")
                             .build()
             );
             signerId.set(created.getId());
             assertThat(created.getId()).isNotBlank();
             assertThat(created.getEmail()).isEqualToIgnoringCase(email);
+            assertThat(created.getGovernmentId()).isEqualTo("40067622836");
 
             Signer fetched = read(() -> client.signers().get(created.getId()));
             assertThat(fetched.getId()).isEqualTo(created.getId());
@@ -342,10 +343,15 @@ class LiveApiSmokeIT {
                 .orElse(null);
         Assumptions.assumeTrue(emailField != null, "No email field definition available");
 
-        FieldValidationResult ok = client.fields().validate(emailField.getId(), "john@example.invalid", null);
+        FieldValidationResult ok = client.fields().validateAsWorkspace(emailField.getId(), "signer@example.com");
         assertThat(ok.getSuccess()).isTrue();
 
-        FieldValidationResult bad = client.fields().validate(emailField.getId(), "not-an-email", null);
+        assertThat(client.fields().validateMultipleAsWorkspace(
+                List.of(Map.of("field_id", emailField.getId(), "value", "signer@example.com"))))
+                .singleElement()
+                .satisfies(result -> assertThat(result.getSuccess()).isTrue());
+
+        FieldValidationResult bad = client.fields().validateAsWorkspace(emailField.getId(), "not-an-email");
         assertThat(bad.getSuccess()).isFalse();
         assertThat(bad.getErrorMessage()).isNotBlank();
     }
@@ -490,8 +496,16 @@ class LiveApiSmokeIT {
             assertThat(assignment.getId()).isNotBlank();
             assertThat(assignment.getSigners()).hasSize(2);
 
-            client.assignments().resetExpiration(document.getId(), assignment.getId(),
-                    expirationInDays(8));
+            assertThat(client.assignments().resetExpiration(document.getId(), assignment.getId(),
+                    expirationInDays(8)).getExpiresAt()).isNotNull();
+            assertThat(client.assignments().resetExpiration(document.getId(), assignment.getId(), null)
+                    .getExpiresAt()).as("a null expires_at clears the expiration").isNull();
+            String signerForListing = primary.getId();
+            assertThat(read(() -> client.signers().listDocumentsAsWorkspace(signerForListing,
+                    ListParams.builder().perPage(100).build())).getData())
+                    .extracting(Document::getId).contains(document.getId());
+            assertThat(read(() -> client.signers().searchDocumentsAsWorkspace(signerForListing, fileName))
+                    .getData()).isNotNull();
             String primarySignerId = primary.getId();
             assertThat(read(() -> client.assignments().estimateResendCost(
                     document.getId(), assignment.getId(), primarySignerId))).isNotNull();
@@ -500,7 +514,10 @@ class LiveApiSmokeIT {
                     .isEqualTo(document.getId());
             assertThat(read(() -> client.assignments().getWhatsappNotifications(
                     document.getId(), assignment.getId()))).isNotNull();
-            client.publicDocuments().sendToken(document.getId(), secondaryEmail, "email");
+            var delivery = client.publicDocuments().sendTokenTyped(document.getId(), secondaryEmail);
+            assertThat(delivery.channel()).isEqualTo("email");
+            assertThat(delivery.recipient()).isEqualToIgnoringCase(secondaryEmail);
+            assertThat(delivery.document().id()).isEqualTo(document.getId());
             assertThat(read(() -> client.documents().activities(document.getId()))).isNotNull();
         }
     }
@@ -521,7 +538,13 @@ class LiveApiSmokeIT {
         assertThatThrownBy(() -> client.authentication().requestPasswordReset(
                 "java-sdk-unknown-" + UUID.randomUUID() + "@example.invalid"))
                 .isInstanceOf(ApiException.class)
-                .satisfies(failure -> assertThat(((ApiException) failure).getStatusCode()).isEqualTo(404));
+                .satisfies(failure -> {
+                    ApiException error = (ApiException) failure;
+                    assertThat(error.getStatusCode()).isEqualTo(404);
+                    assertThat(error.getRateLimitLimit()).as("X-Rate-Limit-Limit").isPresent();
+                    assertThat(error.getRateLimitRemaining()).as("X-Rate-Limit-Remaining").isPresent();
+                    assertThat(error.getRateLimitReset()).as("X-Rate-Limit-Reset").isPresent();
+                });
     }
 
     @Test
@@ -902,15 +925,10 @@ class LiveApiSmokeIT {
     private static long retryDelayMs(RuntimeException error) {
         long delayMs = 1_250;
         if (error instanceof RateLimitException rateLimit) {
-            String retryAfter = rateLimit.getResponseHeader("retry-after");
-            try {
-                if (retryAfter != null) {
-                    long seconds = Math.min(MAX_RETRY_DELAY_MS / 1_000,
-                            Math.max(1, Long.parseLong(retryAfter)));
-                    delayMs = Math.min(MAX_RETRY_DELAY_MS, seconds * 1_000 + 250);
-                }
-            } catch (NumberFormatException ignored) {
-                // Retry-After may be an HTTP date; use the short sandbox fallback.
+            var retryAfter = rateLimit.getRetryAfter();
+            if (retryAfter.isPresent()) {
+                long seconds = Math.min(MAX_RETRY_DELAY_MS / 1_000, Math.max(1, retryAfter.getAsInt()));
+                delayMs = Math.min(MAX_RETRY_DELAY_MS, seconds * 1_000 + 250);
             }
         }
         return delayMs;

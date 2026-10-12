@@ -101,18 +101,48 @@ class FieldResourceTest {
     }
 
     @Test
-    void validateWithoutSignerAccessCodeOmitsQueryParam() {
+    void validateAsWorkspaceOmitsAccessCode() {
         mock.enqueue(200, "{\"status\":200,\"data\":{\"success\":true}}");
-        resource.validate("f1", "value", null);
+        resource.validateAsWorkspace("f1", "value");
 
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/fields/f1/validate");
+        assertThat(mock.lastCaptured().getJsonBody()).isEqualTo("{\"value\":\"value\"}");
+    }
+
+    @Test
+    void signerValidationRequiresAnAccessCodeAndNeverFallsBackToWorkspaceCredentials() {
+        for (String code : new String[]{null, "", "  "}) {
+            assertThatThrownBy(() -> resource.validate("f1", "value", code))
+                    .isInstanceOf(ValidationException.class);
+            assertThatThrownBy(() -> resource.validateMultiple(List.of(), code))
+                    .isInstanceOf(ValidationException.class);
+        }
+        assertThat(mock.capturedCount()).isZero();
+    }
+
+    @Test
+    void validateMultipleRejectsEntriesWithoutFieldIdOrValue() {
+        assertThatThrownBy(() -> resource.validateMultipleAsWorkspace(List.of(Map.of("value", "v"))))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> resource.validateMultipleAsWorkspace(List.of(Map.of("field_id", "f1"))))
+                .isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isZero();
+    }
+
+    @Test
+    void validateMultipleWithAccessCodeAppendsQueryParam() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        resource.validateMultiple(List.of(Map.of("field_id", "f1", "value", "v")), "code");
+
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/accounts/acc/fields/validate-multiple?signer-access-code=code");
     }
 
     @Test
     void validateMultipleSerialisesEntriesAndReturnsTypedList() {
         mock.enqueue(200, "{\"status\":200,\"data\":[{\"field_id\":\"f1\",\"type\":\"cpf\",\"success\":false,\"error_message\":\"bad\"}]}");
         List<FieldValidationResult> results =
-                resource.validateMultiple(List.of(Map.of("field_id", "f1", "value", "v")), null);
+                resource.validateMultipleAsWorkspace(List.of(Map.of("field_id", "f1", "value", "v")));
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("POST");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc/fields/validate-multiple");
@@ -148,8 +178,8 @@ class FieldResourceTest {
         resource.get("f1", "other");
         resource.update("f1", UpdateFieldRequest.builder().name("New Name").build(), "other");
         resource.delete("f1", "other");
-        resource.validate("f1", "value", null, "other");
-        resource.validateMultiple(List.of(), null, "other");
+        resource.validateAsWorkspace("f1", "value", "other");
+        resource.validateMultipleAsWorkspace(List.of(), "other");
 
         assertThat(mock.getCaptured())
                 .extracting(CapturedRequest::getMethod, CapturedRequest::getPath)

@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-10-12
+
+### Added
+
+- `ApiException.getRateLimitLimit()`, `getRateLimitRemaining()`, `getRateLimitReset()` and
+  `getRetryAfter()` return the `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining` and `X-Rate-Limit-Reset`
+  quota and the `Retry-After` delay (seconds) of a `429`, so `RateLimitException` handlers can wait
+  the time the API asks for.
+- `SignerResource.listDocumentsAsWorkspace(...)` and `searchDocumentsAsWorkspace(...)` read a
+  signer's documents with the workspace API key or bearer token.
+- `FieldResource.validateAsWorkspace(...)` and `validateMultipleAsWorkspace(...)` validate field
+  values with the workspace API key or bearer token.
+- `PublicDocumentResource.sendTokenTyped(documentId, email)` returns the `{document, channel,
+  recipient}` result as the new `TokenDelivery` record.
+- `CreateSignerRequest.governmentId(...)`, `AssignmentSigner.getGovernmentId()` and
+  `OAuthTokens.getIssuedTokenType()`.
+
+### Changed
+
+- `PublicDocumentResource.sendToken(documentId, email)` and `sendToken(documentId, recipient, channel)`
+  send the required `{"channel": "email", "recipient": "<signer email>"}` body and return the
+  `{document, channel, recipient}` data. A channel other than `email` raises `ValidationException`.
+  The bodyless `sendToken(documentId)` is removed because the API requires both fields. Migration:
+  call `sendToken(documentId, signerEmail)`.
+- `SignerResource.create(...)` sends `government_id` in the create request instead of a follow-up
+  update, so a signer with a CPF/CNPJ is created in one call. CPF/CNPJ values are sent as given; the
+  API accepts formatting and normalizes them, which keeps alphanumeric CNPJs intact.
+  `CreateSignerRequest.cpf(...)` and `getCpf()`/`setCpf()` are deprecated aliases of `governmentId`.
+  Migration: use `governmentId(...)`.
+- `AssignmentResource.resetExpiration(documentId, assignmentId, null)` is documented as removing the
+  expiration; it sends `{"expires_at": null}`.
+
+### Security
+
+- Every method that takes a signer access code rejects a null or blank code before sending anything
+  and sends only that code, never the API key or bearer token. `FieldResource.validate(...)` and
+  `validateMultiple(...)` no longer fall back to the workspace credential when the code is null or
+  blank. Migration: call `validateAsWorkspace(...)` or `validateMultipleAsWorkspace(...)` for
+  workspace access.
+
 ## [1.14.0] - 2026-10-11
 
 ### Added

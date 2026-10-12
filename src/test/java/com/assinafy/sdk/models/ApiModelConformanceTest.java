@@ -130,6 +130,20 @@ class ApiModelConformanceTest {
         assertThat(row.getSignatureRequestsWhatsapp()).isEqualTo(9);
     }
 
+    @Test
+    void deserializesAssignmentSignerGovernmentIdAndIssuedTokenType() throws Exception {
+        AssignmentSigner signer = decode("""
+                {"id":"s1","government_id":"39053344705","verification_method":"Email"}
+                """, AssignmentSigner.class);
+        OAuthTokens tokens = new com.fasterxml.jackson.databind.ObjectMapper().readValue("""
+                {"access_token":"at","issued_token_type":"urn:ietf:params:oauth:token-type:access_token",
+                 "token_type":"Bearer","expires_in":3600}
+                """, OAuthTokens.class);
+
+        assertThat(signer.getGovernmentId()).isEqualTo("39053344705");
+        assertThat(tokens.getIssuedTokenType()).isEqualTo("urn:ietf:params:oauth:token-type:access_token");
+    }
+
     private static <T> T decode(String data, Class<T> type) {
         String envelope = "{\"status\":200,\"data\":" + data + "}";
         return ResponseHandler.handle(new HttpRawResponse(200, envelope, Map.of()), type);

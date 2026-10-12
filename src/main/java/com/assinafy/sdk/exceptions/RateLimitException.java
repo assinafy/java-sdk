@@ -5,8 +5,17 @@ import java.util.Map;
 /**
  * Raised when the API returns HTTP {@code 429 Too Many Requests}. A subtype of
  * {@link ApiException}, so existing {@code catch (ApiException)} handlers keep working; catch
- * this type to implement backoff/retry. Inspect {@link #getResponseData()} for any
- * server-provided detail.
+ * this type to implement backoff/retry.
+ *
+ * <p>Wait {@link #getRetryAfter()} seconds before retrying. {@link #getRateLimitLimit()},
+ * {@link #getRateLimitRemaining()} and {@link #getRateLimitReset()} report the quota from the
+ * {@code X-Rate-Limit-*} headers:
+ *
+ * <pre>{@code
+ * catch (RateLimitException e) {
+ *     int waitSeconds = e.getRetryAfter().orElse(e.getRateLimitReset().orElse(60));
+ * }
+ * }</pre>
  */
 public class RateLimitException extends ApiException {
 

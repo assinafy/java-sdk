@@ -348,7 +348,7 @@ class AssignmentResourceTest {
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath())
                 .isEqualTo("/documents/doc/assignments/asg/reset-expiration");
-        assertThat(mock.lastCaptured().getJsonBody()).contains("expires_at");
+        assertThat(mock.lastCaptured().getJsonBody()).isEqualTo("{\"expires_at\":null}");
     }
 
     @Test

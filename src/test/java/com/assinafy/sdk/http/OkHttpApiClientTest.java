@@ -1,6 +1,8 @@
 package com.assinafy.sdk.http;
 
 import com.assinafy.sdk.exceptions.ApiException;
+import com.assinafy.sdk.util.ResponseHandler;
+import com.assinafy.sdk.exceptions.RateLimitException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.resources.WorkspaceResource;
 import mockwebserver3.MockResponse;
@@ -316,6 +318,31 @@ class OkHttpApiClientTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getResponseHeader("Retry-After"))
                         .isEqualTo("12"));
+    }
+
+    @Test
+    void rateLimitedResponseExposesQuotaAndRetryAfter() throws Exception {
+        server.enqueue(response(429)
+                .addHeader("X-Rate-Limit-Limit", "120")
+                .addHeader("X-Rate-Limit-Remaining", "0")
+                .addHeader("X-Rate-Limit-Reset", "42")
+                .addHeader("Retry-After", "42")
+                .body("{\"status\":429,\"message\":\"Too Many Requests\",\"data\":null}")
+                .build());
+        HttpRawResponse raw = withApiKey().get("/documents/d1");
+
+        assertThatThrownBy(() -> ResponseHandler.handle(raw, Object.class))
+                .isInstanceOfSatisfying(RateLimitException.class, error -> {
+                    assertThat(error.getRateLimitLimit()).hasValue(120);
+                    assertThat(error.getRateLimitRemaining()).hasValue(0);
+                    assertThat(error.getRateLimitReset()).hasValue(42);
+                    assertThat(error.getRetryAfter()).hasValue(42);
+                });
+
+        ApiException withoutHeaders = new ApiException("x", 429, null,
+                Map.of("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT"));
+        assertThat(withoutHeaders.getRetryAfter()).isEmpty();
+        assertThat(withoutHeaders.getRateLimitLimit()).isEmpty();
     }
 
     @Test
