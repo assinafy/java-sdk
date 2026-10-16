@@ -8,6 +8,7 @@ import com.assinafy.sdk.models.Assignment;
 import com.assinafy.sdk.models.CostEstimate;
 import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.PaginatedResult;
+import com.assinafy.sdk.models.SignerIdentityReview;
 import com.assinafy.sdk.models.ResendNotificationResponse;
 import com.assinafy.sdk.models.WhatsappNotification;
 import com.assinafy.sdk.models.enums.AssignmentMethod;
@@ -176,7 +177,8 @@ public class AssignmentResource extends BaseResource {
      * Request signatures for a document ({@code POST /documents/{documentId}/assignments}). The
      * request {@code method} defaults to {@code virtual} when unset; at least one signer is
      * required (each {@link SignerReference} needs a signer {@code id}). Verification methods are
-     * {@code Email}, {@code Whatsapp}, or {@code DigitalCertificate}; notification methods, when
+     * {@code Email}, {@code Whatsapp}, {@code DigitalCertificate}, or
+     * {@code IdDocumentFaceMatchBasic}; notification methods, when
      * supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}. If one
      * signer supplies a step, all must do so and the positive steps must be contiguous from 1. A
      * digital-certificate signer must be alone in its step, and {@code collect} requires nonempty
@@ -926,6 +928,112 @@ public class AssignmentResource extends BaseResource {
                 () -> http.post(withAccessCode(
                         "/documents/" + docId + "/assignments/" + asgId, signerAccessCode),
                         json));
+    }
+
+    /**
+     * Read an account review of a signer's identity-document verification.
+     * <p><strong>HTTP:</strong>
+     * {@code GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification}.
+     * Uses the configured API key or bearer token; no query or body. InReview permits signing,
+     * but certification waits for all account reviews; after signing the document is
+     * {@code pending_identity_review}. Directly approved evidence is instead on the
+     * {@code signer_identity_verified} activity.</p>
+     * <pre>{"status":200,"message":"","data":{"id":"verification-id","status":"InReview",
+     * "provider":"AssinafyVerify","verification_method":"IdDocumentFaceMatchBasic",
+     * "reason_codes":[{"code":"NAME_MISMATCH","description":"Name differs"}],
+     * "evidence_available":true,"expected":{"name":"Maria Silva","cpf":"52998224725"},
+     * "document":{"type":"CNH","name":"MARIA SILVA","cpf":"52998224725"},
+     * "matches":{"cpf":true,"name":0.52,"birth_date":null},
+     * "checks":[{"name":"name","result":"review","score":0.52,"reasons":["NAME_MISMATCH"]}],
+     * "images":["document_front","document_back","face"],"ruleset_version":"2026-10-12.2",
+     * "evidence_sha256":null,"reviewed_by":null,"reviewed_at":null,
+     * "review_note":null,"completed_at":null}}</pre>
+     * <p>404 means the assignment, signer or verification was not found. HTTP/envelope errors
+     * raise {@code ApiException} (401/403: {@code AuthenticationException}, 429:
+     * {@code RateLimitException}); I/O failures raise {@code NetworkException}.</p>
+     * @param documentId document ID
+     * @param assignmentId assignment ID
+     * @param signerId signer ID
+     * @return the unwrapped review summary, without image bytes or biometrics
+     * @throws ValidationException if an ID is missing or is a dot traversal segment
+     */
+    public SignerIdentityReview identityVerification(String documentId, String assignmentId, String signerId) {
+        String path = identityVerificationPath(documentId, assignmentId, signerId);
+        return call("Failed to fetch signer identity review", () -> http.get(path), SignerIdentityReview.class);
+    }
+
+    /**
+     * Download identity-review evidence as raw JPEG, PNG or PDF bytes.
+     * <p><strong>HTTP:</strong>
+     * {@code GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}}.
+     * Uses the configured API key or bearer token; no body. The name must be listed in the
+     * review's images. Images are fetched from the provider and available only during InReview;
+     * every image returns 404 after a decision. The server sends {@code Cache-Control: no-store}.</p>
+     * <p>Success 200 is binary {@code image/jpeg}, {@code image/png} or {@code application/pdf}.
+     * 404 also means absent evidence. HTTP/envelope errors raise {@code ApiException}
+     * (401/403: {@code AuthenticationException}, 429: {@code RateLimitException});
+     * I/O failures raise {@code NetworkException}.</p>
+     * @param documentId document ID
+     * @param assignmentId assignment ID
+     * @param signerId signer ID
+     * @param name document_front, document_back, document_pdf or face
+     * @return raw image or PDF bytes; do not persist or cache this evidence
+     * @throws ValidationException if an ID or evidence name is invalid
+     */
+    public byte[] identityVerificationImage(String documentId, String assignmentId, String signerId, String name) {
+        String path = identityVerificationPath(documentId, assignmentId, signerId);
+        if (name == null || !List.of("document_front", "document_back", "document_pdf", "face").contains(name)) {
+            throw new ValidationException("Invalid identity verification image name");
+        }
+        return callBinary("Failed to download identity verification image",
+                () -> http.getBinary(path + "/images/" + name, "image/jpeg, image/png, application/pdf"));
+    }
+
+    /**
+     * Approve or reject an InReview verification while a document awaits signatures or review.
+     * <p><strong>HTTP:</strong>
+     * {@code POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review}.
+     * Uses the configured API key or bearer token. JSON body:
+     * {@code {"decision":"Approved","note":"Verified independently"}}; note is optional and
+     * at most 2000 Unicode characters. It is recorded in activity and sent to the provider, hidden
+     * from signers. Approval releases certification after all signatures and reviews. Rejected
+     * cancels the document as {@code rejected_by_user} and sends cancellation notices to signers
+     * and copy receivers. The signer receives no separate review-decision message.</p>
+     * <p>Success 200 returns the same complete envelope as
+     * {@link #identityVerification(String, String, String)}, with updated status, reviewer,
+     * reviewed_at, review_note and empty images. 400 means an invalid decision or lifecycle state;
+     * 404 means missing assignment, signer or verification. HTTP/envelope errors raise
+     * {@code ApiException} (401/403: {@code AuthenticationException}, 429:
+     * {@code RateLimitException}); I/O failures raise {@code NetworkException}.</p>
+     * @param documentId document ID
+     * @param assignmentId assignment ID
+     * @param signerId signer ID
+     * @param decision Approved or Rejected
+     * @param note private note, or null to omit it
+     * @return the unwrapped updated review
+     * @throws ValidationException if IDs, decision or note are invalid
+     */
+    public SignerIdentityReview reviewIdentityVerification(String documentId, String assignmentId, String signerId,
+                                                         String decision, String note) {
+        String path = identityVerificationPath(documentId, assignmentId, signerId) + "/review";
+        if (!"Approved".equals(decision) && !"Rejected".equals(decision)) {
+            throw new ValidationException("Identity review decision must be Approved or Rejected");
+        }
+        if (note != null && note.codePointCount(0, note.length()) > 2000) {
+            throw new ValidationException("Identity review note must be at most 2000 characters");
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("decision", decision);
+        if (note != null) body.put("note", note);
+        String json = serialise(body);
+        return call("Failed to decide signer identity review",
+                () -> http.post(path, json), SignerIdentityReview.class);
+    }
+
+    private String identityVerificationPath(String documentId, String assignmentId, String signerId) {
+        return "/documents/" + pathSegment(documentId, "Document ID")
+                + "/assignments/" + pathSegment(assignmentId, "Assignment ID")
+                + "/signers/" + pathSegment(signerId, "Signer ID") + "/identity-verification";
     }
 
     static Map<String, Object> buildAssignmentPayload(CreateAssignmentRequest request, boolean estimate) {

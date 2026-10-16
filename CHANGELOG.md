@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-10-16
+
+### Added
+
+- `IdDocumentFaceMatchBasic` verification for assignment and template-document creation and cost
+  estimates, with either Email or WhatsApp notifications.
+- `SignerResource.identityVerification(...)` and `startIdentityVerification(...)` expose hosted
+  identity capture with explicit biometric consent. `AssignmentResource.identityVerification(...)`,
+  `identityVerificationImage(...)` and `reviewIdentityVerification(...)` provide account review,
+  evidence downloads and approval or rejection.
+- `SignerIdentityVerification` and `SignerIdentityReview` expose session and review payloads.
+  `Signer.getVerificationMethod()`, `AssignmentSigner.getIdentityVerificationStatus()` and
+  `DocumentStatus.PENDING_IDENTITY_REVIEW` expose the identity-verification lifecycle.
+- `WebhookResource.deleteEndpointByUrl(...)` removes an endpoint by its exact registered URL.
+
+### Fixed
+
+- `WebhookEndpoint.getSecret()` preserves the one-time signing secret returned at creation so
+  OAuth applications can store it without access to the secret-read endpoint.
+- `WhatsappNotification.Button.getUrl()` preserves simulated sandbox signing and verification links;
+  production responses continue to omit these credentials.
+- `DocumentResource.waitUntilReady(...)` returns processed documents in `pending_identity_review`
+  or `certificating` instead of timing out while waiting for final certification.
+- The signing guides state the current certificate-signature price of 0.5 credits plus notification.
+
+### Changed
+
+- Maven Wrapper uses Maven 3.10.0; CI artifact uploads use `actions/upload-artifact` 7.0.2.
+
+### Security
+
+- `OAuthAuthorizationRequest.toString()` redacts the consent URL, PKCE verifier, state and nonce.
+
 ## [1.14.1] - 2026-10-12
 
 ### Added

@@ -16,6 +16,8 @@ public enum DocumentStatus {
     METADATA_READY("metadata_ready"),
     /** Pending signature document status. */
     PENDING_SIGNATURE("pending_signature"),
+    /** All signatures collected, awaiting an account identity-review decision. */
+    PENDING_IDENTITY_REVIEW("pending_identity_review"),
     /** Expired document status. */
     EXPIRED("expired"),
     /** Certificating document status. */

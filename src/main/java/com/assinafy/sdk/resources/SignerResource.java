@@ -8,6 +8,7 @@ import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Signer;
+import com.assinafy.sdk.models.SignerIdentityVerification;
 import com.assinafy.sdk.models.enums.DocumentArtifactName;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.ListParams;
@@ -496,7 +497,8 @@ public class SignerResource extends BaseResource {
      *     "has_accepted_terms": false,
      *     "has_signature": true,
      *     "has_initial": false,
-     *     "is_signature_reusable": false
+     *     "is_signature_reusable": false,
+     *     "verification_method": "IdDocumentFaceMatchBasic"
      *   }
      * }</pre>
      * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
@@ -515,6 +517,58 @@ public class SignerResource extends BaseResource {
         return call("Failed to fetch signer self info",
                 () -> http.get(withAccessCode("/signers/self", signerAccessCode)),
                 Signer.class);
+    }
+
+    /**
+     * Read the current signer's hosted identity-verification state.
+     * <p><strong>HTTP:</strong> {@code GET /v1/signers/identity-verification?signer-access-code=...}.
+     * The signer access code is the only credential; there is no body. Requires an
+     * {@code IdDocumentFaceMatchBasic} assignment. A session can start only before one exists or
+     * after it expires before capture. Pending, InReview, Approved, Declined and Abandoned sessions
+     * cannot restart; Declined/Abandoned require a new document and assignment.</p>
+     * <pre>{"status":200,"message":"","data":{"can_start":false,"status":"Pending",
+     * "url":"https://verify.assinafy.com.br/c/session#t=token",
+     * "expires_at":"2026-10-20T21:00:00Z","completed_at":null}}</pre>
+     * <p>Open the URL unchanged, including its fragment. Never log it or persist it in browser
+     * storage. InReview permits signing, but holds certification until account approval.
+     * HTTP/envelope errors raise {@code ApiException} (401/403: {@code AuthenticationException},
+     * 429: {@code RateLimitException}); I/O failures raise {@code NetworkException}.</p>
+     * @param signerAccessCode signer query credential
+     * @return the unwrapped verification state
+     * @throws ValidationException if the access code is missing
+     */
+    public SignerIdentityVerification identityVerification(String signerAccessCode) {
+        requireId(signerAccessCode, "Signer access code");
+        return call("Failed to fetch signer identity verification",
+                () -> http.get(withAccessCode("/signers/identity-verification", signerAccessCode)),
+                SignerIdentityVerification.class);
+    }
+
+    /**
+     * Record explicit biometric-processing consent and open a hosted verification session.
+     * <p><strong>HTTP:</strong> {@code POST /v1/signers/identity-verification?signer-access-code=...}.
+     * Only the signer query credential is sent; JSON body: {@code {"consent":true}}. Pass true
+     * only after obtaining the signer's explicit biometric-processing consent.</p>
+     * <pre>{"status":200,"message":"","data":{"id":"verification-id",
+     * "url":"https://verify.assinafy.com.br/c/session#t=token",
+     * "expires_at":"2026-10-20T21:00:00Z"}}</pre>
+     * <p>Open the bearer URL unchanged, including its fragment, without logging it or saving it in
+     * browser storage. An expired capture session can be replaced; any other existing session
+     * returns 400. Resending never replaces a live session; restarting is not billed again.
+     * HTTP/envelope errors raise {@code ApiException} (401/403: {@code AuthenticationException},
+     * 429: {@code RateLimitException}); I/O failures raise {@code NetworkException}.</p>
+     * @param signerAccessCode signer query credential
+     * @param consent explicit consent to biometric processing; must be true
+     * @return the unwrapped session ID, capture URL and expiry
+     * @throws ValidationException if the access code is missing or consent is false
+     */
+    public SignerIdentityVerification startIdentityVerification(String signerAccessCode, boolean consent) {
+        requireId(signerAccessCode, "Signer access code");
+        if (!consent) throw new ValidationException("Explicit biometric-processing consent is required");
+        String json = serialise(Map.of("consent", true));
+        return call("Failed to start signer identity verification",
+                () -> http.post(withAccessCode("/signers/identity-verification", signerAccessCode), json),
+                SignerIdentityVerification.class);
     }
 
     /**

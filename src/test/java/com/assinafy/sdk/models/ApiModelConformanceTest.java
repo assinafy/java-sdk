@@ -148,4 +148,24 @@ class ApiModelConformanceTest {
         String envelope = "{\"status\":200,\"data\":" + data + "}";
         return ResponseHandler.handle(new HttpRawResponse(200, envelope, Map.of()), type);
     }
+
+    @Test
+    void exposesIdentityVerificationStatusAndMethod() {
+        assertThat(decode("{\"verification_method\":\"IdDocumentFaceMatchBasic\"}", Signer.class)
+                .getVerificationMethod()).isEqualTo("IdDocumentFaceMatchBasic");
+        assertThat(decode("{\"identity_verification_status\":\"InReview\"}", AssignmentSigner.class)
+                .getIdentityVerificationStatus()).isEqualTo("InReview");
+        assertThat(com.assinafy.sdk.models.enums.DocumentStatus.PENDING_IDENTITY_REVIEW.getValue())
+                .isEqualTo("pending_identity_review");
+    }
+
+    @Test
+    void preservesSandboxWhatsappButtonUrlsAndAllowsProductionOmission() {
+        var sandbox = decode("""
+                {"buttons":[{"text":"Sign","url":"https://example.invalid/sign?code=secret"}]}
+                """, WhatsappNotification.class);
+        assertThat(sandbox.getButtons().getFirst().getUrl()).isEqualTo("https://example.invalid/sign?code=secret");
+        assertThat(decode("{\"buttons\":[{\"text\":\"Sign\"}]}", WhatsappNotification.class)
+                .getButtons().getFirst().getUrl()).isNull();
+    }
 }

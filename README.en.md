@@ -3,7 +3,7 @@
 *[Leia em português](README.md) · English*
 
 A Java client for the [Assinafy API](https://api.assinafy.com.br/v1/docs), the Brazilian digital
-signature platform. It covers all 106 documented operations — document upload and certification,
+signature platform. It covers all 112 documented operations — document upload and certification,
 signer management, signature requests, templates, field definitions, tags, workspaces, signed
 webhooks with multiple endpoints, two-factor login, OAuth 2.1, and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
 thread-safe client.
@@ -49,7 +49,7 @@ the [complete Java API reference](docs/API_REFERENCE.md).
 ## Requirements
 
 - JDK 25 (LTS). The build enforces Java `>=25,<26`.
-- Maven Wrapper pinned to Maven 3.9.16; a system Maven installation is not required.
+- Maven Wrapper pinned to Maven 3.10.0; a system Maven installation is not required.
 - TLS 1.2 or later: the default HTTP client refuses TLS 1.0 and 1.1.
 
 Runtime dependencies are OkHttp and Jackson. The published jar declares
@@ -63,14 +63,14 @@ The SDK is published to Maven Central, with no repository configuration or authe
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.14.1</version>
+    <version>1.15.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:1.14.1")
+implementation("com.assinafy:assinafy-sdk:1.15.0")
 ```
 
 The same versions are also published to GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -345,7 +345,8 @@ if (Boolean.TRUE.equals(estimate.getHasSufficientResources())) {
 ```
 
 Per-signer delivery and ordering live on `SignerReference`. Verification methods are `Email`,
-`Whatsapp`, or `DigitalCertificate`; notification methods are `Email` or `Whatsapp`. `step` controls
+`Whatsapp`, `DigitalCertificate`, or `IdDocumentFaceMatchBasic`; notification methods are `Email` or
+`Whatsapp`. `step` controls
 signing order: signers sharing a step sign in parallel, and the next step is notified only once the
 previous one completes. If any signer supplies a step, all must, and the values must be contiguous
 from 1. A `DigitalCertificate` signer must be alone in its step.
@@ -477,7 +478,7 @@ one, both, or neither, and the missing side is inferred. With neither, both defa
 | --- | --- | --- | --- |
 | `Email` *(default)* | A one-time code by email, required before signing | Signer has an email address | 0 credits |
 | `Whatsapp` | A one-time code over WhatsApp | Signer has a `whatsappPhoneNumber`; paid plans only | 0.45 credits (the WhatsApp notification this method requires) |
-| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | The account has the Digital Certificate feature; the signer has a CPF/CNPJ in `governmentId`; one certificate signer per step | 2 credits plus its notification |
+| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | The account has the Digital Certificate feature; the signer has a CPF/CNPJ in `governmentId`; one certificate signer per step | 0.5 credits plus its notification |
 
 | Notification | Delivers | Requirements | Cost per signer |
 | --- | --- | --- | --- |
@@ -491,6 +492,7 @@ Only matching pairs are accepted; anything else returns `400`:
 | `Email` | `Email` |
 | `Whatsapp` | `Whatsapp` |
 | `DigitalCertificate` | `Email` **or** `Whatsapp` |
+| `IdDocumentFaceMatchBasic` | `Email` **or** `Whatsapp` |
 
 One notification method per signer. No verification method carries a price of its own — you are
 billed for the notification it travels with, plus, for a digital certificate, the signature itself.
@@ -498,6 +500,39 @@ Call `assignments().estimateCostTyped(...)` for the exact total before creating 
 
 By default every signer is notified as soon as the assignment is created. With `step` set, each
 signer's notification is held until their step is activated.
+
+### Biometric identity verification
+
+These identity routes are available in production; sandbox currently returns 404.
+
+Set `verificationMethod("IdDocumentFaceMatchBasic")` on `SignerReference` or `TemplateSigner`, with
+an Email or WhatsApp notification. The account needs the **ID Document + Face Match** feature and
+the signer a valid CPF in `governmentId`. Use cost estimation for current pricing. The hosted flow
+uses government-ID photos, a photo holding the ID and liveness, without an OTP.
+
+```java
+SignerIdentityVerification state = client.signers().identityVerification(signerAccessCode);
+// Obtain the signer's explicit biometric-processing consent before passing true:
+SignerIdentityVerification session = client.signers().startIdentityVerification(signerAccessCode, true);
+// Redirect to session.getUrl() unchanged, including its #t= fragment.
+SignerIdentityReview review = client.assignments().identityVerification(documentId, assignmentId, signerId);
+byte[] evidence = client.assignments().identityVerificationImage(documentId, assignmentId, signerId, "face");
+SignerIdentityReview approved = client.assignments().reviewIdentityVerification(
+    documentId, assignmentId, signerId, "Approved", "Identity checked");
+```
+
+Capture URLs are bearer credentials: never log them or persist them in browser storage. `can_start`
+is true before a session exists or after it expires before capture. Pending, InReview, Approved,
+Declined and Abandoned cannot restart; Declined/Abandoned require a new document and assignment.
+Resending preserves the live session and restarting an expired capture session is not billed again.
+
+InReview permits data confirmation and signing, but holds certification. Once everyone signs, the
+document is `pending_identity_review`. Review evidence images exist only while the review is open;
+do not cache them. Approved releases certification after every signature and review. Rejected
+cancels the document and notifies signers and copy receivers. The optional private note is limited
+to 2000 Unicode characters and hidden from signers. `waitUntilReady` checks initial processing;
+wait for `certificated` before downloading final artifacts. See the
+[complete request/response reference](docs/API_REFERENCE.md#identity-verification-and-endpoint-removal).
 
 ## ICP-Brasil digital certificates (A1 and A3)
 
@@ -785,7 +820,7 @@ Document fromTemplate = client.documents().createFromTemplate(templateId, reques
 
 Template signers follow the same delivery and ordering rules as assignment signers, with one extra
 rule: each signer may use zero or one notification method; a selected channel must match
-Email/WhatsApp verification. DigitalCertificate permits either channel.
+Email/WhatsApp verification. DigitalCertificate and IdDocumentFaceMatchBasic permit either channel.
 
 Field definitions describe the typed inputs a signer fills in during a `collect` assignment:
 
@@ -975,7 +1010,7 @@ HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}` keyed by the endpoi
 `WebhookSignature` checks it locally with the JDK alone.
 
 ```java
-String secret = client.webhooks().getEndpointSecret(erp.getId());   // store it in your secret manager
+String secret = erp.getSecret();   // store it in your secret manager
 
 // Receiver: verify the raw body exactly as received — never re-serialized JSON.
 @PostMapping("/webhooks/assinafy")
@@ -997,7 +1032,10 @@ tolerance or clock, use `verify(secret, id, timestamp, signature, body, toleranc
 
 `rotateEndpointSecret(id)` returns a new secret and the old one stops working immediately, so update
 the receiver right away. `signingEnabled(false)` discards the secret, and the secret endpoints
-answer `400` while signing is disabled. They are not available to OAuth applications.
+answer `400` while signing is disabled. OAuth applications store `endpoint.getSecret()` from creation
+and recreate the endpoint if it is lost. API-key creates may omit it; use `getEndpointSecret(id)`
+when needed. `deleteEndpointByUrl(url)` removes an endpoint by its exact registered URL in production; sandbox
+currently returns 404 for that route.
 
 ### Delivery contract
 

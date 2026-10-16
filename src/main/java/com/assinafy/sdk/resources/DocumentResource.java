@@ -38,7 +38,7 @@ public class DocumentResource extends BaseResource {
     private static final String DEFAULT_ARTIFACT = DocumentArtifactName.CERTIFICATED.getValue();
     private static final String CERTIFICATED = DocumentStatus.CERTIFICATED.getValue();
     private static final Set<String> READY_STATUSES = Set.of(
-            "metadata_ready", "pending_signature", CERTIFICATED
+            "metadata_ready", "pending_signature", "pending_identity_review", "certificating", CERTIFICATED
     );
 
     private static final Set<String> FAILED_STATUSES = Set.of(
@@ -766,7 +766,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Create a document from a template in an explicit or default account. At least one template
      * signer is required, and each signer needs nonblank role and signer IDs. Verification methods
-     * are {@code Email}, {@code Whatsapp}, or {@code DigitalCertificate}; notification methods,
+     * are {@code Email}, {@code Whatsapp}, {@code DigitalCertificate}, or
+     * {@code IdDocumentFaceMatchBasic}; notification methods,
      * when supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}; at
      * most one method is permitted per signer. If one signer supplies a step, all must do so and the
      * positive steps must be contiguous from 1. A digital-certificate signer must be alone in its

@@ -24,6 +24,7 @@ import com.assinafy.sdk.request.CreateAssignmentRequest;
 import com.assinafy.sdk.request.CreateFieldRequest;
 import com.assinafy.sdk.request.CreateSignerRequest;
 import com.assinafy.sdk.request.CreateTagRequest;
+import com.assinafy.sdk.request.CreateWorkspaceRequest;
 import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RenameTagRequest;
 import com.assinafy.sdk.request.SignerReference;
@@ -343,11 +344,11 @@ class LiveApiSmokeIT {
                 .orElse(null);
         Assumptions.assumeTrue(emailField != null, "No email field definition available");
 
-        FieldValidationResult ok = client.fields().validateAsWorkspace(emailField.getId(), "signer@example.com");
+        FieldValidationResult ok = client.fields().validateAsWorkspace(emailField.getId(), "signer@example.invalid");
         assertThat(ok.getSuccess()).isTrue();
 
         assertThat(client.fields().validateMultipleAsWorkspace(
-                List.of(Map.of("field_id", emailField.getId(), "value", "signer@example.com"))))
+                List.of(Map.of("field_id", emailField.getId(), "value", "signer@example.invalid"))))
                 .singleElement()
                 .satisfies(result -> assertThat(result.getSuccess()).isTrue());
 
@@ -611,30 +612,21 @@ class LiveApiSmokeIT {
     @Test
     @Order(23)
     void webhookEndpointLifecycleWithSigningSecret() throws Exception {
-        try {
-            read(() -> client.webhooks().listEndpoints());
-        } catch (ApiException error) {
-            Assumptions.assumeTrue(error.getStatusCode() != 404, "Webhook endpoints are not routed on this environment");
-            throw error;
-        }
-        WebhookEndpoint created;
-        try {
-            created = client.webhooks().createEndpoint(WebhookEndpointRequest.builder()
-                    .url("https://example.com/sdk-it-" + UUID.randomUUID())
-                    .email("sdk-it@example.invalid")
-                    .name("sdk-it-endpoint")
-                    .events(List.of("document_ready"))
-                    .signingEnabled(true)
-                    .build());
-        } catch (com.assinafy.sdk.exceptions.AuthenticationException limit) {
-            Assumptions.abort("The plan's webhook endpoint limit is reached: " + limit.getMessage());
-            return;
-        }
-        try {
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            String id = createWebhookTestWorkspace(cleanup);
+            WebhookEndpoint created = client.webhooks().createEndpoint(WebhookEndpointRequest.builder()
+                    .url("https://example.invalid/sdk-it-" + UUID.randomUUID())
+                    .email("sdk-it@example.invalid").name("sdk-it-endpoint")
+                    .events(List.of("document_ready")).signingEnabled(true).build(), id);
             assertThat(created.getSigningEnabled()).isTrue();
-            String secret = read(() -> client.webhooks().getEndpointSecret(created.getId()));
-            String rotated = client.webhooks().rotateEndpointSecret(created.getId());
+            assertThat(read(() -> client.webhooks().getEndpoint(created.getId(), id)).getSecret()).isNull();
+            assertThat(read(() -> client.webhooks().listEndpoints(id)))
+                    .extracting(WebhookEndpoint::getId).containsExactly(created.getId());
+            String secret = read(() -> client.webhooks().getEndpointSecret(created.getId(), id));
             assertThat(secret).startsWith("whsec_");
+            // API-key creates may omit the one-time secret that OAuth creates must return.
+            if (created.getSecret() != null) assertThat(secret).isEqualTo(created.getSecret());
+            String rotated = client.webhooks().rotateEndpointSecret(created.getId(), id);
             assertThat(rotated).startsWith("whsec_").isNotEqualTo(secret);
 
             byte[] body = "{\"event\":\"document_ready\"}".getBytes(StandardCharsets.UTF_8);
@@ -648,18 +640,60 @@ class LiveApiSmokeIT {
                     "webhook-timestamp", timestamp, "webhook-signature", signature), body)).isTrue();
             assertThat(WebhookSignature.verify(secret, Map.of("webhook-id", "msg_sdk_it",
                     "webhook-timestamp", timestamp, "webhook-signature", signature), body)).isFalse();
-
-            WebhookEndpoint updated = client.webhooks().updateEndpoint(created.getId(),
-                    WebhookEndpointRequest.builder().isActive(false).build());
-            assertThat(updated.getIsActive()).isFalse();
-        } finally {
-            client.webhooks().deleteEndpoint(created.getId());
+            assertThat(client.webhooks().updateEndpoint(created.getId(),
+                    WebhookEndpointRequest.builder().isActive(false).build(), id).getIsActive()).isFalse();
+            client.webhooks().deleteEndpoint(created.getId(), id);
+            assertThat(read(() -> client.webhooks().listEndpoints(id))).isEmpty();
         }
+    }
+
+    @Test
+    @Order(23)
+    void webhookEndpointRemovalByExactUrl() {
+        try (SandboxCleanup cleanup = new SandboxCleanup()) {
+            String id = createWebhookTestWorkspace(cleanup);
+            WebhookEndpoint endpoint = client.webhooks().createEndpoint(WebhookEndpointRequest.builder()
+                    .url("https://example.invalid/sdk-it-" + UUID.randomUUID())
+                    .email("sdk-it@example.invalid").events(List.of("document_ready")).build(), id);
+            try {
+                client.webhooks().deleteEndpointByUrl(endpoint.getUrl(), id);
+            } catch (ApiException error) {
+                if (error.getStatusCode() != 404) throw error;
+                assertThat(read(() -> client.webhooks().getEndpoint(endpoint.getId(), id)).getId())
+                        .isEqualTo(endpoint.getId());
+                Assumptions.abort("Webhook removal by URL is not available on this sandbox deployment");
+            }
+            assertThat(read(() -> client.webhooks().listEndpoints(id))).isEmpty();
+        }
+    }
+
+    private static String createWebhookTestWorkspace(SandboxCleanup cleanup) {
+        String name = "sdk-it-workspace-" + UUID.randomUUID();
+        AtomicReference<String> workspaceId = new AtomicReference<>();
+        cleanup.add(() -> {
+            if (workspaceId.get() != null) {
+                client.workspaces().delete(workspaceId.get());
+            } else {
+                reconcileCleanup(() -> client.workspaces().list().getData().stream()
+                        .filter(workspace -> name.equals(workspace.getName()))
+                        .findFirst().map(workspace -> {
+                            client.workspaces().delete(workspace.getId());
+                            return true;
+                        }).orElse(false));
+            }
+        });
+        Workspace workspace = client.workspaces().create(CreateWorkspaceRequest.builder().name(name).build());
+        workspaceId.set(workspace.getId());
+        assertThat(workspaceId.get()).isNotBlank();
+        return workspaceId.get();
     }
 
     @Test
     @Order(24)
     void leavesNoNamedSandboxTestResources() {
+        assertThat(read(() -> client.workspaces().list()).getData())
+                .extracting(Workspace::getName)
+                .noneMatch(name -> name != null && name.startsWith("sdk-it-workspace-"));
         assertThat(read(() -> client.documents().search(
                         ListParams.builder().search("sdk-it-").perPage(100).build())).getData())
                 .extracting(Document::getName)

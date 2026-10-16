@@ -37,6 +37,21 @@ public class AssignmentSigner {
     @JsonProperty("verification_method")
     private String verificationMethod;
 
+    @JsonProperty("identity_verification_status")
+    private String identityVerificationStatus;
+
+    /** Returns Pending, InReview, Approved, Declined, Expired, Abandoned, or a future provider status.
+     * @return Pending, InReview, Approved, Declined, Expired, Abandoned, or a future provider status
+     */
+    public String getIdentityVerificationStatus() { return identityVerificationStatus; }
+
+    /** Sets the identityVerificationStatus.
+     * @param identityVerificationStatus the current identity verification status
+     */
+    public void setIdentityVerificationStatus(String identityVerificationStatus) {
+        this.identityVerificationStatus = identityVerificationStatus;
+    }
+
     @JsonProperty("notification_methods")
     private List<String> notificationMethods;
 

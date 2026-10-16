@@ -25,4 +25,13 @@ public record OAuthAuthorizationRequest(
         String codeVerifier,
         String issuer,
         String nonce) {
+
+    /**
+     * Describe this request without exposing the PKCE verifier, state, nonce or consent URL.
+     * @return a redacted description
+     */
+    @Override
+    public String toString() {
+        return "OAuthAuthorizationRequest[<redacted>]";
+    }
 }

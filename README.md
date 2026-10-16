@@ -3,7 +3,7 @@
 *Português · [Read in English](README.en.md)*
 
 Cliente Java para a [API Assinafy](https://api.assinafy.com.br/v1/docs) — plataforma brasileira de
-assinatura eletrônica de documentos. Cobre as 106 operações documentadas — upload e certificação de
+assinatura eletrônica de documentos. Cobre as 112 operações documentadas — upload e certificação de
 documentos, gestão de signatários, solicitações de assinatura, templates, definições de campo, tags,
 workspaces, webhooks assinados com múltiplos endpoints, login com dois fatores, OAuth 2.1 e os fluxos
 self-service do signatário — atrás de modelos tipados,
@@ -40,7 +40,7 @@ está em **[README.en.md](README.en.md)**, e o contrato de requisição/resposta
 ## Requisitos
 
 - JDK 25 (LTS). O build exige Java `>=25,<26`.
-- Maven Wrapper fixado no Maven 3.9.16 — não é necessário ter Maven instalado no sistema.
+- Maven Wrapper fixado no Maven 3.10.0 — não é necessário ter Maven instalado no sistema.
 - TLS 1.2 ou superior: o cliente HTTP padrão recusa TLS 1.0 e 1.1.
 
 As dependências de runtime são OkHttp e Jackson. O jar publicado declara
@@ -54,14 +54,14 @@ O SDK é publicado no Maven Central, sem configuração de repositório nem aute
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.14.1</version>
+    <version>1.15.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:1.14.1")
+implementation("com.assinafy:assinafy-sdk:1.15.0")
 ```
 
 As mesmas versões continuam publicadas no GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -393,7 +393,7 @@ dois ou nenhum — o lado que faltar é inferido. Sem nenhum dos dois, ambos ass
 | --- | --- | --- | --- |
 | `Email` *(padrão)* | Código de uso único (OTP) por e-mail, exigido antes de assinar | Signatário com e-mail | 0 créditos |
 | `Whatsapp` | Código de uso único (OTP) por WhatsApp | `whatsappPhoneNumber` no signatário; só em planos pagos | 0,45 crédito (a notificação WhatsApp, que este método exige) |
-| `DigitalCertificate` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | Recurso Certificado Digital na conta; CPF/CNPJ em `governmentId`; um signatário por certificado em cada passo | 2 créditos + o custo da notificação |
+| `DigitalCertificate` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | Recurso Certificado Digital na conta; CPF/CNPJ em `governmentId`; um signatário por certificado em cada passo | 0,5 crédito + o custo da notificação |
 
 | Método de notificação | Entrega | Requisitos | Custo por signatário |
 | --- | --- | --- | --- |
@@ -407,10 +407,49 @@ Combinações permitidas — qualquer outra devolve `400`:
 | `Email` | `Email` |
 | `Whatsapp` | `Whatsapp` |
 | `DigitalCertificate` | `Email` **ou** `Whatsapp` |
+| `IdDocumentFaceMatchBasic` | `Email` **ou** `Whatsapp` |
 
 Apenas um método de notificação por signatário. Nenhum método de verificação tem preço próprio: o que
 se cobra é a **notificação** com que ele anda junto — mais, no caso do certificado digital, a própria
 assinatura. Use `assignments().estimateCostTyped(...)` para ver o total exato antes de criar.
+
+### Biometria e documento de identidade
+
+Essas rotas estão disponíveis em produção; o sandbox ainda responde 404.
+
+Use `verificationMethod("IdDocumentFaceMatchBasic")` em `SignerReference` ou `TemplateSigner`, com
+notificação por `Email` ou `Whatsapp`. Exige o recurso **ID Document + Face Match** na conta e um CPF
+válido em `governmentId`; consulte a estimativa para o preço atual. A verificação usa fotos do
+documento, foto do signatário com o documento e prova de vida, sem OTP.
+
+```java
+SignerIdentityVerification estado = client.signers().identityVerification(signerAccessCode);
+// Somente após obter o consentimento explícito do signatário para tratar a biometria:
+SignerIdentityVerification sessao = client.signers().startIdentityVerification(signerAccessCode, true);
+// Redirecione para sessao.getUrl() sem alterar nem remover o fragmento #t=.
+```
+
+Nunca registre essa URL em logs ou no armazenamento do navegador. `can_start` permite abrir uma
+sessão antes da primeira tentativa ou quando a anterior ficou `Expired` antes da captura. Uma sessão
+`Pending`, `InReview`, `Approved`, `Declined` ou `Abandoned` não reinicia; os dois últimos exigem novo
+documento e assignment. Reenvios preservam sessões existentes; reiniciar uma sessão expirada não cobra de novo.
+
+`InReview` permite confirmar os dados e assinar, mas retém a certificação. Após todas as assinaturas,
+o documento fica `pending_identity_review`. O responsável pela conta pode consultar a evidência e decidir:
+
+```java
+SignerIdentityReview revisao = client.assignments().identityVerification(documentId, assignmentId, signerId);
+byte[] evidencia = client.assignments().identityVerificationImage(documentId, assignmentId, signerId, "face");
+SignerIdentityReview aprovada = client.assignments().reviewIdentityVerification(
+    documentId, assignmentId, signerId, "Approved", "Identidade conferida");
+```
+
+As imagens só existem durante a revisão e não devem ser armazenadas em cache. `Approved` libera a
+certificação quando todas as assinaturas e revisões terminarem; `Rejected` cancela o documento e
+notifica signatários e destinatários de cópia. A nota privada tem até 2000 caracteres e não aparece
+para o signatário. `waitUntilReady` confirma que o processamento inicial terminou; aguarde
+`certificated` antes de baixar o resultado final. Os campos completos estão na
+[referência de requisições e respostas](docs/API_REFERENCE.md#identity-verification-and-endpoint-removal).
 
 ## Certificado digital ICP-Brasil (A1 e A3)
 
@@ -774,7 +813,7 @@ Com `signing_enabled`, cada entrega leva os headers `webhook-id`, `webhook-times
 HMAC-SHA256 de `{webhook-id}.{webhook-timestamp}.{corpo}` com o segredo `whsec_` do endpoint.
 
 ```java
-String segredo = client.webhooks().getEndpointSecret(erp.getId());    // guarde no cofre de segredos
+String segredo = erp.getSecret();    // guarde no cofre de segredos
 
 // No receptor: use o corpo bruto, exatamente como chegou — nunca o JSON re-serializado.
 @PostMapping("/webhooks/assinafy")
@@ -792,7 +831,10 @@ ResponseEntity<Void> receber(@RequestHeader Map<String, String> headers, @Reques
 `verify` compara em tempo constante, aceita qualquer entrada `v1,` do header e rejeita timestamps a
 mais de 5 minutos do relógio local (replays). `rotateEndpointSecret(id)` troca o segredo na hora — o
 antigo para de valer imediatamente, então atualize o receptor em seguida. Com `signingEnabled(false)`
-o segredo é descartado. Os endpoints de segredo não estão disponíveis para aplicações OAuth.
+o segredo é descartado. Aplicações OAuth guardam `endpoint.getSecret()` ao criar; se perder, exclua e recrie o endpoint.
+Criações com chave de API podem omitir o segredo; use `getEndpointSecret(id)` quando necessário.
+`deleteEndpointByUrl(url)` exclui pela URL exata cadastrada em produção, sem precisar guardar o ID;
+o sandbox ainda responde 404 para essa rota.
 
 ### Contrato de entrega
 

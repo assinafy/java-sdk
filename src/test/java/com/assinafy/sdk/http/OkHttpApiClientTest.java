@@ -56,6 +56,7 @@ class OkHttpApiClientTest {
             "/authentication/request-password-reset", "/authentication/mfa/verify", "/public/documents/doc",
             "/public/documents/doc/send-token", "/documents/hash/verify", "/oauth/token", "/oauth/revoke",
             "/signers/self?signer-access-code=code", "/sign?signer-access-code=code",
+            "/signers/identity-verification?signer-access-code=code",
             "/signers/signer/documents/doc/download/bundle"})
     void publicAndSignerEndpointsNeverReceiveWorkspaceCredentials(String path) throws Exception {
         for (boolean apiKey : new boolean[]{true, false}) {

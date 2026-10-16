@@ -48,6 +48,19 @@ public class Signer {
     @JsonProperty("is_signature_reusable")
     private Boolean isSignatureReusable;
 
+    @JsonProperty("verification_method")
+    private String verificationMethod;
+
+    /** Returns the current request's verification method, populated by signer self-service.
+     * @return the current request's verification method, populated by signer self-service
+     */
+    public String getVerificationMethod() { return verificationMethod; }
+
+    /** Sets the verificationMethod.
+     * @param verificationMethod the current request's verification method
+     */
+    public void setVerificationMethod(String verificationMethod) { this.verificationMethod = verificationMethod; }
+
     /**
      * Creates an empty signer.
      */

@@ -12,6 +12,8 @@ import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest;
 import com.assinafy.sdk.request.TemplateSigner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -149,6 +151,14 @@ class DocumentResourceExtraTest {
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"certificated\"}}");
         Document details = documents.waitUntilReady("d1", 5_000, 10);
         assertThat(details.getStatus()).isEqualTo("certificated");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pending_identity_review", "certificating"})
+    void processedDocumentsDoNotTimeOutWaitingForCertification(String status) {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\",\"status\":\"" + status + "\"}}");
+        assertThat(documents.waitUntilReady("d1", 1, 1).getStatus()).isEqualTo(status);
+        assertThat(http.capturedCount()).isEqualTo(1);
     }
 
     @Test

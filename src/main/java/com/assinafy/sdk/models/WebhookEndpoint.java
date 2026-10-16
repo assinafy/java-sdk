@@ -37,6 +37,21 @@ public class WebhookEndpoint {
     @JsonProperty("signing_enabled")
     private Boolean signingEnabled;
 
+    @JsonProperty("secret")
+    private String secret;
+
+    /**
+     * The signing secret returned once at endpoint creation. OAuth applications must store it
+     * immediately because secret read and rotation are unavailable to them.
+     * @return the whsec_ secret on creation, or null in list/get/update responses
+     */
+    public String getSecret() { return secret; }
+
+    /** Sets the secret.
+     * @param secret the one-time signing secret; keep it in server-side secret storage
+     */
+    public void setSecret(String secret) { this.secret = secret; }
+
     @JsonProperty("created_at")
     private String createdAt;
 

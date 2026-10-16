@@ -8,10 +8,11 @@ import java.util.List;
 /**
  * Signer selection for assignment or template-document requests.
  *
- * <p>{@code verification_method} accepts {@code Email}, {@code Whatsapp} or
- * {@code DigitalCertificate}. A nonempty {@code notification_methods} array contains one channel
- * matching Email/WhatsApp verification; DigitalCertificate permits either. Null lets the API infer
- * delivery defaults; an empty array requests no notification. Signing steps are all-or-none and
+ * <p>{@code verification_method} accepts {@code Email}, {@code Whatsapp},
+ * {@code DigitalCertificate} or {@code IdDocumentFaceMatchBasic}. A nonempty
+ * {@code notification_methods} array contains one channel matching Email/WhatsApp verification;
+ * DigitalCertificate and IdDocumentFaceMatchBasic permit either. Null lets the API infer delivery
+ * defaults; an empty array requests no notification. Signing steps are all-or-none and
  * contiguous from 1, and a digital-certificate signer is alone in its step.
  *
  * @see com.assinafy.sdk.resources.AssignmentResource#create(String, CreateAssignmentRequest)

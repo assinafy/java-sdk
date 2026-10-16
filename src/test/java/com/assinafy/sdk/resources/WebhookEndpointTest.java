@@ -72,6 +72,15 @@ class WebhookEndpointTest {
     }
 
     @Test
+    void createEndpointExposesTheOneTimeSecretForOAuthApplications() {
+        mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"ep1\",\"signing_enabled\":true,\"secret\":\"whsec_once\"}}");
+        WebhookEndpoint created = webhooks.createEndpoint(WebhookEndpointRequest.builder()
+                .url("https://example.invalid/hook").email("ops@example.invalid").signingEnabled(true).build());
+        assertThat(created.getSecret()).isEqualTo("whsec_once");
+        assertThat(created.toString()).doesNotContain("whsec_once");
+    }
+
+    @Test
     void createEndpointValidatesLocally() {
         assertThatThrownBy(() -> webhooks.createEndpoint(null)).isInstanceOf(ValidationException.class);
         assertThatThrownBy(() -> webhooks.createEndpoint(WebhookEndpointRequest.builder()
@@ -136,6 +145,29 @@ class WebhookEndpointTest {
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/other/webhooks/endpoints/ep1");
+    }
+
+    @Test
+    void deleteEndpointByUrlPreservesTheExactUrlAsOneQueryValue() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        webhooks.deleteEndpointByUrl("https://example.invalid/hook?a=1&b=two%20words#part", "a/1");
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo(
+                "/accounts/a%2F1/webhooks/endpoints?url=https%3A%2F%2Fexample.invalid%2Fhook%3Fa%3D1%26b%3Dtwo%2520words%23part");
+        assertThat(mock.lastCaptured().getJsonBody()).isNull();
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        webhooks.deleteEndpointByUrl("https://example.invalid/hook");
+        assertThat(mock.lastCaptured().getPath()).startsWith("/accounts/acc/webhooks/endpoints?url=");
+    }
+
+    @Test
+    void deleteEndpointByUrlValidatesAndPropagatesMissingEndpoints() {
+        assertThatThrownBy(() -> webhooks.deleteEndpointByUrl(null)).isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> webhooks.deleteEndpointByUrl("relative")).isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isZero();
+        mock.enqueue(404, "{\"status\":404,\"message\":\"No matching endpoint\"}");
+        assertThatThrownBy(() -> webhooks.deleteEndpointByUrl("https://example.invalid/hook"))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ApiException.class);
     }
 
     @Test

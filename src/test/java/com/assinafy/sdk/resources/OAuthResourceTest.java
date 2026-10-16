@@ -25,6 +25,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OAuthResourceTest {
 
+    @Test
+    void authorizationRequestStringDoesNotExposeSessionSecrets() {
+        var request = new OAuthAuthorizationRequest("https://example.invalid/consent?state=secret-state",
+                "secret-state", "secret-verifier", "https://issuer.example.invalid", "secret-nonce");
+        assertThat(request.toString()).contains("redacted")
+                .doesNotContain(request.url(), request.state(), request.codeVerifier(), request.nonce());
+        assertThat(request.codeVerifier()).isEqualTo("secret-verifier");
+    }
+
     private static final String BASE_URL = "https://api.assinafy.com.br/v1";
     private static final String ISSUER = "https://auth.assinafy.com.br";
     private static final String AUTHORIZE = ISSUER + "/oauth/authorize";

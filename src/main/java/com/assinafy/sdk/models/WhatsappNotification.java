@@ -123,6 +123,20 @@ public class WhatsappNotification {
         @JsonProperty("text")
         private String text;
 
+        @JsonProperty("url")
+        private String url;
+
+        /**
+         * Returns the simulated signing/verification URL in sandbox; production strips it.
+         * @return the sandbox bearer URL, or null; never log this value
+         */
+        public String getUrl() { return url; }
+
+        /** Sets the url.
+         * @param url the sandbox bearer URL, kept out of logs
+         */
+        public void setUrl(String url) { this.url = url; }
+
         /**
          * Creates an empty button.
          */

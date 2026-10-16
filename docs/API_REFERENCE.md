@@ -1,6 +1,6 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **106** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **112** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
 
 ## Conventions
 
@@ -908,7 +908,7 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create document from template.
-- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account. The Java SDK requires nonblank role and signer IDs, accepts only the documented verification and notification methods, permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to match verification, and validates signing steps as an all-or-none contiguous sequence starting at 1. A `DigitalCertificate` signer must be alone in its step.
+- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account. The Java SDK requires nonblank role and signer IDs, accepts only the documented verification and notification methods, permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to match verification, and validates signing steps as an all-or-none contiguous sequence starting at 1. A `DigitalCertificate` signer must be alone in its step. `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in `government_id`; it accepts either notification channel and uses explicit biometric consent.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -917,11 +917,11 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 
 Request body: **required**.
 
-`application/json`: object{signers!: array<object{role_id!: `string`; id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string`>; step: `integer`}>; editor_fields: array<object{field_id!: `string`; value!: `string`}>; name: `string`; message: `string`; expires_at: `string(date-time)`; tags: array<`string`>}.
+`application/json`: object{signers!: array<object{role_id!: `string`; id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}>; editor_fields: array<object{field_id!: `string`; value!: `string`}>; name: `string`; message: `string`; expires_at: `string(date-time)`; tags: array<`string`>}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `signers` | array<object{role_id!: `string`; id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string`>; step: `integer`}> | yes | no | One entry per template role. |
+| `signers` | array<object{role_id!: `string`; id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}> | yes | no | One entry per template role. |
 | `editor_fields` | array<object{field_id!: `string`; value!: `string`}> | no | no | Editor field values to bake into the generated document. |
 | `name` | `string` | no | no | Title for the document. Defaults to the template name. |
 | `message` | `string` | no | no | Optional message sent to signers. |
@@ -953,11 +953,11 @@ Documented statuses: `200` The created document; `400` One or more fields failed
 
 Request body: **required**.
 
-`application/json`: object{signers!: array<object{role_id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string`>}>}.
+`application/json`: object{signers!: array<object{role_id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>}>}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `signers` | array<object{role_id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string`>}> | yes | no | One entry per template role (editor roles are ignored for cost calculation). |
+| `signers` | array<object{role_id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>}> | yes | no | One entry per template role (editor roles are ignored for cost calculation). |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [CostEstimate](#schema-costestimate)}.
 
@@ -1220,7 +1220,7 @@ Documented statuses: `200` A page of assignments; `401` Missing or invalid crede
 - **HTTP:** `POST /v1/documents/{documentId}/assignments`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Creates the assignment and dispatches configured signature requests.
-- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires signer IDs, permits zero or one notification channel matching Email/WhatsApp verification (DigitalCertificate allows either), validates an optional ISO 8601 expiration with an offset at least one hour ahead, and requires nonempty `entries` for `collect`. `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1. A `DigitalCertificate` signer must be alone in its step.
+- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires signer IDs, permits zero or one notification channel matching Email/WhatsApp verification (DigitalCertificate and IdDocumentFaceMatchBasic allow either), validates an optional ISO 8601 expiration with an offset at least one hour ahead, and requires nonempty `entries` for `collect`. `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1. A `DigitalCertificate` signer must be alone in its step. `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in `government_id`; it accepts either notification channel and uses explicit biometric consent.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1228,12 +1228,12 @@ Documented statuses: `200` A page of assignments; `401` Missing or invalid crede
 
 Request body: **required**.
 
-`application/json`: object{method!: `string enum[virtual, collect]`; signers!: array<object{id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string enum[Email, Whatsapp]`>; step: `integer`}>; entries: array<object{page_id: `string`; fields: array<object{signer_id: `string`; field_id: `string`; display_settings: [DisplaySettings](#schema-displaysettings)}>}>; message: `string`; expires_at: `string(date-time)`; copy_receivers: array<`string`>}.
+`application/json`: object{method!: `string enum[virtual, collect]`; signers!: array<object{id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string enum[Email, Whatsapp]`>; step: `integer`}>; entries: array<object{page_id: `string`; fields: array<object{signer_id: `string`; field_id: `string`; display_settings: [DisplaySettings](#schema-displaysettings)}>}>; message: `string`; expires_at: `string(date-time)`; copy_receivers: array<`string`>}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
 | `method` | `string enum[virtual, collect]` | yes | no |  |
-| `signers` | array<object{id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string enum[Email, Whatsapp]`>; step: `integer`}> | yes | no |  |
+| `signers` | array<object{id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string enum[Email, Whatsapp]`>; step: `integer`}> | yes | no |  |
 | `entries` | array<object{page_id: `string`; fields: array<object{signer_id: `string`; field_id: `string`; display_settings: [DisplaySettings](#schema-displaysettings)}>}> | no | no | Required for `collect`: field placements per page. |
 | `message` | `string` | no | no | Text included in the invitation email. |
 | `expires_at` | `string(date-time)` | no | no | ISO 8601; default is no expiration. |
@@ -1370,7 +1370,7 @@ Documented statuses: `200` WhatsApp notifications; `401` Missing or invalid cred
 | Extra document | 1 credit |
 | Email notification | 0 credits |
 | WhatsApp notification | 0.45 credits |
-| Digital certificate signature (per signer) | 2 credits |
+| Digital certificate signature (per signer) | 0.5 credits |
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1378,12 +1378,12 @@ Documented statuses: `200` WhatsApp notifications; `401` Missing or invalid cred
 
 Request body: **required**.
 
-`application/json`: object{method: `string enum[virtual, collect]`; signers: array<object{verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string enum[Email, Whatsapp]`>}>; entries: array<`object`>}.
+`application/json`: object{method: `string enum[virtual, collect]`; signers: array<object{verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string enum[Email, Whatsapp]`>}>; entries: array<`object`>}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
 | `method` | `string enum[virtual, collect]` | no | no |  |
-| `signers` | array<object{verification_method: `string enum[Email, Whatsapp, DigitalCertificate]`; notification_methods: array<`string enum[Email, Whatsapp]`>}> | no | no | Required for `virtual`; each entry may be `{}` to default to Email. |
+| `signers` | array<object{verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string enum[Email, Whatsapp]`>}> | no | no | Required for `virtual`; each entry may be `{}` to default to Email. |
 | `entries` | array<`object`> | no | no | Required for `collect`. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [CostEstimate](#schema-costestimate)}.
@@ -2242,7 +2242,7 @@ regardless of scope. A missing scope answers `403` with
 ### 94. OAuth 2.0 protected resource metadata
 
 - **Java:** `client.oauth()` — `OAuthResource: public OAuthProtectedResourceMetadata protectedResourceMetadata()`
-- **HTTP:** `GET {apiOrigin}/.well-known/oauth-protected-resource`
+- **HTTP:** `GET /.well-known/oauth-protected-resource` at the API host root
 - **Auth:** public — the SDK uses a credential-free transport for this route
 - **Side effects:** none.
 - **Contract notes:** RFC 9728. Served at the API host root, not under `/v1`, and bare rather than enveloped, as RFC 8615 requires. `scopes_supported` deliberately excludes `offline_access`, which is a request-time signal to the authorization server rather than a permission this API enforces. Also referenced from the `WWW-Authenticate: Bearer resource_metadata="..."` challenge on a 401/403.
@@ -2372,7 +2372,7 @@ Success `200` `application/json`: bare object — **no envelope** — carrying `
 
 - **Java:** `client.oauth()` — `OAuthResource: public OAuthAuthorizationRequest createAuthorizationUrl(AuthorizationUrlRequest request)`
 - **HTTP:** none directly — produces the `GET {authorization_endpoint}` URL for the browser.
-- **Contract notes:** Performs no network I/O beyond discovery, which is skipped when `authorizationEndpoint` and `issuer` are both supplied. Mints an RFC 7636 verifier (43 base64url characters), its `S256` challenge, a `state`, and — when the `openid` scope is requested — a `nonce`. The returned `OAuthAuthorizationRequest` must be stored in the user's session: the callback needs `state` and `issuer`, and the token exchange needs `codeVerifier`.
+- **Contract notes:** Performs no network I/O beyond discovery, which is skipped when `authorizationEndpoint` and `issuer` are both supplied. Mints an RFC 7636 verifier (43 base64url characters), its `S256` challenge, a `state`, and — when the `openid` scope is requested — a `nonce`. The returned `OAuthAuthorizationRequest` must be stored in the user's session: the callback needs `state` and `issuer`, and the token exchange needs `codeVerifier`. Its `toString()` redacts session secrets and the consent URL; use the explicit accessors when needed.
 
 Query parameters emitted: `response_type=code`, `client_id`, `redirect_uri`, `scope` (space separated), `state`, `code_challenge`, `code_challenge_method=S256`, `resource` (the configured API origin, omitted for a loopback base URL), and optionally `nonce` and `prompt`.
 
@@ -2574,7 +2574,7 @@ Documented statuses: `200` The endpoints; `401` Missing or invalid credentials; 
 - **HTTP:** `POST /v1/accounts/{accountId}/webhooks/endpoints`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create webhook endpoint.
-- **Contract notes:** Register a URL to receive the account's webhook events. An account can have 1 endpoint, or up to 3 on paid plans; creating one past the limit returns `403`. Each endpoint of a workspace must have a different `url` (`400` otherwise). When `signing_enabled` is `true`, a signing secret is generated: read it with **Get webhook endpoint signing secret**. Requires the `webhooks:write` OAuth scope.
+- **Contract notes:** Register a URL to receive the account's webhook events. An account can have 1 endpoint, or up to 3 on paid plans; creating one past the limit returns `403`. Each endpoint of a workspace must have a different `url` (`400` otherwise). When `signing_enabled` is `true`, a signing secret is returned once as `secret` (`WebhookEndpoint.getSecret()`). Store it immediately when returned; sandbox API-key creates may omit it, in which case use `getEndpointSecret`. List/get/update omit it. OAuth applications cannot read or rotate it later; recreate the endpoint if it is lost. Requires the `webhooks:write` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -3010,6 +3010,178 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: `o
 
 Documented statuses: `200` Method removed; `400` One or more fields failed validation; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
 
+## Identity verification and endpoint removal
+
+These six operations are routed in production; sandbox currently returns 404 for them. Biometric
+approval requires the ID Document + Face Match feature, explicit signer consent and completed
+capture.
+
+### Identity document verification status
+
+- **Java:** `client.signers().identityVerification(signerAccessCode)` → `SignerIdentityVerification`.
+- **HTTP:** `GET /v1/signers/identity-verification`.
+- **Auth:** `signer-access-code` query credential only; workspace credentials are omitted.
+
+Current state of the signer's identity document verification. Backfills a pending decision from the provider. Uses the signer access code.
+
+**One live session per signer:** `can_start` is true before a provider session exists, and again once that session is Expired -- the capture link lapsed before anything was submitted, so the signer may open a new one. Once a session is Pending, In Review, Approved, Declined or Abandoned it is false. A signer who reaches Declined or Abandoned cannot restart here; the account must start a whole new process (new document, new assignment).
+
+**In review:** the signer continues -- views, confirms their data and signs -- while the account reviews the result. The document is certificated only after the account approves every signer under review; if it rejects one, the document is cancelled and every signer receives the cancellation notice.
+
+Request body: none.
+
+Success `200` `application/json`:
+
+Envelope `{status: 200, message: "", data: ...}`; the SDK returns `data`.
+
+| JSON field | Type | Required | Notes |
+|---|---|---:|---|
+| `can_start` | boolean | no | True when no session exists yet, or the last one Expired. |
+| `status` | string / null | no |  |
+| `url` | string / null | no | The provider's capture URL while the session is Pending; null otherwise. A bearer link: open it as-is (including any `#t=` fragment); never log it or store it in the browser. |
+| `expires_at` | string / null | no | When the capture link stops working. Verification may still be processed or reviewed after it. Null for providers that do not report it. |
+| `completed_at` | string / null | no |  |
+
+Documented statuses: `200` Verification state, `401` Unauthorized, `500` ServerError.
+
+### Start identity document verification
+
+- **Java:** `client.signers().startIdentityVerification(signerAccessCode, consent)` → `SignerIdentityVerification`.
+- **HTTP:** `POST /v1/signers/identity-verification`.
+- **Auth:** `signer-access-code` query credential only; workspace credentials are omitted.
+
+Records the signer's biometric-processing consent and opens a provider session. Returns the hosted verification URL to redirect to. Uses the signer access code.
+
+**One live session per signer:** this succeeds when no session exists yet, or when the last one Expired (the capture link lapsed before anything was submitted); the expired session is replaced by a new one. Otherwise -- Pending, In Review, Approved, Declined or Abandoned -- it returns `400`. A resend never destroys or replaces a live provider session, and the account is billed once per signer at assignment creation, never again on a restart. Recovering from a Declined or Abandoned verification means the account must start a whole new process (new document, new assignment).
+
+Request body: **required** `application/json`.
+
+| JSON field | Type | Required | Notes |
+|---|---|---:|---|
+| `consent` | boolean | yes | Must be true. Explicit consent to biometric processing. |
+
+Success `200` `application/json`:
+
+Envelope `{status: 200, message: "", data: ...}`; the SDK returns `data`.
+
+| JSON field | Type | Required | Notes |
+|---|---|---:|---|
+| `id` | string | no |  |
+| `url` | string | no | The provider's capture URL for the session just opened. A bearer link: open it as-is (including any `#t=` fragment); never log it or store it in the browser. |
+| `expires_at` | string / null | no |  |
+
+Documented statuses: `200` Session created, `400` Consent missing, or this signer already has a verification session that is not Expired., `401` Unauthorized, `500` ServerError.
+
+The SDK rejects `consent=false` before sending a request. Obtain the signer’s explicit consent before passing true.
+
+### Signer identity review
+
+- **Java:** `client.assignments().identityVerification(documentId, assignmentId, signerId)` → `SignerIdentityReview`.
+- **HTTP:** `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification`.
+- **Auth:** Configured API key or bearer token.
+
+The signer's identity-document verification as the account's reviewer sees it. When the provider sends a verification to review, the account decides it with **Decide signer identity review**. The signer can still view and sign meanwhile; the review holds the document's certification instead (status `pending_identity_review` once every signer has signed).
+Evidence is a summary kept by Assinafy (no images or biometrics). `evidence_available` is false when the provider keeps none or it could not be fetched yet. While the review is open, `images` lists the evidence images the reviewer can open with **Signer identity review image**. A verification the provider approved directly, without a review, shows no evidence here (`evidence_available` is false); its evidence is on the `signer_identity_verified` activity.
+
+| Parameter | Location | Required | Notes |
+|---|---|---:|---|
+| `documentId` | path | true | Document ID. |
+| `assignmentId` | path | true | The assignment ID. |
+| `signerId` | path | true | The signer ID. |
+
+Request body: none.
+
+Success `200` `application/json`:
+
+Envelope `{status: 200, message: "", data: ...}`; the SDK returns `data`.
+
+The complete response payload is [SignerIdentityReview](#schema-signeridentityreview); all fields, including nested evidence, are listed there.
+
+Documented statuses: `200` Identity review, `404` Assignment, signer or verification not found., `401` Unauthorized, `500` ServerError.
+
+### Signer identity review image
+
+- **Java:** `client.assignments().identityVerificationImage(documentId, assignmentId, signerId, name)` → `byte[]`.
+- **HTTP:** `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}`.
+- **Auth:** Configured API key or bearer token.
+
+One evidence image of a signer identity verification that is `InReview`, for the account's reviewer: the document photos (or the digital document PDF) and the face photo. Fetched from the verification provider on each request and never stored by Assinafy. Available only while the review is open; once it is decided, every image returns 404. `name` must be one of the review's `images`.
+
+| Parameter | Location | Required | Notes |
+|---|---|---:|---|
+| `documentId` | path | true | Document ID. |
+| `assignmentId` | path | true | The assignment ID. |
+| `signerId` | path | true | The signer ID. |
+| `name` | path | true | The image, as listed in the review's `images`. |
+
+Request body: none.
+
+Success `200` `image/jpeg`:
+Raw bytes; no JSON envelope.
+
+Success `200` `image/png`:
+Raw bytes; no JSON envelope.
+
+Success `200` `application/pdf`:
+Raw bytes; no JSON envelope.
+
+Documented statuses: `200` The image bytes (`image/jpeg`, `image/png`) or the document PDF (`application/pdf`). Sent with `Cache-Control: no-store`., `404` Assignment, signer or verification not found, the review is not open, or there is no such image., `401` Unauthorized, `500` ServerError.
+
+### Decide signer identity review
+
+- **Java:** `client.assignments().reviewIdentityVerification(documentId, assignmentId, signerId, decision, note)` → `SignerIdentityReview`.
+- **HTTP:** `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review`.
+- **Auth:** Configured API key or bearer token.
+
+Approves or rejects a signer whose identity verification is `InReview`, while the document is `pending_signature` or `pending_identity_review`. Approved: once every signer has signed and no other signer is under review, the document is certificated; the certificate states the approval by review and every difference found. Rejected: the document is cancelled (`rejected_by_user`, with the reviewer as the user) and every signer and copy receiver gets the cancellation notice; the note is never shown to them. The signer gets no message about the decision itself. The decision is also reported to the verification provider.
+
+| Parameter | Location | Required | Notes |
+|---|---|---:|---|
+| `documentId` | path | true | Document ID. |
+| `assignmentId` | path | true | The assignment ID. |
+| `signerId` | path | true | The signer ID. |
+
+Request body: **required** `application/json`.
+
+| JSON field | Type | Required | Notes |
+|---|---|---:|---|
+| `decision` | string: `Approved`, `Rejected` | yes |  |
+| `note` | string / null | no | Optional. Recorded in the activity log and sent to the provider; never shown to the signer. |
+
+Success `200` `application/json`:
+
+Envelope `{status: 200, message: "", data: ...}`; the SDK returns `data`.
+
+The complete response payload is [SignerIdentityReview](#schema-signeridentityreview); all fields, including nested evidence, are listed there.
+
+Documented statuses: `200` Decided, `400` Invalid decision, the verification is not `InReview`, or the document is no longer awaiting signatures., `404` Assignment, signer or verification not found., `401` Unauthorized, `500` ServerError.
+
+Local validation accepts only `Approved` or `Rejected` and notes of at most 2000 Unicode characters; null omits the note.
+
+### Delete webhook endpoint by URL
+
+- **Java:** `client.webhooks().deleteEndpointByUrl(url, accountId)` → `void`.
+- **HTTP:** `DELETE /v1/accounts/{accountId}/webhooks/endpoints`.
+- **Auth:** Configured API key or bearer token.
+
+Stop delivering events to the endpoint registered with `url` and free its slot, for integrations that keep the URL they registered rather than the endpoint ID. The URL must match exactly as it was registered. Returns `404` when no endpoint of the workspace uses it. Requires the `webhooks:write` OAuth scope.
+
+| Parameter | Location | Required | Notes |
+|---|---|---:|---|
+| `accountId` | path | true | Workspace account ID. |
+| `url` | query | true | The endpoint's URL. |
+
+Request body: none.
+
+Success `200` `application/json`:
+
+Envelope `{status: 200, message: "", data: ...}`; the SDK returns `data`.
+
+| JSON field | Type | Required | Notes |
+|---|---|---:|---|
+
+Documented statuses: `200` Endpoint deleted, `400` `url` is missing., `404` NotFound, `401` Unauthorized, `500` ServerError.
+
 ## Component payload schemas
 
 These tables complete every component referenced by the operation response/request sections above. Fields are wire JSON names.
@@ -3092,6 +3264,7 @@ The current signer, as returned by `GET /v1/signers/self`. Extends Signer with t
 | `has_accepted_terms` | `boolean` | no | no |  |
 | `has_signature` | `boolean` | no | no | Whether the signer has a saved signature image stored. |
 | `has_initial` | `boolean` | no | no | Whether the signer has a saved initials image stored. |
+| `verification_method` | `string` | no | no | Current request method: Email, Whatsapp, DigitalCertificate or IdDocumentFaceMatchBasic; available before verification. |
 | `is_signature_reusable` | `boolean` | no | no | Whether the signer opted to reuse their saved signature/initials in future processes. When false, clients should not pre-render the saved image even if `has_signature`/`has_initial` is true. |
 
 ### Schema: DocumentPage
@@ -3215,6 +3388,7 @@ A signer within an assignment: the base Signer plus per-assignment verification/
 | `whatsapp_phone_number` | `string`? | no | yes | E.164 format; normalized on save. |
 | `government_id` | `string`? | no | yes | Signer's normalized CPF or CNPJ. `AssignmentSigner.getGovernmentId()`. |
 | `has_accepted_terms` | `boolean` | no | no |  |
+| `identity_verification_status` | `string`? | no | yes | Pending, InReview, Approved, Declined, Expired or Abandoned; InReview holds certification. |
 | `verification_method` | `string`? | no | yes |  |
 | `notification_methods` | array<`string`>? | no | yes |  |
 | `step` | `integer`? | no | yes | Sequential signing step (defaults to 1). |
@@ -3397,6 +3571,7 @@ A URL that receives the account's webhook events. Every active endpoint subscrib
 | `email` | `string(email)` | no | no | Contact email for delivery-failure notices. |
 | `events` | array<`string`> | no | no | Event types delivered to this endpoint (see **List webhook event types**). |
 | `is_active` | `boolean` | no | no | Whether events are delivered to this endpoint. |
+| `secret` | `string` | no | no | One-time `whsec_` secret returned only by create when signing is enabled. Store it immediately; OAuth cannot read or rotate it. |
 | `signing_enabled` | `boolean` | no | no | Whether deliveries carry a `webhook-signature` header (see **Webhook Payloads → Verifying signatures**). |
 | `created_at` | `string(date-time)` | no | no |  |
 | `updated_at` | `string(date-time)` | no | no |  |
@@ -3491,6 +3666,8 @@ A document activity/audit event.
 
 ### Schema: WhatsappNotification
 
+Sandbox button objects also expose `url` through `Button.getUrl()` for simulated signing and OTP verification. Treat these links as credentials; production omits them.
+
 A rendered WhatsApp notification sent for an assignment, split into header/body/buttons as the signer would see them.
 
 | JSON field | Type | Required | Nullable | Notes |
@@ -3498,7 +3675,7 @@ A rendered WhatsApp notification sent for an assignment, split into header/body/
 | `sent_at` | `integer` | no | no | Unix timestamp when sent. |
 | `header` | `string` | no | no |  |
 | `body` | `string` | no | no |  |
-| `buttons` | array<object{text: `string`}> | no | no |  |
+| `buttons` | array<object{text: `string`; url: `string`?}> | no | no |  |
 | `phone_number` | `string` | no | no | Recipient phone (E.164). |
 | `signer_id` | `string` | no | no |  |
 
@@ -3547,6 +3724,49 @@ Owner-facing document notifications, keyed by notification type. `true` means th
 | `DocumentProcessingFailed` | `boolean` | no | no | An uploaded document could not be processed. |
 | `TemplateProcessingFailed` | `boolean` | no | no | A template could not be processed. |
 | `SignerWhatsappFailed` | `boolean` | no | no | A WhatsApp notification to a signer could not be delivered. |
+
+
+<a id="schema-signeridentityreview"></a>
+
+### Schema: SignerIdentityReview
+
+Nullable fields may be absent or null. Nested object keys remain exactly as shown in the API.
+
+| JSON field | Type | Required | Notes |
+|---|---|---:|---|
+| `id` | string | no |  |
+| `status` | string: `Pending`, `InReview`, `Approved`, `Declined`, `Expired`, `Abandoned` | no |  |
+| `provider` | string: `AssinafyVerify` | no |  |
+| `verification_method` | string: `IdDocumentFaceMatchBasic` | no |  |
+| `reason_codes` | array of object | no | Why the provider sent it to review, in its order. Unknown codes have the code as description. |
+| `reason_codes[].code` | string | no |  |
+| `reason_codes[].description` | string | no |  |
+| `evidence_available` | boolean | no |  |
+| `expected` | object / null | no | What the signer was registered with. |
+| `expected.name` | string / null | no |  |
+| `expected.cpf` | string / null | no |  |
+| `document` | object / null | no | What was read from the document. |
+| `document.type` | string / null | no |  |
+| `document.name` | string / null | no |  |
+| `document.cpf` | string / null | no |  |
+| `matches` | object / null | no |  |
+| `matches.cpf` | boolean / null | no |  |
+| `matches.name` | number / null | no | Name similarity, 0-1. |
+| `matches.birth_date` | boolean / null | no |  |
+| `checks` | array of object | no |  |
+| `checks[].name` | string | no |  |
+| `checks[].result` | string | no | pass, review, skipped, or a failure result. |
+| `checks[].score` | number / null | no |  |
+| `checks[].reasons` | array of string | no |  |
+| `images` | array of string: `document_front`, `document_back`, `document_pdf`, `face` | no | The evidence images the reviewer can open with **Signer identity review image**, in display order: `document_front`, `document_back`, `document_pdf`, `face`. Only while `status` is `InReview`; empty once decided. |
+| `ruleset_version` | string / null | no |  |
+| `evidence_sha256` | string / null | no |  |
+| `reviewed_by` | object / null | no |  |
+| `reviewed_by.id` | string | no |  |
+| `reviewed_by.name` | string | no |  |
+| `reviewed_at` | string / null | no |  |
+| `review_note` | string / null | no |  |
+| `completed_at` | string / null | no |  |
 
 ## Deployed extensions
 
@@ -3702,9 +3922,10 @@ transport, so deserialize the raw request body into this model with your own Jac
 (configure `FAIL_ON_UNKNOWN_PROPERTIES=false`). Unknown top-level fields remain available from
 `getAdditionalProperties()`.
 
-Assinafy publishes no webhook signature header, signing scheme, or shared-secret registration, so
-there is nothing in a delivery a client library can verify. Authenticate deliveries at a trusted
-network boundary and re-read the affected entity through the API before acting on it.
+Enable `signing_enabled` on each endpoint and verify the raw body with `WebhookSignature` before
+deserializing it. Store `WebhookEndpoint.getSecret()` from creation in server-side secret storage;
+OAuth applications cannot retrieve it later. Deduplicate on the `webhook-id` header, check the
+workspace `account_id`, and process accepted events asynchronously.
 
 | JSON field | Java type | Meaning |
 |---|---|---|

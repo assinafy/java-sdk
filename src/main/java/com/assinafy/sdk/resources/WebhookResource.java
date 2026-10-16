@@ -486,7 +486,8 @@ public class WebhookResource extends BaseResource {
      * Create a webhook endpoint. {@code url} and {@code email} are required; when {@code events}
      * is null the SDK subscribes to the same default set as {@link #register}. The API defaults
      * {@code is_active} to {@code true} and {@code signing_enabled} to {@code false}. When signing is
-     * enabled, read the generated secret with {@link #getEndpointSecret(String, String)}.
+     * enabled, store {@link WebhookEndpoint#getSecret()} from this response immediately. OAuth
+     * applications cannot read or rotate it later; recreate the endpoint if it is lost.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/webhooks/endpoints</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; OAuth scope
@@ -500,7 +501,9 @@ public class WebhookResource extends BaseResource {
      *   "is_active": true,
      *   "signing_enabled": true
      * }</pre>
-     * <p>Success 200: the created endpoint, shaped as in {@link #listEndpoints(String)}.</p>
+     * <p>Success 200: the complete endpoint shape from {@link #listEndpoints(String)}, plus
+     * {@code "secret":"whsec_..."} in {@code data} when signing is enabled. List/get/update
+     * responses omit the secret.</p>
      * <p>Documented HTTP statuses: 200 The created endpoint; 400 Validation failed, including a URL
      * another endpoint of the workspace already uses; 401 Missing or invalid credentials; 403 The
      * plan's endpoint limit (1, or 3 on paid plans) is reached; 500 Unexpected server error.
@@ -704,6 +707,36 @@ public class WebhookResource extends BaseResource {
         String path = endpointPath(endpointId, accountId) + "/secret/rotate";
         logInfo("Rotating webhook endpoint secret", Map.of());
         return secret(callMap("Failed to rotate webhook endpoint secret", () -> http.post(path, null)));
+    }
+
+    /**
+     * Delete the endpoint with an exactly matching registered URL in the default account.
+     * <p>Wire contract and failures: {@link #deleteEndpointByUrl(String, String)}.</p>
+     * @param url exact registered endpoint URL
+     * @throws ValidationException if the URL or default account is missing or invalid
+     */
+    public void deleteEndpointByUrl(String url) {
+        deleteEndpointByUrl(url, null);
+    }
+
+    /**
+     * Delete a webhook endpoint by its exact registered URL and free its slot.
+     * <p><strong>HTTP:</strong> {@code DELETE /v1/accounts/{accountId}/webhooks/endpoints?url=...}.
+     * Uses the configured API key or bearer token ({@code webhooks:write} for OAuth).
+     * URL is percent-encoded as a query value; no body. Only an exact registered URL matches.</p>
+     * <pre>{"status":200,"message":"","data":[]}</pre>
+     * <p>The success payload is discarded. 400 means URL missing; 404 means no endpoint matched.
+     * HTTP/envelope errors raise {@code ApiException} (401/403: {@code AuthenticationException},
+     * 429: {@code RateLimitException}); I/O failures raise {@code NetworkException}.</p>
+     * @param url exact registered endpoint URL
+     * @param accountId explicit account ID, or null for the default
+     * @throws ValidationException if the URL or account ID is missing or invalid
+     */
+    public void deleteEndpointByUrl(String url, String accountId) {
+        requireWebhookUrl(url);
+        String id = pathSegment(accountId(accountId), "Account ID");
+        String path = endpointsPath(id) + "?url=" + encode(url);
+        callVoid("Failed to delete webhook endpoint by URL", () -> http.delete(path));
     }
 
     private static String endpointsPath(String accountSegment) {

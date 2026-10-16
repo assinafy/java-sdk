@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
 final class SigningRules {
 
     /** Documented {@code verification_method} values. */
-    static final Set<String> VERIFICATION_METHODS = Set.of("Email", "Whatsapp", "DigitalCertificate");
+    static final Set<String> VERIFICATION_METHODS = Set.of(
+            "Email", "Whatsapp", "DigitalCertificate", "IdDocumentFaceMatchBasic");
 
     /** Documented {@code notification_methods} values. */
     static final Set<String> NOTIFICATION_METHODS = Set.of("Email", "Whatsapp");
@@ -64,7 +65,8 @@ final class SigningRules {
      */
     static void validateDeliveryMethods(String verificationMethod, List<String> notificationMethods) {
         if (verificationMethod != null && !VERIFICATION_METHODS.contains(verificationMethod)) {
-            throw new ValidationException("Verification method must be Email, Whatsapp, or DigitalCertificate");
+            throw new ValidationException(
+                    "Verification method must be Email, Whatsapp, DigitalCertificate, or IdDocumentFaceMatchBasic");
         }
         if (notificationMethods != null && notificationMethods.stream().anyMatch(
                 method -> method == null || !NOTIFICATION_METHODS.contains(method))) {
@@ -73,7 +75,7 @@ final class SigningRules {
         if (notificationMethods != null && notificationMethods.size() > 1) {
             throw new ValidationException("A signer may use only one notification method");
         }
-        if (verificationMethod != null && !DIGITAL_CERTIFICATE.equals(verificationMethod)
+        if (("Email".equals(verificationMethod) || "Whatsapp".equals(verificationMethod))
                 && notificationMethods != null && !notificationMethods.isEmpty()
                 && !verificationMethod.equals(notificationMethods.getFirst())) {
             throw new ValidationException("Verification and notification methods must match");
