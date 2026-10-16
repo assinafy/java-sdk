@@ -63,14 +63,14 @@ The SDK is published to Maven Central, with no repository configuration or authe
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>1.15.0</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:1.15.0")
+implementation("com.assinafy:assinafy-sdk:2.0.0")
 ```
 
 The same versions are also published to GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
