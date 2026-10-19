@@ -63,14 +63,14 @@ The SDK is published to Maven Central, with no repository configuration or authe
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:2.0.0")
+implementation("com.assinafy:assinafy-sdk:2.1.0")
 ```
 
 The same versions are also published to GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -349,7 +349,7 @@ Per-signer delivery and ordering live on `SignerReference`. Verification methods
 `Whatsapp`. `step` controls
 signing order: signers sharing a step sign in parallel, and the next step is notified only once the
 previous one completes. If any signer supplies a step, all must, and the values must be contiguous
-from 1. A `DigitalCertificate` signer must be alone in its step.
+from 1. A `DigitalCertificate` signer requires `method: "virtual"` and must be alone in its step.
 
 ```java
 SignerReference ordered = SignerReference.builder()
@@ -478,7 +478,7 @@ one, both, or neither, and the missing side is inferred. With neither, both defa
 | --- | --- | --- | --- |
 | `Email` *(default)* | A one-time code by email, required before signing | Signer has an email address | 0 credits |
 | `Whatsapp` | A one-time code over WhatsApp | Signer has a `whatsappPhoneNumber`; paid plans only | 0.45 credits (the WhatsApp notification this method requires) |
-| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | The account has the Digital Certificate feature; the signer has a CPF/CNPJ in `governmentId`; one certificate signer per step | 0.5 credits plus its notification |
+| `DigitalCertificate` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a qualified **PAdES** signature | `method: "virtual"`; the account has the Digital Certificate feature; the signer has a CPF/CNPJ in `governmentId`; one certificate signer per step | 0.5 credits plus its notification |
 
 | Notification | Delivers | Requirements | Cost per signer |
 | --- | --- | --- | --- |
@@ -497,6 +497,14 @@ Only matching pairs are accepted; anything else returns `400`:
 One notification method per signer. No verification method carries a price of its own — you are
 billed for the notification it travels with, plus, for a digital certificate, the signature itself.
 Call `assignments().estimateCostTyped(...)` for the exact total before creating anything.
+
+`DigitalCertificate` requires `method: "virtual"`: certificate completion completes the signer's
+virtual item, while the ordinary signing endpoint refuses certificate signers and cannot submit the
+placed fields of a `collect` assignment. Both `create(...)` and `estimateCostTyped(...)` therefore
+reject that combination before sending a request that could invite or charge for an unusable flow.
+Branch on `ValidationException.getErrors().get("code")` equal to
+`AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD`, whose stable value is
+`digital_certificate_requires_virtual_method`; do not match the human-readable message.
 
 By default every signer is notified as soon as the assignment is created. With `step` set, each
 signer's notification is held until their step is activated.
@@ -821,6 +829,11 @@ Document fromTemplate = client.documents().createFromTemplate(templateId, reques
 Template signers follow the same delivery and ordering rules as assignment signers, with one extra
 rule: each signer may use zero or one notification method; a selected channel must match
 Email/WhatsApp verification. DigitalCertificate and IdDocumentFaceMatchBasic permit either channel.
+
+The API derives `virtual` versus `collect` from the template's placed fields. Until the API enforces
+the certificate rule after that derivation, the SDK rejects `DigitalCertificate` in both template
+creation and template cost estimation with the same stable code; use a direct virtual assignment
+instead.
 
 Field definitions describe the typed inputs a signer fills in during a `collect` assignment:
 

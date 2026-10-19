@@ -33,6 +33,10 @@ final class SigningRules {
 
     private static final String DIGITAL_CERTIFICATE = "DigitalCertificate";
 
+    /** Stable validation code for a certificate signer without a known virtual method. */
+    static final String DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD =
+            "digital_certificate_requires_virtual_method";
+
     private SigningRules() {}
 
     /**
@@ -117,6 +121,26 @@ final class SigningRules {
                 throw new ValidationException("A DigitalCertificate signer must be alone in its step");
             }
         }
+    }
+
+    /**
+     * Reject a certificate signer unless the assignment is known to be virtual.
+     *
+     * @param method effective assignment method, or {@code null} when the API derives it
+     * @param placements one entry per signer
+     * @throws ValidationException if a certificate signer could receive an unusable assignment
+     */
+    static void validateDigitalCertificateMethod(String method, List<Placement> placements) {
+        if (AssignmentMethod.VIRTUAL.getValue().equals(method)
+                || placements.stream().noneMatch(
+                        placement -> DIGITAL_CERTIFICATE.equals(placement.verificationMethod()))) {
+            return;
+        }
+        Map<String, Object> errors = new HashMap<>();
+        errors.put("code", DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD);
+        errors.put("method", method);
+        throw new ValidationException(
+                "DigitalCertificate signers require method: virtual", errors);
     }
 
     private static String capitalize(String value) {

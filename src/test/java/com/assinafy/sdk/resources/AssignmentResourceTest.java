@@ -494,7 +494,7 @@ class AssignmentResourceTest {
         CreateAssignmentRequest request = CreateAssignmentRequest.builder()
                 .method("collect")
                 .signers(List.of(SignerReference.builder()
-                        .verificationMethod("DigitalCertificate").build()))
+                        .verificationMethod("Email").build()))
                 .entries(List.of(Map.of("page_id", "p1")))
                 .build();
 
@@ -502,7 +502,7 @@ class AssignmentResourceTest {
 
         // collect is priced per signer too, so the channels must reach the API.
         assertThat(mock.lastCaptured().getJsonBody())
-                .contains("\"verification_method\":\"DigitalCertificate\"")
+                .contains("\"verification_method\":\"Email\"")
                 .contains("\"entries\"");
     }
 

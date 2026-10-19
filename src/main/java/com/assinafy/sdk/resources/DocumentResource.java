@@ -757,7 +757,7 @@ public class DocumentResource extends BaseResource {
      * @param request signer assignments and document settings
      * @return the created document
      * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
-     *         invalid
+     *         invalid, or any signer uses {@code DigitalCertificate}
      */
     public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return createFromTemplate(templateId, request, null);
@@ -770,8 +770,9 @@ public class DocumentResource extends BaseResource {
      * {@code IdDocumentFaceMatchBasic}; notification methods,
      * when supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}; at
      * most one method is permitted per signer. If one signer supplies a step, all must do so and the
-     * positive steps must be contiguous from 1. A digital-certificate signer must be alone in its
-     * step.
+     * positive steps must be contiguous from 1. The SDK temporarily rejects
+     * {@code DigitalCertificate}: the API derives the assignment method from template fields and
+     * could otherwise create an unusable {@code collect} assignment.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/templates/{templateId}/documents</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
@@ -858,7 +859,9 @@ public class DocumentResource extends BaseResource {
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the created document
      * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
-     *         invalid
+     *         invalid, or any signer uses {@code DigitalCertificate}; certificate errors use
+     *         {@link AssignmentResource#DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD} in
+     *         {@code getErrors().get("code")}
      */
     public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
@@ -883,8 +886,8 @@ public class DocumentResource extends BaseResource {
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @return the cost breakdown
-     * @throws ValidationException if no valid template signer roles are supplied or a delivery
-     *         method is invalid
+     * @throws ValidationException if no valid template signer roles are supplied, a delivery
+     *         method is invalid, or any signer uses {@code DigitalCertificate}
      */
     public Map<String, Object> estimateCostFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return estimateCostFromTemplate(templateId, request, null);
@@ -910,7 +913,8 @@ public class DocumentResource extends BaseResource {
      * Estimate the cost of creating a document from a template in an explicit or default account.
      *
      * <p>The estimate requires nonblank role IDs, validates delivery-method values, and omits
-     * signer IDs, signer steps, and creation-only document settings.
+     * signer IDs, signer steps, and creation-only document settings. The SDK temporarily rejects
+     * {@code DigitalCertificate} because the API-derived assignment method may be {@code collect}.
      *
      * <p><strong>HTTP:</strong> <code>POST
      * /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost</code>.
@@ -971,8 +975,10 @@ public class DocumentResource extends BaseResource {
      * @param request template signer estimate inputs
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the cost breakdown
-     * @throws ValidationException if no valid template signer roles are supplied or a delivery
-     *         method is invalid
+     * @throws ValidationException if no valid template signer roles are supplied, a delivery
+     *         method is invalid, or any signer uses {@code DigitalCertificate}; certificate errors
+     *         use {@link AssignmentResource#DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD} in
+     *         {@code getErrors().get("code")}
      */
     public Map<String, Object> estimateCostFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
@@ -1502,6 +1508,9 @@ public class DocumentResource extends BaseResource {
         List<Map<String, Object>> signers = request.getSigners().stream()
                 .map(signer -> templateSignerPayload(signer, estimate))
                 .toList();
+        SigningRules.validateDigitalCertificateMethod(null, request.getSigners().stream()
+                .map(signer -> new SigningRules.Placement(signer.getStep(), signer.getVerificationMethod()))
+                .toList());
         if (!estimate) validateTemplateSignerSteps(request.getSigners());
         Map<String, Object> body = new HashMap<>();
         body.put("signers", signers);

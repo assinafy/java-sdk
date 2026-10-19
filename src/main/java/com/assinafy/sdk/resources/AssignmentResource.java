@@ -24,6 +24,10 @@ import java.util.Map;
 /** Assignment creation, cost estimation, notification, and signer-facing operations. */
 public class AssignmentResource extends BaseResource {
 
+    /** Stable validation code returned when a certificate signer is not known to be virtual. */
+    public static final String DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD =
+            SigningRules.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD;
+
     private static final String VIRTUAL = AssignmentMethod.VIRTUAL.getValue();
     private static final String COLLECT = AssignmentMethod.COLLECT.getValue();
 
@@ -181,9 +185,9 @@ public class AssignmentResource extends BaseResource {
      * {@code IdDocumentFaceMatchBasic}; notification methods, when
      * supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}. If one
      * signer supplies a step, all must do so and the positive steps must be contiguous from 1. A
-     * digital-certificate signer must be alone in its step, and {@code collect} requires nonempty
-     * entries. Returns the created {@link Assignment} (signers, items, summary and per-signer
-     * signing URLs).
+     * digital-certificate signer must be alone in its step and requires {@code method: virtual};
+     * {@code collect} requires nonempty entries. Returns the created {@link Assignment} (signers,
+     * items, summary and per-signer signing URLs).
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/documents/{documentId}/assignments</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
@@ -300,7 +304,9 @@ public class AssignmentResource extends BaseResource {
      * @param request assignment method, signers, entries, and notification settings
      * @return the created assignment
      * @throws ValidationException if the request, method, signer references, delivery methods,
-     *         signing order, or collect entries are invalid
+     *         signing order, certificate/method combination, or collect entries are invalid;
+     *         certificate/method errors use
+     *         {@link #DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD} in {@code getErrors().get("code")}
      */
     public Assignment create(String documentId, CreateAssignmentRequest request) {
         String docId = pathSegment(documentId, "Document ID");
@@ -387,8 +393,10 @@ public class AssignmentResource extends BaseResource {
      * @param documentId document to estimate
      * @param request estimate inputs
      * @return the cost breakdown
-     * @throws ValidationException if the request, method, signer delivery methods, or required
-     *         estimate inputs are invalid
+     * @throws ValidationException if the request, method, signer delivery methods,
+     *         certificate/method combination, or required estimate inputs are invalid;
+     *         certificate/method errors use
+     *         {@link #DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD} in {@code getErrors().get("code")}
      */
     public Map<String, Object> estimateCost(String documentId, CreateAssignmentRequest request) {
         String docId = pathSegment(documentId, "Document ID");
@@ -1060,6 +1068,10 @@ public class AssignmentResource extends BaseResource {
         List<Map<String, Object>> normalisedSigners = (signers != null ? signers : List.<SignerReference>of()).stream()
                 .map(ref -> normaliseSignerRef(ref, estimate))
                 .toList();
+        SigningRules.validateDigitalCertificateMethod(method != null ? method : VIRTUAL,
+                signers.stream()
+                        .map(ref -> new SigningRules.Placement(ref.getStep(), ref.getVerificationMethod()))
+                        .toList());
         if (!estimate) validateSignerSteps(signers);
 
         Map<String, Object> body = new HashMap<>();

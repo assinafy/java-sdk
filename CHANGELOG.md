@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-19
+
+### Fixed
+
+- Reject `DigitalCertificate` signers unless a direct assignment is `virtual`, before creation or
+  cost estimation can invite or charge for an unusable `collect` assignment. Template creation and
+  estimation reject certificate signers until the API enforces its server-derived method. All paths
+  expose the stable `digital_certificate_requires_virtual_method` validation code.
+
 ## [2.0.0] - 2026-10-16
 
 ### Added

@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.Assignment;
 import com.assinafy.sdk.models.CostEstimate;
@@ -139,6 +140,28 @@ class AssignmentResourceExtraTest {
         assertThat(resendCost.getTotalCredits()).isEqualByComparingTo("1.9");
         assertThat(http.lastCaptured().getPath())
                 .isEqualTo("/documents/d1/assignments/a1/signers/s1/estimate-resend-cost");
+    }
+
+    @Test
+    void createAndEstimateRejectCertificateCollectBeforeSending() {
+        CreateAssignmentRequest request = CreateAssignmentRequest.builder()
+                .method("collect")
+                .signers(List.of(SignerReference.builder().id("s1")
+                        .verificationMethod("DigitalCertificate").build()))
+                .entries(List.of(Map.of("page_id", "p1", "fields", List.of())))
+                .build();
+
+        for (Runnable call : List.<Runnable>of(
+                () -> assignments.create("d1", request),
+                () -> assignments.estimateCost("d1", request))) {
+            assertThatExceptionOfType(ValidationException.class)
+                    .isThrownBy(call::run)
+                    .satisfies(error -> assertThat(error.getErrors())
+                            .containsEntry("code",
+                                    AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD)
+                            .containsEntry("method", "collect"));
+        }
+        assertThat(http.capturedCount()).isZero();
     }
 
     @Test

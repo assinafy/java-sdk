@@ -54,14 +54,14 @@ O SDK é publicado no Maven Central, sem configuração de repositório nem aute
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:2.0.0")
+implementation("com.assinafy:assinafy-sdk:2.1.0")
 ```
 
 As mesmas versões continuam publicadas no GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -393,7 +393,7 @@ dois ou nenhum — o lado que faltar é inferido. Sem nenhum dos dois, ambos ass
 | --- | --- | --- | --- |
 | `Email` *(padrão)* | Código de uso único (OTP) por e-mail, exigido antes de assinar | Signatário com e-mail | 0 créditos |
 | `Whatsapp` | Código de uso único (OTP) por WhatsApp | `whatsappPhoneNumber` no signatário; só em planos pagos | 0,45 crédito (a notificação WhatsApp, que este método exige) |
-| `DigitalCertificate` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | Recurso Certificado Digital na conta; CPF/CNPJ em `governmentId`; um signatário por certificado em cada passo | 0,5 crédito + o custo da notificação |
+| `DigitalCertificate` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | `method: "virtual"`; recurso Certificado Digital na conta; CPF/CNPJ em `governmentId`; um signatário por certificado em cada passo | 0,5 crédito + o custo da notificação |
 
 | Método de notificação | Entrega | Requisitos | Custo por signatário |
 | --- | --- | --- | --- |
@@ -412,6 +412,15 @@ Combinações permitidas — qualquer outra devolve `400`:
 Apenas um método de notificação por signatário. Nenhum método de verificação tem preço próprio: o que
 se cobra é a **notificação** com que ele anda junto — mais, no caso do certificado digital, a própria
 assinatura. Use `assignments().estimateCostTyped(...)` para ver o total exato antes de criar.
+
+`DigitalCertificate` exige `method: "virtual"`: o fluxo do certificado conclui o item virtual do
+signatário, enquanto o endpoint comum de assinatura recusa signatários de certificado e não consegue
+enviar campos posicionados de um assignment `collect`. Por isso, `create(...)` e
+`estimateCostTyped(...)` recusam essa combinação antes de enviar uma solicitação que poderia convidar
+ou cobrar por um fluxo impossível. Trate
+`ValidationException.getErrors().get("code")` igual a
+`AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD` — cujo valor estável é
+`digital_certificate_requires_virtual_method` — em vez de comparar a mensagem.
 
 ### Biometria e documento de identidade
 
@@ -729,6 +738,10 @@ outra causa: outro workspace, o papel do usuário, ou uma área que tokens OAuth
 `documents().createFromTemplate(templateId, request)` gera um documento a partir de um template, e
 `documents().estimateCostFromTemplateTyped(...)` prevê o custo antes. As mesmas regras de acoplamento
 verificação/notificação e de ordem de assinatura valem aqui.
+
+Como a API deduz `virtual` ou `collect` a partir dos campos posicionados do template, o SDK recusa
+temporariamente `DigitalCertificate` tanto na criação quanto na estimativa por template, usando o
+mesmo código estável. Use um assignment `virtual` direto até a API impor essa regra.
 
 **Definições de campo** (`fields()`) são tipos de campo reutilizáveis do workspace — CPF, data, texto
 livre. `fields().validateAsWorkspace(fieldId, valor)` e

@@ -388,13 +388,6 @@ class DocumentResourceExtraTest {
                 .hasMessageContaining("contiguous");
         assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
                 CreateDocumentFromTemplateRequest.builder().signers(List.of(
-                        TemplateSigner.builder().roleId("r1").id("s1").step(1)
-                                .verificationMethod("DigitalCertificate").build(),
-                        TemplateSigner.builder().roleId("r2").id("s2").step(1).build())).build()))
-                .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("alone");
-        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
-                CreateDocumentFromTemplateRequest.builder().signers(List.of(
                         TemplateSigner.builder().roleId("r1").id("s1").step(0).build())).build()))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("positive");
@@ -412,15 +405,22 @@ class DocumentResourceExtraTest {
     }
 
     @Test
-    void templateCreationAllowsDigitalCertificateInAnIsolatedStep() {
-        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc1\"}}");
+    void templateCreationAndEstimateRejectDigitalCertificateBeforeSending() {
+        CreateDocumentFromTemplateRequest request = CreateDocumentFromTemplateRequest.builder()
+                .signers(List.of(TemplateSigner.builder().roleId("r1").id("s1")
+                        .verificationMethod("DigitalCertificate").build()))
+                .build();
 
-        Document document = documents.createFromTemplate("tmpl",
-                CreateDocumentFromTemplateRequest.builder().signers(List.of(
-                        TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
-                        TemplateSigner.builder().roleId("r2").id("s2").step(2)
-                                .verificationMethod("DigitalCertificate").build())).build());
-
-        assertThat(document.getId()).isEqualTo("doc1");
+        for (Runnable call : List.<Runnable>of(
+                () -> documents.createFromTemplate("tmpl", request),
+                () -> documents.estimateCostFromTemplate("tmpl", request))) {
+            assertThatExceptionOfType(ValidationException.class)
+                    .isThrownBy(call::run)
+                    .satisfies(error -> assertThat(error.getErrors())
+                            .containsEntry("code",
+                                    AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD)
+                            .containsEntry("method", null));
+        }
+        assertThat(http.capturedCount()).isZero();
     }
 }

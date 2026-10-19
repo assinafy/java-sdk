@@ -13,7 +13,8 @@ import java.util.List;
  * {@code notification_methods} array contains one channel matching Email/WhatsApp verification;
  * DigitalCertificate and IdDocumentFaceMatchBasic permit either. Null lets the API infer delivery
  * defaults; an empty array requests no notification. Signing steps are all-or-none and
- * contiguous from 1, and a digital-certificate signer is alone in its step.
+ * contiguous from 1. A digital-certificate signer requires {@code method: virtual} and is alone
+ * in its step.
  *
  * @see com.assinafy.sdk.resources.AssignmentResource#create(String, CreateAssignmentRequest)
  * @see com.assinafy.sdk.resources.DocumentResource#createFromTemplate(String, CreateDocumentFromTemplateRequest, String)
