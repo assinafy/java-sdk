@@ -76,11 +76,13 @@ class UserResourceTest {
                         "\"is_password_set\":true},\"accounts\":[]}}")
                 .enqueue(200, "{\"status\":200,\"data\":[{" +
                         "\"period\":\"2026-08\",\"documents_uploaded\":3," +
-                        "\"signature_requests_completed\":2}]}");
+                        "\"signature_requests_completed\":2}]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
         UserResource users = new UserResource(http);
 
         AuthUser user = users.get();
         List<DocumentStatsRow> rows = users.stats("daily", "2026-08");
+        assertThat(users.stats()).isEmpty();
 
         assertThat(http.capturedAt(0).getMethod()).isEqualTo("GET");
         assertThat(http.capturedAt(0).getPath()).isEqualTo("/users/self");
@@ -95,6 +97,9 @@ class UserResourceTest {
         assertThat(http.capturedAt(1).getPath()).isEqualTo("/users/self/stats");
         assertThat(http.capturedAt(1).getQueryParams())
                 .containsEntry("granularity", "daily").containsEntry("month", "2026-08");
+        assertThat(http.capturedAt(2).getPath()).isEqualTo("/users/self/stats");
+        assertThat(http.capturedAt(2).getQueryParams())
+                .containsEntry("granularity", "monthly").doesNotContainKey("month");
     }
 
     @Test

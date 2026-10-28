@@ -139,12 +139,16 @@ class WebhookEndpointTest {
 
     @Test
     void deleteEndpointSendsDelete() {
-        mock.enqueue(200, "{\"status\":200,\"message\":\"\",\"data\":[]}");
+        mock.enqueue(200, "{\"status\":200,\"message\":\"\",\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"message\":\"\",\"data\":[]}");
 
         webhooks.deleteEndpoint("ep1", "other");
+        webhooks.deleteEndpoint("ep2");
 
-        assertThat(mock.lastCaptured().getMethod()).isEqualTo("DELETE");
-        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/other/webhooks/endpoints/ep1");
+        assertThat(mock.capturedAt(0).getMethod()).isEqualTo("DELETE");
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/other/webhooks/endpoints/ep1");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("DELETE");
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/acc/webhooks/endpoints/ep2");
     }
 
     @Test

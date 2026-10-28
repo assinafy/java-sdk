@@ -162,16 +162,21 @@ class WorkspaceResourceTest {
     @Test
     void getsAccountStatisticsWithValidatedQuery() {
         mock.enqueue(200, "{\"status\":200,\"data\":[{" +
-                "\"period\":\"2026-08\",\"documents_certified\":4}]}");
+                "\"period\":\"2026-08\",\"documents_certified\":4}]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
 
         var rows = resource.stats("acc-123", "monthly", "2026-08");
+        assertThat(resource.stats("acc-123")).isEmpty();
 
-        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(0).getMethod()).isEqualTo("GET");
         assertThat(rows).singleElement()
                 .satisfies(row -> assertThat(row.getDocumentsCertified()).isEqualTo(4));
-        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/acc-123/stats");
-        assertThat(mock.lastCaptured().getQueryParams())
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc-123/stats");
+        assertThat(mock.capturedAt(0).getQueryParams())
                 .containsEntry("granularity", "monthly").containsEntry("month", "2026-08");
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/acc-123/stats");
+        assertThat(mock.capturedAt(1).getQueryParams())
+                .containsEntry("granularity", "monthly").doesNotContainKey("month");
     }
 
     @Test

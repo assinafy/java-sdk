@@ -299,18 +299,25 @@ class DocumentResourceExtraTest {
     @Test
     void estimateCostFromTemplateTypedReturnsCostEstimate() {
         http.enqueue(200, "{\"status\":200,\"data\":{\"documents\":1," +
-                "\"total_credits\":0.45,\"has_sufficient_resources\":true}}");
+                "\"total_credits\":0.45,\"has_sufficient_resources\":true}}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"documents\":1," +
+                        "\"total_credits\":0.45,\"has_sufficient_resources\":true}}");
 
-        CostEstimate cost = documents.estimateCostFromTemplateTyped("tmpl",
-                CreateDocumentFromTemplateRequest.builder()
-                        .signers(List.of(TemplateSigner.builder().roleId("r1").build()))
-                        .build(), "other-account");
+        CreateDocumentFromTemplateRequest request = CreateDocumentFromTemplateRequest.builder()
+                .signers(List.of(TemplateSigner.builder().roleId("r1").build()))
+                .build();
+
+        CostEstimate cost = documents.estimateCostFromTemplateTyped("tmpl", request, "other-account");
+        CostEstimate defaultAccountCost = documents.estimateCostFromTemplateTyped("tmpl", request);
 
         assertThat(cost.getDocuments()).isEqualTo(1);
         assertThat(cost.getTotalCredits()).isEqualByComparingTo("0.45");
         assertThat(cost.getHasSufficientResources()).isTrue();
-        assertThat(http.lastCaptured().getPath())
+        assertThat(defaultAccountCost.getTotalCredits()).isEqualByComparingTo("0.45");
+        assertThat(http.capturedAt(0).getPath())
                 .isEqualTo("/accounts/other-account/templates/tmpl/documents/estimate-cost");
+        assertThat(http.capturedAt(1).getPath())
+                .isEqualTo("/accounts/acc/templates/tmpl/documents/estimate-cost");
     }
 
     @Test

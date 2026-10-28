@@ -108,11 +108,17 @@ class SignerResourceExtraTest {
 
     @Test
     void downloadDocumentDefaultsToCertificatedAndAppendsAccessCode() {
-        http.enqueue(200, "PDF");
+        http.enqueue(200, "PDF")
+                .enqueue(200, "ORIGINAL");
         signers.downloadDocument("s1", "d1", null, "code1");
-        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET_BINARY");
-        assertThat(http.lastCaptured().getPath())
+        byte[] original = signers.downloadDocument("s1", "d1", "original");
+        assertThat(http.capturedAt(0).getMethod()).isEqualTo("GET_BINARY");
+        assertThat(http.capturedAt(0).getPath())
                 .isEqualTo("/signers/s1/documents/d1/download/certificated?signer-access-code=code1");
+        assertThat(http.capturedAt(1).getMethod()).isEqualTo("GET_BINARY");
+        assertThat(http.capturedAt(1).getPath())
+                .isEqualTo("/signers/s1/documents/d1/download/original");
+        assertThat(new String(original)).isEqualTo("ORIGINAL");
     }
 
     @Test

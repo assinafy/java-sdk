@@ -103,6 +103,21 @@ class DocumentResourceTest {
     }
 
     @Test
+    void parameterizedListAndGetAliasUseDocumentedWires() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"doc-1\"}}");
+
+        resource.list(ListParams.builder().page(2).perPage(5).build());
+        assertThat(resource.get("doc-1").getId()).isEqualTo("doc-1");
+
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc/documents");
+        assertThat(mock.capturedAt(0).getQueryParams())
+                .containsEntry("page", 2).containsEntry("per-page", 5);
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/documents/doc-1");
+    }
+
+    @Test
     void downloadDefaultsToCertificatedArtifact() {
         mock.enqueue(200, "PDFBYTES");
         resource.download("doc-1");
@@ -217,6 +232,24 @@ class DocumentResourceTest {
 
         assertThat(mock.capturedCount()).isOne();
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+    }
+
+    @Test
+    void replaceTagIdsResolvesIdsAndUsesTheDefaultAccount() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"tag-1\"," +
+                        "\"name\":\"Contracts\"}]}")
+                .enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"tag-1\"," +
+                        "\"name\":\"Contracts\"}]}");
+
+        assertThat(resource.replaceTagIds("doc-1", List.of("tag-1")))
+                .extracting(Tag::getName).containsExactly("Contracts");
+
+        assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc/tags");
+        assertThat(mock.capturedAt(1).getMethod()).isEqualTo("PUT");
+        assertThat(mock.capturedAt(1).getPath())
+                .isEqualTo("/accounts/acc/documents/doc-1/tags");
+        assertThat(mock.capturedAt(1).getJsonBody())
+                .contains("Contracts").doesNotContain("tag-1");
     }
 
     @Test

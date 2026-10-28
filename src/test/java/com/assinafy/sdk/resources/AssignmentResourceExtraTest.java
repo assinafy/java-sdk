@@ -180,11 +180,14 @@ class AssignmentResourceExtraTest {
                 "\"buttons\":[{\"text\":\"Open\"}],\"phone_number\":\"+15555550123\"," +
                 "\"signer_id\":\"s1\"}]}");
         http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"," +
-                "\"status\":\"pending_signature\",\"assignment\":{\"id\":\"a1\"}}}");
+                "\"status\":\"pending_signature\",\"assignment\":{\"id\":\"a1\"}}}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d2\"," +
+                        "\"status\":\"pending_signature\"}}");
 
         List<WhatsappNotification> notifications =
                 assignments.getWhatsappNotificationsTyped("d1", "a1");
         Document document = assignments.getForSignerTyped("code 1", true);
+        Document documentWithoutTermsFlag = assignments.getForSignerTyped("code 2");
 
         assertThat(notifications).singleElement().satisfies(notification -> {
             assertThat(notification.getSentAt()).isEqualTo("2026-10-28T12:00:00Z");
@@ -197,8 +200,11 @@ class AssignmentResourceExtraTest {
         });
         assertThat(document.getId()).isEqualTo("d1");
         assertThat(document.getAssignment().getId()).isEqualTo("a1");
-        assertThat(http.lastCaptured().getPath())
+        assertThat(http.capturedAt(1).getPath())
                 .isEqualTo("/sign?signer-access-code=code+1&has_accepted_terms=true");
+        assertThat(documentWithoutTermsFlag.getId()).isEqualTo("d2");
+        assertThat(http.capturedAt(2).getPath())
+                .isEqualTo("/sign?signer-access-code=code+2");
     }
 
     @Test
@@ -214,13 +220,17 @@ class AssignmentResourceExtraTest {
 
     @Test
     void listHitsAssignmentsPathWithPaging() {
-        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"a1\",\"method\":\"virtual\"}]}");
+        http.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"a1\",\"method\":\"virtual\"}]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
         var result = assignments.list(com.assinafy.sdk.request.ListParams.builder().page(2).perPage(10).build());
+        assertThat(assignments.list().getData()).isEmpty();
         assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
-        assertThat(http.lastCaptured().getPath()).isEqualTo("/assignments");
-        assertThat(http.lastCaptured().getQueryParams()).containsEntry("page", 2).containsEntry("per-page", 10);
+        assertThat(http.capturedAt(0).getPath()).isEqualTo("/assignments");
+        assertThat(http.capturedAt(0).getQueryParams()).containsEntry("page", 2).containsEntry("per-page", 10);
         assertThat(result.getData()).hasSize(1);
         assertThat(result.getData().get(0).getId()).isEqualTo("a1");
+        assertThat(http.capturedAt(1).getPath()).isEqualTo("/assignments");
+        assertThat(http.capturedAt(1).getQueryParams()).isEmpty();
     }
 
     @Test

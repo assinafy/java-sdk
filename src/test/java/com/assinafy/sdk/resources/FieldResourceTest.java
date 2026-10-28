@@ -45,15 +45,20 @@ class FieldResourceTest {
     @Test
     void listAndGetUseAccountFieldPaths() {
         mock.enqueue(200, "{\"status\":200,\"data\":[{\"id\":\"f1\"}]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
                 .enqueue(200, FIELD_RESPONSE);
 
         resource.list();
+        resource.list(com.assinafy.sdk.request.ListParams.builder().page(2).build());
         resource.get("f1");
 
         assertThat(mock.capturedAt(0).getMethod()).isEqualTo("GET");
         assertThat(mock.capturedAt(0).getPath()).isEqualTo("/accounts/acc/fields");
         assertThat(mock.capturedAt(1).getMethod()).isEqualTo("GET");
-        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/acc/fields/f1");
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/accounts/acc/fields");
+        assertThat(mock.capturedAt(1).getQueryParams()).containsEntry("page", 2);
+        assertThat(mock.capturedAt(2).getMethod()).isEqualTo("GET");
+        assertThat(mock.capturedAt(2).getPath()).isEqualTo("/accounts/acc/fields/f1");
     }
 
     @Test

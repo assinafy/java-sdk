@@ -107,6 +107,17 @@ class SignerResourceTest {
     }
 
     @Test
+    void defaultListOverloadUsesTheConfiguredAccountWithoutQueryParameters() {
+        mock.enqueue(200, EMPTY_LIST);
+
+        assertThat(resource.list().getData()).isEmpty();
+
+        assertThat(mock.lastCaptured().getPath())
+                .isEqualTo("/accounts/test-account/signers");
+        assertThat(mock.lastCaptured().getQueryParams()).isEmpty();
+    }
+
+    @Test
     void getAndDeleteUseAccountSignerPath() {
         mock.enqueue(200, SIGNER_123)
                 .enqueue(200, "{\"status\":200,\"data\":[]}");
@@ -293,15 +304,20 @@ class SignerResourceTest {
 
     @Test
     void workspaceDocumentListingSendsNoAccessCode() {
-        mock.enqueue(200, "{\"status\":200,\"data\":[]}").enqueue(200, "{\"status\":200,\"data\":[]}");
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}")
+                .enqueue(200, "{\"status\":200,\"data\":[]}");
 
         resource.listDocumentsAsWorkspace("s1", ListParams.builder().page(2).build());
+        resource.listDocumentsAsWorkspace("s1");
         resource.searchDocumentsAsWorkspace("s1", "contract");
 
         assertThat(mock.capturedAt(0).getPath()).isEqualTo("/signers/s1/documents");
         assertThat(mock.capturedAt(0).getQueryParams()).containsExactly(Map.entry("page", 2));
-        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/signers/s1/documents/search");
-        assertThat(mock.capturedAt(1).getQueryParams()).containsExactly(Map.entry("search", "contract"));
+        assertThat(mock.capturedAt(1).getPath()).isEqualTo("/signers/s1/documents");
+        assertThat(mock.capturedAt(1).getQueryParams()).isEmpty();
+        assertThat(mock.capturedAt(2).getPath()).isEqualTo("/signers/s1/documents/search");
+        assertThat(mock.capturedAt(2).getQueryParams()).containsExactly(Map.entry("search", "contract"));
     }
 
     @Test

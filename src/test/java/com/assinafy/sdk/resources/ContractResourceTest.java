@@ -67,6 +67,25 @@ class ContractResourceTest {
     }
 
     @Test
+    void defaultListOverloadUsesConfiguredAccountWithoutQueryParameters() {
+        http.enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        assertThat(contracts.list().getData()).isEmpty();
+
+        assertThat(http.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(http.lastCaptured().getPath()).isEqualTo("/accounts/account/contracts");
+        assertThat(http.lastCaptured().getQueryParams()).isEmpty();
+    }
+
+    @Test
+    void constructorWithoutAccountRejectsScopedCallsBeforeSending() {
+        ContractResource unscoped = new ContractResource(http);
+
+        assertThatThrownBy(unscoped::list).isInstanceOf(ValidationException.class);
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
     void listRejectsMalformedFiltersBeforeSending() {
         for (ListParams params : List.of(
                 ListParams.builder().status("active,other").build(),
