@@ -146,7 +146,7 @@ public class PublicDocumentResource extends BaseResource {
      * <p>Request body: <code>application/json</code>; both fields are required.</p>
      * <pre>{
      *   "channel": "email",
-     *   "recipient": "signer@example.com"
+     *   "recipient": "signer@example.invalid"
      * }</pre>
      * <p>Success 200: <code>application/json</code>.</p>
      * <pre>{
@@ -161,7 +161,7 @@ public class PublicDocumentResource extends BaseResource {
      *       "created_by": "Workspace owner"
      *     },
      *     "channel": "email",
-     *     "recipient": "signer@example.com"
+     *     "recipient": "signer@example.invalid"
      *   }
      * }</pre>
      * <p>The SDK returns the <code>data</code> object as a map.</p>

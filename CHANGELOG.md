@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-28
+
+### Added
+
+- `ContractResource` exposes list, get, partial set, related-family, renewal and termination for
+  document contracts, with typed `DocumentContract`, `DocumentContractAmendment`, request and
+  external-reference models, local validation, and optimistic-concurrency timestamps.
+- Template-document creation can select an existing signer by ID or reuse/create one from inline
+  name, email and optional WhatsApp number.
+- `DocumentResource.activities(documentId, params)` returns paginated activity results with `id`
+  sorting.
+- Contract lifecycle email switches, webhook hold/retry metadata, workspace webhook-endpoint
+  limits, document contract/verification fields, and assignment document/timestamp fields.
+
+### Changed
+
+- Template `DigitalCertificate` signers are accepted for virtual templates; the API rejects
+  templates with placed signer fields because they produce collect assignments.
+- `AssignmentResource.estimateResendCostTyped(...)` returns `ResendCostEstimate`, matching the
+  resend response's credit-only payload. Migration: replace `CostEstimate` with
+  `ResendCostEstimate` and use `getTotal()`, `getCreditBalance()` and
+  `getHasSufficientCredits()`.
+- `WhatsappNotification.getSentAt()` and `setSentAt(...)` use the API's ISO 8601 `String` value
+  instead of `Long`. Migration: parse the returned string with `OffsetDateTime` or `Instant` when
+  date arithmetic is needed.
+- Jackson BOM is 2.22.4 and the CI Java setup action is 6.1.0.
+
 ## [2.1.0] - 2026-10-19
 
 ### Fixed

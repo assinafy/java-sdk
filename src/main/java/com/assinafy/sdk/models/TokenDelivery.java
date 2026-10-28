@@ -16,7 +16,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *     "created_by": "Workspace owner"
  *   },
  *   "channel": "email",
- *   "recipient": "signer@example.com"
+ *   "recipient": "signer@example.invalid"
  * }</pre>
  *
  * @param document  summary of the document the token opens

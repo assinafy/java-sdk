@@ -1,6 +1,6 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **112** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **118** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
 
 ## Conventions
 
@@ -13,7 +13,7 @@ This is the Java mapping of the official production OpenAPI document published a
 - Raw `Map<String,Object>` methods expose object-valued `data` fields directly. A scalar or array `data` value is returned as `{ "data": value }`; missing data or an empty success body becomes an empty map. Typed alternatives are listed beside their map-returning methods.
 - Operation request tables describe the production OpenAPI wire contract. Additional Java helpers are identified at the end of this reference.
 - Non-2xx responses and non-2xx numeric envelope statuses throw `ApiException`; 401/403 use `AuthenticationException`, 429 uses `RateLimitException`, I/O failures use `NetworkException`, and local argument failures use `ValidationException`. An RFC 6749 `{error, error_description}` body from an OAuth endpoint throws `OAuthException`, a subtype of `ApiException`.
-- A `DigitalCertificate` signer requires a provably `virtual` assignment. Direct `collect` creation and estimation, plus template creation and estimation whose method only the server can derive, fail locally with `ValidationException.getErrors().get("code") == AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD` (`digital_certificate_requires_virtual_method`).
+- A `DigitalCertificate` signer requires a `virtual` assignment. Direct `collect` creation and estimation fail locally with `ValidationException.getErrors().get("code") == AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD` (`digital_certificate_requires_virtual_method`). For templates, the API derives the method from placed fields and rejects certificate signers when the result is `collect`.
 - Every rate-limited response carries `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining` and `X-Rate-Limit-Reset`, and a `429` adds `Retry-After` (seconds). `ApiException` (and so `RateLimitException`) returns them from `getRateLimitLimit()`, `getRateLimitRemaining()`, `getRateLimitReset()` and `getRetryAfter()`, each an `OptionalInt`.
 - Every method that takes a signer access code rejects a null or blank code with `ValidationException` and sends only that code — never the workspace API key or bearer token. Routes that also accept workspace credentials have separate `...AsWorkspace` methods.
 - The OAuth endpoints are the deliberate exception to the envelope rule. RFC 6749 §5.1/§5.2, OIDC Core §5.3.2 and RFC 8615 all require flat JSON, so `/oauth/token`, `/oauth/revoke`, `/oauth/userinfo` and the `.well-known` documents are neither wrapped nor unwrapped — the SDK decodes them as-is.
@@ -909,7 +909,7 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create document from template.
-- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one signer entry per template role; the signers must already exist in the account. The Java SDK requires nonblank role and signer IDs, accepts only the documented verification and notification methods, permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to match verification, and validates signing steps as an all-or-none contiguous sequence starting at 1. The API derives `virtual` versus `collect` from placed template fields but does not yet reject an unusable certificate/`collect` result, so the SDK temporarily rejects every `DigitalCertificate` template signer with the stable code documented under [Conventions](#conventions); use a direct virtual assignment instead. `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in `government_id`; it accepts either notification channel and uses explicit biometric consent.
+- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one entry per template role. Select an existing account signer with `id`, or omit it and send `email` plus `name`; the API reuses the matching account contact or creates it, applying `whatsapp_phone_number` only to a new contact. The Java SDK requires a nonblank role and one of those signer selections, accepts only the documented verification and notification methods, permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to match verification, and validates signing steps as an all-or-none contiguous sequence starting at 1. The API derives `virtual` versus `collect` from placed fields: `DigitalCertificate` is accepted for virtual templates and returns `400` when signer fields make the template collect. `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in `government_id`; it accepts either notification channel and uses explicit biometric consent.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -918,11 +918,11 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 
 Request body: **required**.
 
-`application/json`: object{signers!: array<object{role_id!: `string`; id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}>; editor_fields: array<object{field_id!: `string`; value!: `string`}>; name: `string`; message: `string`; expires_at: `string(date-time)`; tags: array<`string`>}.
+`application/json`: object{signers!: array<object{role_id!: `string`; id: `string`; email: `string(email)`; name: `string`; whatsapp_phone_number: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}>; editor_fields: array<object{field_id!: `string`; value!: `string`}>; name: `string`; message: `string`; expires_at: `string(date-time)`; tags: array<`string`>}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `signers` | array<object{role_id!: `string`; id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}> | yes | no | One entry per template role. |
+| `signers` | array<object{role_id!: `string`; id: `string`; email: `string(email)`; name: `string`; whatsapp_phone_number: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}> | yes | no | One entry per template role. Send `id`, or `email` plus `name`; `id` wins when both are sent. |
 | `editor_fields` | array<object{field_id!: `string`; value!: `string`}> | no | no | Editor field values to bake into the generated document. |
 | `name` | `string` | no | no | Title for the document. Defaults to the template name. |
 | `message` | `string` | no | no | Optional message sent to signers. |
@@ -945,7 +945,7 @@ Documented statuses: `200` The created document; `400` One or more fields failed
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None persisted; calculates cost only.
-- **Contract notes:** Estimate the cost of creating a document from a template without creating it. Contact information is not required — only the `role_id` and optionally a verification or notification method are needed. The Java SDK requires a nonblank role ID, validates the documented delivery-method values, and omits signer IDs, signing steps, and creation-only document settings. Because only the server derives the assignment method from placed template fields, the SDK temporarily rejects every `DigitalCertificate` signer with the stable code documented under [Conventions](#conventions). Each document always consumes 1 document from the plan's monthly allowance; if exhausted, the `ExtraDocument` cost is charged from credits (`needs_extra_document = true`). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments`, or `InsufficientCredits`.
+- **Contract notes:** Estimate the cost of creating a document from a template without creating it. Contact information is not required — only the `role_id` and optionally a verification or notification method are needed. The Java SDK requires a nonblank role ID, validates the documented delivery-method values, and omits signer contact data, IDs, signing steps, and creation-only document settings. `DigitalCertificate` cost can be estimated; the API returns `400` when placed signer fields make the template collect. Each document always consumes 1 document from the plan's monthly allowance; if exhausted, the `ExtraDocument` cost is charged from credits (`needs_extra_document = true`). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments`, or `InsufficientCredits`.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1050,7 +1050,7 @@ Documented statuses: `200` The updated document; `400` One or more fields failed
 
 ### 37. List document activities
 
-- **Java:** `client.documents()` — `DocumentResource: public List<DocumentActivity> activities(String documentId)`
+- **Java:** `client.documents()` — `DocumentResource: public List<DocumentActivity> activities(String documentId)`; `client.documents()` — `DocumentResource: public PaginatedResult<DocumentActivity> activities(String documentId, ListParams params)`
 - **HTTP:** `GET /v1/documents/{documentId}/activities`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
@@ -1059,6 +1059,9 @@ Documented statuses: `200` The updated document; `400` One or more fields failed
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
 | `documentId` | path | `string` | yes | no | Document ID. |
+| `sort` | query | `string enum[id, -id]` | no | no | `-id` (default) lists newest first; `id` lists oldest first. |
+| `page` | query | `integer` | no | no | Page number, at least 1. |
+| `per-page` | query | `integer` | no | no | Items per page, from 1 to 100. |
 
 Request body: none.
 
@@ -1188,6 +1191,164 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: ar
 
 Documented statuses: `200` Supported statuses; `401` Missing or invalid credentials; `500` Unexpected server error.
 
+## Contracts
+
+### 113. List contracts
+
+- **Java:** `client.contracts()` — `ContractResource: public PaginatedResult<DocumentContract> list()`; `public PaginatedResult<DocumentContract> list(ListParams params)`; `public PaginatedResult<DocumentContract> list(ListParams params, String accountId)`
+- **HTTP:** `GET /v1/accounts/{accountId}/contracts`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** Lists tracked document contracts, newest `updated_at` first by default. Every filter is optional. Pagination comes from the standard `X-Pagination-*` headers. Use the `search`, `sort`, `status`, `page`, and `perPage` `ListParams` properties; pass the other filters through `ListParams.Builder.extra(...)`.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `status` | query | comma-separated `draft, active, expired, terminated` | no | no | Matches any selected status. |
+| `counterparty` | query | `string` | no | no | Part of the name, or exact CPF/CNPJ. |
+| `search` | query | `string` | no | no | Part of the document name. |
+| `end_date_from` | query | `string(date)` | no | no | Ending on or after this date. |
+| `end_date_to` | query | `string(date)` | no | no | Ending on or before this date. |
+| `ending_within_days` | query | `integer 0..3650` | no | no | From today through the given number of days. |
+| `external_system` | query | `string` | no | no | External-reference system. |
+| `external_id` | query | `string` | no | no | External-reference ID. |
+| `sort` | query | `string enum[end_date, -end_date, updated_at, -updated_at]` | no | no | Prefix `-` for descending. |
+| `expand` | query | `string enum[document]` | no | no | Embeds each contract's document. |
+| `page` | query | `integer` | no | no | Page number, at least 1. |
+| `per-page` | query | `integer` | no | no | Items per page, from 1 to 100. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: array<[DocumentContract](#schema-documentcontract)>}.
+
+Documented statuses: `200` Contract page; `400` Invalid filter; `401` Missing or invalid credentials; `500` Unexpected server error.
+
+### 114. Get contract terms
+
+- **Java:** `client.contracts()` — `ContractResource: public ContractRecord get(String documentId)`; `public ContractRecord get(String documentId, String accountId)`
+- **HTTP:** `GET /v1/accounts/{accountId}/documents/{documentId}/contract`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** Returns root terms as [DocumentContract](#schema-documentcontract), or the link and delta as [DocumentContractAmendment](#schema-documentcontractamendment) when the document is an amendment. Reads remain available after the workspace plan stops including contract tracking.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `documentId` | path | `string` | yes | no | Contract or amendment document ID. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: oneOf([DocumentContract](#schema-documentcontract), [DocumentContractAmendment](#schema-documentcontractamendment))}.
+
+Documented statuses: `200` Contract or amendment; `401` Missing or invalid credentials; `404` No contract terms for this document; `500` Unexpected server error.
+
+### 115. Set contract terms
+
+- **Java:** `client.contracts()` — `ContractResource: public ContractRecord set(String documentId, SetContractRequest request)`; `public ContractRecord set(String documentId, SetContractRequest request, String accountId)`
+- **HTTP:** `PUT /v1/accounts/{accountId}/documents/{documentId}/contract`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Creates or partially updates contract terms, or links/updates an amendment.
+- **Contract notes:** Only supplied attributes change. Explicit `null` clears a nullable attribute, except `auto_renew` resets to false and `currency` resets to BRL while a value is set. `external_references` replaces the list. With `parent_document_id`, this document becomes an amendment, renewal, or termination instrument; its delta applies to the root after the document is certificated. Send the previously read `updated_at` to reject concurrent changes with `409`. The request must contain at least one attribute.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `documentId` | path | `string` | yes | no | Document whose terms or link change. |
+
+Request body: **required**.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | `string enum[draft, active, expired, terminated]` | no | no | Creation accepts all values; later transitions remain subject to lifecycle rules. |
+| `counterparty_name` | `string` | no | yes | At most 255 Unicode characters. |
+| `counterparty_taxpayer_id` | `string` | no | yes | Valid CPF or CNPJ; normalized by the API. |
+| `value` | `number` | no | yes | 0 through 9,999,999,999,999.99; at most two decimals. |
+| `currency` | `string` | no | yes | Three-letter code, stored uppercase. |
+| `start_date` | `string(date)` | no | yes | `YYYY-MM-DD`, year 1000 or later. |
+| `end_date` | `string(date)` | no | yes | On or after `start_date`. |
+| `auto_renew` | `boolean` | no | yes | Hourly lifecycle starts the next term after the end date; null resets to false. |
+| `renewal_term_months` | `integer` | no | yes | 1 through 600; defaults to 12 when unset. |
+| `notice_period_days` | `integer` | no | yes | 0 through 3650. |
+| `owner_id` | `string` | no | yes | Active workspace-member ID. |
+| `metadata` | object of string values | no | yes | Up to 50 keys matching letters, digits, `_`, `-`, or `.`, each value at most 500 characters. |
+| `external_references` | array<object{system!: `string`; id!: `string`}> | no | yes | Replaces the list; at most 20. System uses up to 64 letters, digits, `_`, `-`, or `.`; ID is at most 255 characters without 4-byte characters. |
+| `parent_document_id` | `string` | no | yes | Links to the root family; null unlinks a pending amendment. |
+| `relation_type` | `string enum[amendment, renewal, termination]` | no | no | Required by the API on the first link. |
+| `updated_at` | `string(date-time)` | no | yes | Optimistic-concurrency precondition. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: oneOf([DocumentContract](#schema-documentcontract), [DocumentContractAmendment](#schema-documentcontractamendment))}.
+
+Documented statuses: `200` Saved contract or amendment; `400` Invalid terms; `401` Missing or invalid credentials; `403` Plan does not include contract tracking; `404` Document or parent not found; `409` Contract changed since `updated_at`; `500` Unexpected server error.
+
+### 116. List related contracts
+
+- **Java:** `client.contracts()` — `ContractResource: public DocumentContract listRelated(String documentId)`; `public DocumentContract listRelated(String documentId, String accountId)`
+- **HTTP:** `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** None; read-only.
+- **Contract notes:** Accepts the root or any linked instrument and returns the root contract with all amendments, renewals, and terminations in `amendments`.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `documentId` | path | `string` | yes | no | Any document in the contract family. |
+
+Request body: none.
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [DocumentContract](#schema-documentcontract)}.
+
+Documented statuses: `200` Root contract family; `401` Missing or invalid credentials; `404` No contract terms; `500` Unexpected server error.
+
+### 117. Renew contract
+
+- **Java:** `client.contracts()` — `ContractResource: public DocumentContract renew(String documentId, RenewContractRequest request)`; `public DocumentContract renew(String documentId, RenewContractRequest request, String accountId)`
+- **HTTP:** `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Starts the next contract term and records `document_contract_renewed`.
+- **Contract notes:** Supply the current positive `term` to advance by `renewal_term_months`, or a new `end_date` after the current one. The date, term, and optional `updated_at` make a retry unable to renew twice. Renewal reopens an expired contract; terminated contracts cannot renew.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `documentId` | path | `string` | yes | no | Root contract document ID. |
+
+Request body: **required**.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `end_date` | `string(date)` | no | yes | New end date; absent, empty, or null advances by the configured term and requires `term`. |
+| `value` | `number` | no | yes | Replaces the amount; null clears it; omitted leaves it unchanged. |
+| `term` | `integer` | conditionally | no | Current term; required unless a nonempty end date is sent. |
+| `updated_at` | `string(date-time)` | no | no | Optimistic-concurrency precondition. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [DocumentContract](#schema-documentcontract)}.
+
+Documented statuses: `200` Renewed contract; `400` Invalid renewal or already renewed; `401` Missing or invalid credentials; `403` Plan does not include contract tracking; `404` Contract not found; `409` Contract changed since `updated_at`; `500` Unexpected server error.
+
+### 118. Terminate contract
+
+- **Java:** `client.contracts()` — `ContractResource: public DocumentContract terminate(String documentId)`; `public DocumentContract terminate(String documentId, TerminateContractRequest request)`; `public DocumentContract terminate(String documentId, TerminateContractRequest request, String accountId)`
+- **HTTP:** `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate`
+- **Auth:** Bearer JWT or `X-Api-Key`
+- **Side effects:** Sets status to `terminated`, stops lifecycle alerts, and records `document_contract_terminated`.
+- **Contract notes:** The body is optional at the API level; the SDK sends `{}` when no request is provided. HTML is stripped from the optional reason.
+
+| Parameter | Location | Type | Required | Nullable | Notes |
+|---|---|---|---:|---:|---|
+| `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `documentId` | path | `string` | yes | no | Root contract document ID. |
+
+Request body: optional object.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `reason` | `string` | no | yes | Event reason, at most 500 Unicode characters. |
+| `updated_at` | `string(date-time)` | no | no | Optimistic-concurrency precondition. |
+
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [DocumentContract](#schema-documentcontract)}.
+
+Documented statuses: `200` Terminated contract; `400` Invalid or already terminated; `401` Missing or invalid credentials; `403` Plan does not include contract tracking; `404` Contract not found; `409` Contract changed since `updated_at`; `500` Unexpected server error.
+
 ## Assignments
 
 ### 43. List assignments
@@ -1283,7 +1444,7 @@ Documented statuses: `200` The updated assignment; `400` One or more fields fail
 
 ### 46. Estimate resend cost
 
-- **Java:** `client.assignments()` — `AssignmentResource: public Map<String, Object> estimateResendCost(String documentId, String assignmentId, String signerId)`; `client.assignments()` — `AssignmentResource: public CostEstimate estimateResendCostTyped(String documentId, String assignmentId, String signerId)`
+- **Java:** `client.assignments()` — `AssignmentResource: public Map<String, Object> estimateResendCost(String documentId, String assignmentId, String signerId)`; `client.assignments()` — `AssignmentResource: public ResendCostEstimate estimateResendCostTyped(String documentId, String assignmentId, String signerId)`
 - **HTTP:** `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None persisted; calculates cost only.
@@ -1297,13 +1458,13 @@ Documented statuses: `200` The updated assignment; `400` One or more fields fail
 
 Request body: none.
 
-Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [CostEstimate](#schema-costestimate)}.
+Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [ResendCostEstimate](#schema-resendcostestimate)}.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
 | `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
 | `message` | `string` | no | no | Human-readable message; empty on success. |
-| `data` | [CostEstimate](#schema-costestimate) | no | no |  |
+| `data` | [ResendCostEstimate](#schema-resendcostestimate) | no | no |  |
 
 Documented statuses: `200` Cost estimate; `401` Missing or invalid credentials; `500` Unexpected server error.
 
@@ -2766,7 +2927,7 @@ Documented statuses: `200` The current user; `401` Missing or invalid credential
 - **HTTP:** `GET /v1/users/self/notification-preferences`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** Which owner-facing document notifications the authenticated user receives by e-mail. All nine keys are always returned; everything defaults to `true`. Account and security e-mail (welcome, password reset, invitations, account deletion) is not configurable and never appears here.
+- **Contract notes:** Which owner-facing document and contract notifications the authenticated user receives by e-mail. All keys are always returned; everything defaults to `true`. Account and security e-mail (welcome, password reset, invitations, account deletion) is not configurable and never appears here.
 
 Parameters: none.
 
@@ -2807,6 +2968,10 @@ Request body: **required**.
 | `DocumentProcessingFailed` | `boolean` | no | no | An uploaded document could not be processed. |
 | `TemplateProcessingFailed` | `boolean` | no | no | A template could not be processed. |
 | `SignerWhatsappFailed` | `boolean` | no | no | A WhatsApp notification to a signer could not be delivered. |
+| `ContractRenewalNotice` | `boolean` | no | no | A tracked contract entered its notice period. |
+| `ContractExpiring` | `boolean` | no | no | A tracked contract ends in 45 or 30 days. |
+| `ContractExpired` | `boolean` | no | no | A tracked contract ended without renewal. |
+| `ContractRenewed` | `boolean` | no | no | A tracked contract was auto-renewed. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [NotificationPreferences](#schema-notificationpreferences)}.
 
@@ -3319,8 +3484,68 @@ A document and its current lifecycle state.
 | `tags` | array<object{id: `string`; name: `string`}> | no | no |  |
 | `assignment` | [Assignment](#schema-assignment)? | no | yes | Expanded assignment data when included via ?expand=assignment; null otherwise. |
 | `pages` | array<[DocumentPage](#schema-documentpage)> | no | no |  |
+| `has_contract` | `boolean` | no | no | Present only on a workspace detail read while contract tracking is available; a missing key means unknown. |
+| `verification_code` | `string`? | no | yes | Public verification code printed on the certificate page; null until certificated. |
+| `verification_url` | `string(uri)`? | no | yes | Public verification page; null until certificated. |
 | `created_at` | `string(date-time)` | no | no |  |
 | `updated_at` | `string(date-time)` | no | no |  |
+
+### Schema: DocumentContract
+
+Contract terms tracked on a document.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `resource` | `string` | no | no | `document_contract`. |
+| `document_id` | `string` | no | no | Root contract document ID. |
+| `status` | `string enum[draft, active, expired, terminated]` | no | no | Current lifecycle state. |
+| `counterparty_name` | `string`? | no | yes |  |
+| `counterparty_taxpayer_id` | `string`? | no | yes | Normalized CPF/CNPJ. |
+| `value` | `number`? | no | yes | At most two decimal places. |
+| `currency` | `string`? | no | yes | ISO 4217 code. |
+| `start_date` | `string(date)`? | no | yes |  |
+| `end_date` | `string(date)`? | no | yes |  |
+| `auto_renew` | `boolean` | no | no |  |
+| `renewal_term_months` | `integer`? | no | yes |  |
+| `notice_period_days` | `integer`? | no | yes |  |
+| `term` | `integer` | no | no | Starts at 1 and advances on renewal. |
+| `owner_id` | `string`? | no | yes | Workspace member responsible for lifecycle email. |
+| `metadata` | object of string values? | no | yes | Integration-defined fields. |
+| `external_references` | array<[ContractExternalReference](#schema-contractexternalreference)> | no | no | Ordered by system and ID. |
+| `document` | [Document](#schema-document) | no | no | Present only when `expand=document` is requested. |
+| `amendments` | array<[DocumentContractAmendment](#schema-documentcontractamendment)> | no | no | Present on single and related-family reads. |
+| `created_at` | `string(date-time)` | no | no |  |
+| `updated_at` | `string(date-time)` | no | no | Optimistic-concurrency value. |
+
+### Schema: ContractExternalReference
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `system` | `string` | no | no | External-system code, stored lowercase. |
+| `id` | `string` | no | no | Identifier retained as sent. |
+
+### Schema: DocumentContractAmendment
+
+A document linked to amend, renew, or terminate a root contract. Its delta applies only after the
+instrument document is certificated.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `resource` | `string` | no | no | `document_contract_amendment`. |
+| `document_id` | `string` | no | no | Instrument document ID. |
+| `document_name` | `string` | no | no |  |
+| `parent_document_id` | `string` | no | no | Root contract document ID. |
+| `relation_type` | `string enum[amendment, renewal, termination]` | no | no |  |
+| `number` | `integer`? | no | yes | Applied ordering; null while pending. |
+| `status` | `string enum[pending, applied]` | no | no |  |
+| `document_status` | `string` | no | no | Lifecycle state of the instrument document. |
+| `apply_error` | `string`? | no | yes | Why a signed instrument has not applied. |
+| `currency` | `string`? | no | yes | Currency used by monetary terms and changes. |
+| `terms` | `object`? | no | yes | Only terms changed by this instrument. |
+| `changes` | `object`? | no | yes | Parent fields as `{from,to}` pairs; preview while pending, record once applied. |
+| `applied_at` | `string(date-time)`? | no | yes |  |
+| `created_at` | `string(date-time)` | no | no |  |
+| `updated_at` | `string(date-time)` | no | no | Optimistic-concurrency value for the link. |
 
 ### Schema: Account
 
@@ -3336,6 +3561,7 @@ A workspace account (organization).
 | `notification_sender_type` | `string enum[User, Account]` | no | no |  |
 | `roles` | array<`string`> | no | no |  |
 | `is_delete_allowed` | `boolean` | no | no |  |
+| `limits` | object{webhook_endpoints: `integer`} | no | no | Current-plan limits; returned only by the single-account read. |
 | `created_at` | `string(date-time)` | no | no |  |
 
 ### Schema: Field
@@ -3438,7 +3664,9 @@ A request for signers to sign a document.
 |---|---|---:|---:|---|
 | `resource` | `string` | no | no |  |
 | `id` | `string` | no | no |  |
-| `sender_email` | `string(email)` | no | no |  |
+| `document_id` | `string`? | no | yes | Document ID; null only after the document is deleted. |
+| `created_at` | `string(date-time)` | no | no |  |
+| `sender_email` | `string(email)`? | no | yes | Null after the sending user deletes their account. |
 | `method` | `string enum[virtual, collect]` | no | no |  |
 | `expires_at` | `string(date-time)`? | no | yes |  |
 | `message` | `string`? | no | yes |  |
@@ -3475,6 +3703,17 @@ Cost breakdown for an assignment plus current account balances.
 | `has_sufficient_resources` | `boolean` | no | no |  |
 | `blocking_reason` | `string enum[PendingPayment, InsufficientDocuments, InsufficientCredits]`? | no | yes |  |
 | `message` | `string`? | no | yes |  |
+
+### Schema: ResendCostEstimate
+
+Credits required to resend one signer's notification.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `total` | `number` | no | no | Sum of the breakdown costs. |
+| `breakdown` | array<[CostEstimateBreakdownItem](#schema-costestimatebreakdownitem)> | no | no | Resend notification charges. |
+| `credit_balance` | `number`? | no | yes | Null when credits are unlimited. |
+| `has_sufficient_credits` | `boolean` | no | no | Whether the workspace can pay the resend. |
 
 ### Schema: TemplateFieldPlacement
 
@@ -3536,6 +3775,8 @@ An account's webhook subscription configuration.
 |---|---|---:|---:|---|
 | `events` | array<`string`> | no | no | Event types subscribed for delivery. |
 | `is_active` | `boolean` | no | no | Whether webhook delivery is active. |
+| `is_held` | `boolean` | no | no | Whether delivery is paused after ten consecutive failures. |
+| `held_since` | `integer`? | no | yes | Unix timestamp when the pause began; null while delivery runs. |
 | `url` | `string`? | no | yes | Webhook endpoint URL. |
 | `email` | `string`? | no | yes | Contact email for delivery notices. |
 | `updated_at` | `string(date-time)`? | no | yes |  |
@@ -3554,6 +3795,10 @@ A single webhook delivery-history entry.
 | `endpoint` | `string`? | no | yes | URL that received the request. |
 | `payload` | `object`? | no | yes | JSON payload sent to the endpoint. |
 | `delivered` | `boolean` | no | no | Whether delivery succeeded. |
+| `webhook_id` | `string`? | no | yes | Stable `webhook-id` header across attempts for this event and endpoint. |
+| `attempt` | `integer`? | no | yes | Attempt number, starting at 1. |
+| `kind` | `string enum[scheduled, probe, manual]` | no | no | Delivery origin. |
+| `will_retry` | `boolean` | no | no | Whether another attempt follows. |
 | `http_status` | `integer`? | no | yes | HTTP status returned (null if connection failed). |
 | `response_body` | `string`? | no | yes | Endpoint response body, truncated to 2000 chars. |
 | `error` | `string`? | no | yes | Delivery error message, if any. |
@@ -3566,12 +3811,15 @@ A URL that receives the account's webhook events. Every active endpoint subscrib
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
+| `resource` | `string` | no | no | `activity_event_subscription` in single-resource responses. |
 | `id` | `string` | no | no | Endpoint ID. |
 | `name` | `string`? | no | yes | Label to tell endpoints apart. |
-| `url` | `string(uri)` | no | no | URL that receives the events (http or https). |
+| `url` | `string(uri)` | no | no | URL that receives the events; HTTPS is required for a new or changed URL. |
 | `email` | `string(email)` | no | no | Contact email for delivery-failure notices. |
 | `events` | array<`string`> | no | no | Event types delivered to this endpoint (see **List webhook event types**). |
 | `is_active` | `boolean` | no | no | Whether events are delivered to this endpoint. |
+| `is_held` | `boolean` | no | no | Whether delivery is paused after ten consecutive failures. |
+| `held_since` | `integer`? | no | yes | Unix timestamp when the pause began; null while delivery runs. |
 | `secret` | `string` | no | no | One-time `whsec_` secret returned only by create when signing is enabled. Store it immediately; OAuth cannot read or rotate it. |
 | `signing_enabled` | `boolean` | no | no | Whether deliveries carry a `webhook-signature` header (see **Webhook Payloads → Verifying signatures**). |
 | `created_at` | `string(date-time)` | no | no |  |
@@ -3654,7 +3902,7 @@ The verification result for a document looked up by signature hash. When not ver
 
 ### Schema: DocumentActivity
 
-A document activity/audit event.
+A document activity event.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
@@ -3673,7 +3921,7 @@ A rendered WhatsApp notification sent for an assignment, split into header/body/
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `sent_at` | `integer` | no | no | Unix timestamp when sent. |
+| `sent_at` | `string(date-time)` | no | no | When the message was sent. |
 | `header` | `string` | no | no |  |
 | `body` | `string` | no | no |  |
 | `buttons` | array<object{text: `string`; url: `string`?}> | no | no |  |
@@ -3712,7 +3960,7 @@ One period of the document-funnel KPI series. `period` is `YYYY-MM` (monthly) or
 | `documents_certified` | `integer` | no | no |  |
 ### Schema: NotificationPreferences
 
-Owner-facing document notifications, keyed by notification type. `true` means the e-mail is sent.
+Owner-facing document and contract notifications, keyed by notification type. `true` means the e-mail is sent.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
@@ -3725,6 +3973,10 @@ Owner-facing document notifications, keyed by notification type. `true` means th
 | `DocumentProcessingFailed` | `boolean` | no | no | An uploaded document could not be processed. |
 | `TemplateProcessingFailed` | `boolean` | no | no | A template could not be processed. |
 | `SignerWhatsappFailed` | `boolean` | no | no | A WhatsApp notification to a signer could not be delivered. |
+| `ContractRenewalNotice` | `boolean` | no | no | A tracked contract entered its notice period. |
+| `ContractExpiring` | `boolean` | no | no | A tracked contract ends in 45 or 30 days. |
+| `ContractExpired` | `boolean` | no | no | A tracked contract ended without renewal. |
+| `ContractRenewed` | `boolean` | no | no | A tracked contract was auto-renewed. |
 
 
 <a id="schema-signeridentityreview"></a>
@@ -3851,7 +4103,7 @@ Statuses: `200` Signature completed; `400` Invalid signed token or signing state
 - Field validation: `validate`/`validateMultiple` take a required signer access code and send only it; `validateAsWorkspace`/`validateMultipleAsWorkspace` use the workspace credential.
 - `SignerResource.uploadSignature` accepts PNG or JPEG bytes. Use PNG unless the target tenant accepts JPEG uploads.
 - `WebhookResource.get` returns `null` when no subscription exists (HTTP 404).
-- `WebhookSignature.verify(secret, headers, rawBody)` checks a signed delivery locally (Standard Webhooks HMAC-SHA256 over `{webhook-id}.{webhook-timestamp}.{body}`, constant-time comparison, 5-minute replay window); `verify(secret, id, timestamp, signature, rawBody, tolerance, now)` takes the header values, tolerance and clock explicitly. A secret that is not `whsec_` base64 raises `ValidationException`; a missing header returns `false`.
+- `WebhookSignature.verify(secret, headers, rawBody)` checks a signed delivery locally (Standard Webhooks HMAC-SHA256 over `{webhook-id}.{webhook-timestamp}.{body}`, constant-time equality check, 5-minute replay window); `verify(secret, id, timestamp, signature, rawBody, tolerance, now)` takes the header values, tolerance and clock explicitly. A secret that is not `whsec_` base64 raises `ValidationException`; a missing header returns `false`.
 - `CreateWorkspaceRequest` and `UpdateWorkspaceRequest` expose optional deployment theme fields through `primaryColor` and `secondaryColor`; use `WorkspaceResource.getTheme` and the logo methods for the remaining branding operations.
 
 ## SDK convenience payloads

@@ -21,7 +21,6 @@ import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.TemplateSigner;
 import com.assinafy.sdk.util.ResponseHandler;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -706,11 +705,33 @@ public class DocumentResource extends BaseResource {
      * @return activity entries, or an empty list when the response contains no data
      */
     public List<DocumentActivity> activities(String documentId) {
+        return activities(documentId, null).getData();
+    }
+
+    /**
+     * List document activities with sorting and pagination ({@code GET
+     * /v1/documents/{documentId}/activities}).
+     *
+     * <p>The response data contains activity {@code id}, {@code event}, human-readable
+     * {@code message}, event-specific {@code payload}, request {@code origin}, and
+     * {@code created_at}. Use {@code sort}, {@code page}, and {@code per-page}; pagination metadata
+     * comes from the standard response headers.</p>
+     *
+     * @param documentId document ID
+     * @param params sorting and pagination parameters, or {@code null}
+     * @return activity entries and pagination metadata
+     * @throws ValidationException if sort is not {@code id} or {@code -id}
+     */
+    public PaginatedResult<DocumentActivity> activities(String documentId, ListParams params) {
         String id = pathSegment(documentId, "Document ID");
-        PaginatedResult<DocumentActivity> result = callList("Failed to fetch document activities",
-                () -> http.get("/documents/" + id + "/activities"),
+        Map<String, Object> query = params != null ? params.toQueryParams() : Map.of();
+        Object sort = query.get("sort");
+        if (sort != null && !"id".equals(sort) && !"-id".equals(sort)) {
+            throw new ValidationException("Activity sort must be id or -id");
+        }
+        return callList("Failed to fetch document activities",
+                () -> http.get("/documents/" + id + "/activities", query),
                 DocumentActivity.class);
-        return result != null ? result.getData() : new ArrayList<>();
     }
 
     /**
@@ -756,8 +777,8 @@ public class DocumentResource extends BaseResource {
      * @param templateId template ID
      * @param request signer assignments and document settings
      * @return the created document
-     * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
-     *         invalid, or any signer uses {@code DigitalCertificate}
+     * @throws ValidationException if signer selection, roles, delivery methods, or signing order
+     *         are invalid
      */
     public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return createFromTemplate(templateId, request, null);
@@ -765,14 +786,15 @@ public class DocumentResource extends BaseResource {
 
     /**
      * Create a document from a template in an explicit or default account. At least one template
-     * signer is required, and each signer needs nonblank role and signer IDs. Verification methods
+     * signer is required, and each signer needs a nonblank role plus either an existing signer ID
+     * or a name/email pair that the API can reuse or create. Verification methods
      * are {@code Email}, {@code Whatsapp}, {@code DigitalCertificate}, or
      * {@code IdDocumentFaceMatchBasic}; notification methods,
      * when supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}; at
      * most one method is permitted per signer. If one signer supplies a step, all must do so and the
-     * positive steps must be contiguous from 1. The SDK temporarily rejects
-     * {@code DigitalCertificate}: the API derives the assignment method from template fields and
-     * could otherwise create an unusable {@code collect} assignment.
+     * positive steps must be contiguous from 1. {@code DigitalCertificate} is supported for a
+     * virtual template with no placed signer fields; the API returns 400 when the template derives
+     * a collect assignment.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/templates/{templateId}/documents</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
@@ -786,7 +808,9 @@ public class DocumentResource extends BaseResource {
      *   "signers": [
      *     {
      *       "role_id": "fa8c14f32d732271e071998246e",
-     *       "id": "fa8c140cb49b79f940aab95fddd",
+     *       "name": "Maria Silva",
+     *       "email": "maria@example.invalid",
+     *       "whatsapp_phone_number": "+5548999999999",
      *       "verification_method": "Email",
      *       "notification_methods": [
      *         "notification_methods_example"
@@ -858,10 +882,8 @@ public class DocumentResource extends BaseResource {
      * @param request signer assignments and document settings
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the created document
-     * @throws ValidationException if signer IDs, roles, delivery methods, or signing order are
-     *         invalid, or any signer uses {@code DigitalCertificate}; certificate errors use
-     *         {@link AssignmentResource#DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD} in
-     *         {@code getErrors().get("code")}
+     * @throws ValidationException if signer selection, roles, delivery methods, or signing order
+     *         are invalid
      */
     public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
@@ -886,8 +908,8 @@ public class DocumentResource extends BaseResource {
      * @param templateId template ID
      * @param request template signer estimate inputs
      * @return the cost breakdown
-     * @throws ValidationException if no valid template signer roles are supplied, a delivery
-     *         method is invalid, or any signer uses {@code DigitalCertificate}
+     * @throws ValidationException if no valid template signer roles are supplied or a delivery
+     *         method is invalid
      */
     public Map<String, Object> estimateCostFromTemplate(String templateId, CreateDocumentFromTemplateRequest request) {
         return estimateCostFromTemplate(templateId, request, null);
@@ -913,8 +935,8 @@ public class DocumentResource extends BaseResource {
      * Estimate the cost of creating a document from a template in an explicit or default account.
      *
      * <p>The estimate requires nonblank role IDs, validates delivery-method values, and omits
-     * signer IDs, signer steps, and creation-only document settings. The SDK temporarily rejects
-     * {@code DigitalCertificate} because the API-derived assignment method may be {@code collect}.
+     * signer contact data, signer steps, and creation-only document settings. Certificate cost can
+     * be estimated; actual template creation accepts it only when the template is virtual.
      *
      * <p><strong>HTTP:</strong> <code>POST
      * /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost</code>.
@@ -975,10 +997,8 @@ public class DocumentResource extends BaseResource {
      * @param request template signer estimate inputs
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the cost breakdown
-     * @throws ValidationException if no valid template signer roles are supplied, a delivery
-     *         method is invalid, or any signer uses {@code DigitalCertificate}; certificate errors
-     *         use {@link AssignmentResource#DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD} in
-     *         {@code getErrors().get("code")}
+     * @throws ValidationException if no valid template signer roles are supplied or a delivery
+     *         method is invalid
      */
     public Map<String, Object> estimateCostFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
         String tmplId = pathSegment(templateId, "Template ID");
@@ -1508,9 +1528,6 @@ public class DocumentResource extends BaseResource {
         List<Map<String, Object>> signers = request.getSigners().stream()
                 .map(signer -> templateSignerPayload(signer, estimate))
                 .toList();
-        SigningRules.validateDigitalCertificateMethod(null, request.getSigners().stream()
-                .map(signer -> new SigningRules.Placement(signer.getStep(), signer.getVerificationMethod()))
-                .toList());
         if (!estimate) validateTemplateSignerSteps(request.getSigners());
         Map<String, Object> body = new HashMap<>();
         body.put("signers", signers);
@@ -1529,13 +1546,23 @@ public class DocumentResource extends BaseResource {
         if (signer == null || signer.getRoleId() == null || signer.getRoleId().isBlank()) {
             throw new ValidationException("Every template signer requires a role ID");
         }
-        if (!estimate && (signer.getId() == null || signer.getId().isBlank())) {
-            throw new ValidationException("Every template signer requires a signer ID");
-        }
         SigningRules.validateDeliveryMethods(signer.getVerificationMethod(), signer.getNotificationMethods());
         Map<String, Object> value = new HashMap<>();
         value.put("role_id", signer.getRoleId());
-        if (!estimate) value.put("id", signer.getId());
+        if (!estimate) {
+            if (signer.getId() != null && !signer.getId().isBlank()) {
+                value.put("id", signer.getId());
+            } else {
+                requireEmail(signer.getEmail());
+                requireText(signer.getName(), "Template signer name", 255);
+                value.put("name", signer.getName());
+                value.put("email", signer.getEmail());
+                if (signer.getWhatsappPhoneNumber() != null) {
+                    requireId(signer.getWhatsappPhoneNumber(), "Template signer WhatsApp number");
+                    value.put("whatsapp_phone_number", signer.getWhatsappPhoneNumber());
+                }
+            }
+        }
         if (signer.getVerificationMethod() != null) {
             value.put("verification_method", signer.getVerificationMethod());
         }

@@ -23,6 +23,12 @@ public class WebhookSubscription {
     @JsonProperty("is_active")
     private Boolean isActive;
 
+    @JsonProperty("is_held")
+    private Boolean isHeld;
+
+    @JsonProperty("held_since")
+    private Long heldSince;
+
     @JsonProperty("updated_at")
     private String updatedAt;
 
@@ -86,6 +92,34 @@ public class WebhookSubscription {
      * @param isActive the active flag
      */
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+    /**
+     * Returns whether delivery is held after repeated failures.
+     *
+     * @return the hold flag
+     */
+    public Boolean getIsHeld() { return isHeld; }
+
+    /**
+     * Sets the hold flag.
+     *
+     * @param isHeld whether delivery is held
+     */
+    public void setIsHeld(Boolean isHeld) { this.isHeld = isHeld; }
+
+    /**
+     * Returns the Unix timestamp at which delivery was held.
+     *
+     * @return the hold timestamp, or {@code null}
+     */
+    public Long getHeldSince() { return heldSince; }
+
+    /**
+     * Sets the Unix hold timestamp.
+     *
+     * @param heldSince hold timestamp, or {@code null}
+     */
+    public void setHeldSince(Long heldSince) { this.heldSince = heldSince; }
 
     /**
      * Returns the last-update timestamp.

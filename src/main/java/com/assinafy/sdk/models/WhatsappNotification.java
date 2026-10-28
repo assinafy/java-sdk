@@ -10,7 +10,7 @@ import java.util.List;
 public class WhatsappNotification {
 
     @JsonProperty("sent_at")
-    private Long sentAt;
+    private String sentAt;
 
     @JsonProperty("header")
     private String header;
@@ -37,14 +37,14 @@ public class WhatsappNotification {
      *
      * @return the send timestamp
      */
-    public Long getSentAt() { return sentAt; }
+    public String getSentAt() { return sentAt; }
 
     /**
      * Sets the send timestamp.
      *
-     * @param sentAt the send timestamp
+     * @param sentAt the ISO-8601 send timestamp
      */
-    public void setSentAt(Long sentAt) { this.sentAt = sentAt; }
+    public void setSentAt(String sentAt) { this.sentAt = sentAt; }
 
     /**
      * Returns the header.

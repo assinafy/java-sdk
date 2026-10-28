@@ -17,6 +17,9 @@ public class Assignment {
     @JsonProperty("id")
     private String id;
 
+    @JsonProperty("document_id")
+    private String documentId;
+
     @JsonProperty("sender_email")
     private String senderEmail;
 
@@ -43,6 +46,9 @@ public class Assignment {
 
     @JsonProperty("signing_urls")
     private List<SigningUrl> signingUrls;
+
+    @JsonProperty("created_at")
+    private String createdAt;
 
     /**
      * Creates an empty assignment.
@@ -78,9 +84,23 @@ public class Assignment {
     public void setId(String id) { this.id = id; }
 
     /**
-     * Returns the sender email address.
+     * Returns the owning document ID when present in list responses.
      *
-     * @return the sender email address
+     * @return the document ID, or {@code null}
+     */
+    public String getDocumentId() { return documentId; }
+
+    /**
+     * Sets the owning document ID.
+     *
+     * @param documentId the document ID
+     */
+    public void setDocumentId(String documentId) { this.documentId = documentId; }
+
+    /**
+     * Returns the sender email address, or null after that user deletes their account.
+     *
+     * @return the sender email address, or {@code null}
      */
     public String getSenderEmail() { return senderEmail; }
 
@@ -202,4 +222,18 @@ public class Assignment {
      * @param signingUrls the signing URLs
      */
     public void setSigningUrls(List<SigningUrl> signingUrls) { this.signingUrls = signingUrls; }
+
+    /**
+     * Returns the creation timestamp.
+     *
+     * @return the creation timestamp, or {@code null}
+     */
+    public String getCreatedAt() { return createdAt; }
+
+    /**
+     * Sets the creation timestamp.
+     *
+     * @param createdAt the creation timestamp
+     */
+    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

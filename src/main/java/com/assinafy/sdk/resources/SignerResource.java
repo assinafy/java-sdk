@@ -83,7 +83,7 @@ public class SignerResource extends BaseResource {
      * optional fields may be absent or null.</p>
      * <pre>{
      *   "full_name": "John Dove",
-     *   "email": "signer@example.com",
+     *   "email": "signer@example.invalid",
      *   "whatsapp_phone_number": "+5548999990000",
      *   "government_id": "390.533.447-05"
      * }</pre>
@@ -96,7 +96,7 @@ public class SignerResource extends BaseResource {
      *     "resource": "signer",
      *     "id": "62d6ee35c7741ca4006b9e11",
      *     "full_name": "John Dove",
-     *     "email": "signer@example.com",
+     *     "email": "signer@example.invalid",
      *     "whatsapp_phone_number": "+5548999990000",
      *     "government_id": "39053344705",
      *     "has_accepted_terms": false

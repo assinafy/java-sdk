@@ -22,7 +22,8 @@ public class UserResource extends BaseResource {
     private static final Set<String> NOTIFICATION_CODES = Set.of(
             "DocumentCompleted", "SignerDeclined", "DocumentCancelled",
             "DocumentAboutToExpire", "DocumentExpired", "DocumentExpirationReset",
-            "DocumentProcessingFailed", "TemplateProcessingFailed", "SignerWhatsappFailed"
+            "DocumentProcessingFailed", "TemplateProcessingFailed", "SignerWhatsappFailed",
+            "ContractRenewalNotice", "ContractExpiring", "ContractExpired", "ContractRenewed"
     );
 
     /**
@@ -160,7 +161,7 @@ public class UserResource extends BaseResource {
     }
 
     /**
-     * {@code GET /users/self/notification-preferences} — return all nine owner-facing document
+     * {@code GET /users/self/notification-preferences} — return all owner-facing document and contract
      * email switches. Account/security emails are not configurable and are not included.
      *
      * <p><strong>HTTP:</strong> <code>GET /v1/users/self/notification-preferences</code>.
@@ -180,7 +181,11 @@ public class UserResource extends BaseResource {
      *     "DocumentExpirationReset": true,
      *     "DocumentProcessingFailed": true,
      *     "TemplateProcessingFailed": true,
-     *     "SignerWhatsappFailed": true
+     *     "SignerWhatsappFailed": true,
+     *     "ContractRenewalNotice": true,
+     *     "ContractExpiring": true,
+     *     "ContractExpired": true,
+     *     "ContractRenewed": true
      *   }
      * }</pre>
      * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
@@ -216,7 +221,11 @@ public class UserResource extends BaseResource {
      *   "DocumentExpirationReset": true,
      *   "DocumentProcessingFailed": true,
      *   "TemplateProcessingFailed": true,
-     *   "SignerWhatsappFailed": true
+     *   "SignerWhatsappFailed": true,
+     *   "ContractRenewalNotice": true,
+     *   "ContractExpiring": true,
+     *   "ContractExpired": true,
+     *   "ContractRenewed": true
      * }</pre>
      * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
      * optional fields may be absent or null.</p>
@@ -232,7 +241,11 @@ public class UserResource extends BaseResource {
      *     "DocumentExpirationReset": true,
      *     "DocumentProcessingFailed": true,
      *     "TemplateProcessingFailed": true,
-     *     "SignerWhatsappFailed": true
+     *     "SignerWhatsappFailed": true,
+     *     "ContractRenewalNotice": true,
+     *     "ContractExpiring": true,
+     *     "ContractExpired": true,
+     *     "ContractRenewed": true
      *   }
      * }</pre>
      * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
@@ -248,7 +261,9 @@ public class UserResource extends BaseResource {
      *                {@code SignerDeclined}, {@code DocumentCancelled},
      *                {@code DocumentAboutToExpire}, {@code DocumentExpired},
      *                {@code DocumentExpirationReset}, {@code DocumentProcessingFailed},
-     *                {@code TemplateProcessingFailed}, or {@code SignerWhatsappFailed}
+     *                {@code TemplateProcessingFailed}, {@code SignerWhatsappFailed},
+     *                {@code ContractRenewalNotice}, {@code ContractExpiring},
+     *                {@code ContractExpired}, or {@code ContractRenewed}
      * @return the complete updated preference map
      * @throws ValidationException if the map is null or contains an unknown key or null value
      */

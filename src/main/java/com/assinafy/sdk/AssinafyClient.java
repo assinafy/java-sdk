@@ -19,6 +19,7 @@ import com.assinafy.sdk.resources.ApiKeyResource;
 import com.assinafy.sdk.resources.AssignmentResource;
 import com.assinafy.sdk.resources.AuthenticationResource;
 import com.assinafy.sdk.resources.BaseResource;
+import com.assinafy.sdk.resources.ContractResource;
 import com.assinafy.sdk.resources.DocumentResource;
 import com.assinafy.sdk.resources.FieldResource;
 import com.assinafy.sdk.resources.OAuthResource;
@@ -56,6 +57,7 @@ public class AssinafyClient {
     private final SignerResource signers;
     private final WorkspaceResource workspaces;
     private final AssignmentResource assignments;
+    private final ContractResource contracts;
     private final WebhookResource webhooks;
     private final TemplateResource templates;
     private final FieldResource fields;
@@ -106,6 +108,7 @@ public class AssinafyClient {
         // Workspace operations take an explicit account ID, so no default is bound.
         this.workspaces = new WorkspaceResource(http, null, this.logger);
         this.assignments = new AssignmentResource(http, defaultAccountId, this.logger);
+        this.contracts = new ContractResource(http, defaultAccountId, this.logger);
         this.webhooks = new WebhookResource(http, defaultAccountId, this.logger);
         this.templates = new TemplateResource(http, defaultAccountId, this.logger);
         this.fields = new FieldResource(http, defaultAccountId, this.logger);
@@ -530,6 +533,9 @@ public class AssinafyClient {
 
     /** {@return assignment operations bound to the default account} */
     public AssignmentResource assignments() { return assignments; }
+
+    /** {@return contract lifecycle operations bound to the default account} */
+    public ContractResource contracts() { return contracts; }
 
     /** {@return webhook operations bound to the default account} */
     public WebhookResource webhooks() { return webhooks; }

@@ -20,7 +20,9 @@ class UserResourceTest {
             "\"DocumentCompleted\":false,\"SignerDeclined\":true,\"DocumentCancelled\":true," +
             "\"DocumentAboutToExpire\":true,\"DocumentExpired\":true," +
             "\"DocumentExpirationReset\":true,\"DocumentProcessingFailed\":true," +
-            "\"TemplateProcessingFailed\":true,\"SignerWhatsappFailed\":true}}";
+            "\"TemplateProcessingFailed\":true,\"SignerWhatsappFailed\":true," +
+            "\"ContractRenewalNotice\":true,\"ContractExpiring\":true," +
+            "\"ContractExpired\":true,\"ContractRenewed\":true}}";
 
     @Test
     void getsAndUpdatesNotificationPreferencesWithExactContractKeys() {
@@ -31,7 +33,7 @@ class UserResourceTest {
 
         NotificationPreferences current = users.getNotificationPreferences();
         NotificationPreferences updated = users.updateNotificationPreferences(
-                Map.of("DocumentCompleted", false));
+                Map.of("DocumentCompleted", false, "ContractRenewalNotice", true));
 
         assertThat(current.getDocumentCompleted()).isFalse();
         assertThat(updated.getSignerDeclined()).isTrue();
@@ -39,7 +41,8 @@ class UserResourceTest {
         assertThat(http.capturedAt(0).getPath()).isEqualTo("/users/self/notification-preferences");
         assertThat(http.capturedAt(1).getMethod()).isEqualTo("PUT");
         assertThat(http.capturedAt(1).getPath()).isEqualTo("/users/self/notification-preferences");
-        assertThat(http.capturedAt(1).getJsonBody()).isEqualTo("{\"DocumentCompleted\":false}");
+        assertThat(http.capturedAt(1).getJsonBody())
+                .contains("\"DocumentCompleted\":false", "\"ContractRenewalNotice\":true");
     }
 
     @Test

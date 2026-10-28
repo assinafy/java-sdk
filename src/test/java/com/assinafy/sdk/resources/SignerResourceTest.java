@@ -252,7 +252,7 @@ class SignerResourceTest {
 
         resource.create(CreateSignerRequest.builder()
                 .fullName("John")
-                .email("signer@example.com")
+                .email("signer@example.invalid")
                 .governmentId("123.456.789-00")
                 .build());
 

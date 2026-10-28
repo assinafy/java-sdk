@@ -40,42 +40,42 @@ class PublicDocumentResourceTest {
             {"status":200,"message":"","data":{
               "document":{"resource":"document","id":"doc1","name":"contract.pdf",
                           "page_count":"2","created_by":"Owner"},
-              "channel":"email","recipient":"signer@example.com"}}
+              "channel":"email","recipient":"signer@example.invalid"}}
             """;
 
     @Test
     void sendTokenPutsChannelAndRecipientBody() throws Exception {
         mock.enqueue(200, SEND_TOKEN_RESPONSE);
 
-        var data = resource.sendToken("doc1", "signer@example.com");
+        var data = resource.sendToken("doc1", "signer@example.invalid");
 
         assertThat(mock.lastCaptured().getMethod()).isEqualTo("PUT");
         assertThat(mock.lastCaptured().getPath()).isEqualTo("/public/documents/doc1/send-token");
         assertThat(new ObjectMapper().readTree(mock.lastCaptured().getJsonBody()))
                 .isEqualTo(new ObjectMapper().readTree(
-                        "{\"channel\":\"email\",\"recipient\":\"signer@example.com\"}"));
-        assertThat(data).containsEntry("channel", "email").containsEntry("recipient", "signer@example.com");
+                        "{\"channel\":\"email\",\"recipient\":\"signer@example.invalid\"}"));
+        assertThat(data).containsEntry("channel", "email").containsEntry("recipient", "signer@example.invalid");
     }
 
     @Test
     void explicitChannelOverloadSendsOnlyTheDocumentedFields() throws Exception {
         mock.enqueue(200, SEND_TOKEN_RESPONSE);
 
-        resource.sendToken("doc1", "signer@example.com", "email");
+        resource.sendToken("doc1", "signer@example.invalid", "email");
 
         assertThat(new ObjectMapper().readTree(mock.lastCaptured().getJsonBody()))
                 .isEqualTo(new ObjectMapper().readTree(
-                        "{\"channel\":\"email\",\"recipient\":\"signer@example.com\"}"));
+                        "{\"channel\":\"email\",\"recipient\":\"signer@example.invalid\"}"));
     }
 
     @Test
     void sendTokenTypedDecodesDocumentSummary() {
         mock.enqueue(200, SEND_TOKEN_RESPONSE);
 
-        TokenDelivery delivery = resource.sendTokenTyped("doc1", "signer@example.com");
+        TokenDelivery delivery = resource.sendTokenTyped("doc1", "signer@example.invalid");
 
         assertThat(delivery.channel()).isEqualTo("email");
-        assertThat(delivery.recipient()).isEqualTo("signer@example.com");
+        assertThat(delivery.recipient()).isEqualTo("signer@example.invalid");
         assertThat(delivery.document().id()).isEqualTo("doc1");
         assertThat(delivery.document().name()).isEqualTo("contract.pdf");
         assertThat(delivery.document().pageCount()).isEqualTo(2);
@@ -86,12 +86,12 @@ class PublicDocumentResourceTest {
     void sendTokenRejectsInvalidInputBeforeSending() {
         assertThatThrownBy(() -> resource.sendToken("doc1", ""))
                 .isInstanceOf(ValidationException.class);
-        assertThatThrownBy(() -> resource.sendToken("", "signer@example.com"))
+        assertThatThrownBy(() -> resource.sendToken("", "signer@example.invalid"))
                 .isInstanceOf(ValidationException.class);
         assertThatThrownBy(() -> resource.sendToken("doc1", "+5548999990000", "whatsapp"))
                 .isInstanceOf(ValidationException.class)
                 .hasMessage("Channel must be email");
-        assertThatThrownBy(() -> resource.sendToken("doc1", "signer@example.com", null))
+        assertThatThrownBy(() -> resource.sendToken("doc1", "signer@example.invalid", null))
                 .isInstanceOf(ValidationException.class);
         assertThat(mock.capturedCount()).isZero();
     }

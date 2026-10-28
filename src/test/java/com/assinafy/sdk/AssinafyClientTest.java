@@ -36,6 +36,7 @@ class AssinafyClientTest {
         assertThat(client.signers()).isNotNull();
         assertThat(client.workspaces()).isNotNull();
         assertThat(client.assignments()).isNotNull();
+        assertThat(client.contracts()).isNotNull();
         assertThat(client.webhooks()).isNotNull();
         assertThat(client.users()).isNotNull();
         assertThat(client.fields()).isNotNull();

@@ -3,9 +3,9 @@
 *Português · [Read in English](README.en.md)*
 
 Cliente Java para a [API Assinafy](https://api.assinafy.com.br/v1/docs) — plataforma brasileira de
-assinatura eletrônica de documentos. Cobre as 112 operações documentadas — upload e certificação de
+assinatura eletrônica de documentos. Cobre as 118 operações documentadas — upload e certificação de
 documentos, gestão de signatários, solicitações de assinatura, templates, definições de campo, tags,
-workspaces, webhooks assinados com múltiplos endpoints, login com dois fatores, OAuth 2.1 e os fluxos
+contratos, workspaces, webhooks assinados com múltiplos endpoints, login com dois fatores, OAuth 2.1 e os fluxos
 self-service do signatário — atrás de modelos tipados,
 exceções tipadas e um único cliente thread-safe.
 
@@ -27,15 +27,16 @@ está em **[README.en.md](README.en.md)**, e o contrato de requisição/resposta
 9. [O atalho de uma chamada só](#o-atalho-de-uma-chamada-só)
 10. [OAuth 2.1 — agir no workspace de outra pessoa](#oauth-21--agir-no-workspace-de-outra-pessoa)
 11. [Templates, campos e tags](#templates-campos-e-tags)
-12. [Self-service do signatário](#self-service-do-signatário)
-13. [Webhooks](#webhooks)
-14. [Workspaces, usuários e chaves de API](#workspaces-usuários-e-chaves-de-api)
-15. [Tratamento de erros](#tratamento-de-erros)
-16. [Paginação](#paginação)
-17. [Ambientes](#ambientes)
-18. [Desenvolvimento](#desenvolvimento)
-19. [Documentação](#documentação)
-20. [Licença](#licença)
+12. [Contratos](#contratos)
+13. [Self-service do signatário](#self-service-do-signatário)
+14. [Webhooks](#webhooks)
+15. [Workspaces, usuários e chaves de API](#workspaces-usuários-e-chaves-de-api)
+16. [Tratamento de erros](#tratamento-de-erros)
+17. [Paginação](#paginação)
+18. [Ambientes](#ambientes)
+19. [Desenvolvimento](#desenvolvimento)
+20. [Documentação](#documentação)
+21. [Licença](#licença)
 
 ## Requisitos
 
@@ -54,14 +55,14 @@ O SDK é publicado no Maven Central, sem configuração de repositório nem aute
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>2.1.0</version>
+    <version>2.2.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:2.1.0")
+implementation("com.assinafy:assinafy-sdk:2.2.0")
 ```
 
 As mesmas versões continuam publicadas no GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -739,9 +740,11 @@ outra causa: outro workspace, o papel do usuário, ou uma área que tokens OAuth
 `documents().estimateCostFromTemplateTyped(...)` prevê o custo antes. As mesmas regras de acoplamento
 verificação/notificação e de ordem de assinatura valem aqui.
 
-Como a API deduz `virtual` ou `collect` a partir dos campos posicionados do template, o SDK recusa
-temporariamente `DigitalCertificate` tanto na criação quanto na estimativa por template, usando o
-mesmo código estável. Use um assignment `virtual` direto até a API impor essa regra.
+Cada papel pode apontar para um signatário existente com `id`, ou informar `name` e `email` para a
+API reutilizar o contato daquela conta ou criá-lo. `whatsappPhoneNumber` só é usado na criação do
+novo contato. Como a API deduz `virtual` ou `collect` a partir dos campos posicionados, um
+`DigitalCertificate` funciona em template virtual e a API devolve `400` quando o template contém
+campos de signatário e, portanto, gera um assignment `collect`.
 
 **Definições de campo** (`fields()`) são tipos de campo reutilizáveis do workspace — CPF, data, texto
 livre. `fields().validateAsWorkspace(fieldId, valor)` e
@@ -762,6 +765,42 @@ client.documents().detachTag(document.getId(), tagId);   // desanexar usa o ID
 `appendTagIds` e `replaceTagIds` existem para quem tem os IDs em mãos: o SDK resolve os nomes
 correspondentes antes de enviar. Apagar uma tag ainda vinculada a um documento devolve `409` a menos
 que você force.
+
+## Contratos
+
+`contracts()` acompanha termos e o ciclo de vida de contratos associados a documentos. O recurso
+depende do plano do workspace; leituras continuam disponíveis depois que o plano deixa de incluir o
+acompanhamento. Crie ou altere somente os termos enviados:
+
+```java
+ContractRecord salvo = client.contracts().set(document.getId(), SetContractRequest.builder()
+    .status("active")
+    .counterpartyName("Exemplo Ltda.")
+    .value(new BigDecimal("120000.50"))
+    .currency("BRL")
+    .startDate("2026-11-01")
+    .endDate("2027-10-31")
+    .autoRenew(true)
+    .renewalTermMonths(12)
+    .noticePeriodDays(30)
+    .externalReferences(List.of(new ContractExternalReference("crm", "98765")))
+    .build());
+
+DocumentContract contrato = (DocumentContract) client.contracts().get(document.getId());
+PaginatedResult<DocumentContract> vencendo = client.contracts().list(ListParams.builder()
+    .status("active")
+    .sort("end_date")
+    .extra("ending_within_days", 30)
+    .build());
+```
+
+Para vincular um aditivo, use `parentDocumentId(...)` e `relationType("amendment")`; a resposta é
+`DocumentContractAmendment`, e o delta só é aplicado ao contrato pai quando o documento do aditivo
+fica `certificated`. `listRelated(...)` devolve a família completa. `renew(...)` inicia o próximo
+termo e `terminate(...)` encerra o contrato. Envie o `updated_at` que você leu nas requisições de
+alteração, renovação ou encerramento para receber `409` em vez de sobrescrever uma mudança
+concorrente. Os avisos de renovação, vencimento, expiração e renovação concluída ficam em
+`NotificationPreferences`.
 
 ## Self-service do signatário
 
@@ -818,6 +857,9 @@ client.webhooks().retryDispatch(dispatchId);
 
 Sem `events`, o SDK inscreve o mesmo conjunto padrão de `register(...)`. `register(...)`, `get()` e
 `inactivate()` continuam funcionando e agem sobre o endpoint mais antigo do workspace.
+Depois de dez falhas consecutivas, endpoint e inscrição expõem `isHeld=true` e `heldSince` enquanto
+a API testa a recuperação. O histórico de entregas traz `webhookId`, `attempt`, `kind` e
+`willRetry`, permitindo deduplicar e saber se ainda haverá nova tentativa.
 
 ### Verificar a assinatura
 

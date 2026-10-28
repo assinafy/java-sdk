@@ -10,6 +10,7 @@ import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.SignerIdentityReview;
 import com.assinafy.sdk.models.ResendNotificationResponse;
+import com.assinafy.sdk.models.ResendCostEstimate;
 import com.assinafy.sdk.models.WhatsappNotification;
 import com.assinafy.sdk.models.enums.AssignmentMethod;
 import com.assinafy.sdk.request.CreateAssignmentRequest;
@@ -97,6 +98,8 @@ public class AssignmentResource extends BaseResource {
      *     {
      *       "resource": "assignment",
      *       "id": "615606ef81d199996981dbce",
+     *       "document_id": "615601fab04c0a3147bb1246",
+     *       "created_at": "2026-06-03T03:54:16Z",
      *       "sender_email": "sender@example.invalid",
      *       "method": "virtual",
      *       "expires_at": null,
@@ -242,6 +245,8 @@ public class AssignmentResource extends BaseResource {
      *   "data": {
      *     "resource": "assignment",
      *     "id": "615606ef81d199996981dbce",
+     *     "document_id": "615601fab04c0a3147bb1246",
+     *     "created_at": "2026-06-03T03:54:16Z",
      *     "sender_email": "sender@example.invalid",
      *     "method": "virtual",
      *     "expires_at": null,
@@ -360,25 +365,16 @@ public class AssignmentResource extends BaseResource {
      *   "status": 200,
      *   "message": "",
      *   "data": {
-     *     "documents": 1,
-     *     "credits": 1,
-     *     "needs_extra_document": false,
-     *     "extra_document_cost": 1,
-     *     "total_credits": 1,
+     *     "total": 0.45,
      *     "breakdown": [
      *       {
-     *         "code": "NotificationWhatsapp",
-     *         "name": "Whatsapp Notification",
-     *         "cost": 0.9,
-     *         "quantity": 2,
-     *         "unit_cost": 0.45
+     *         "code": "NotificationWhatsappResend",
+     *         "name": "Whatsapp Notification Resend",
+     *         "cost": 0.45
      *       }
      *     ],
-     *     "document_balance": 1,
-     *     "credit_balance": 1,
-     *     "has_sufficient_resources": false,
-     *     "blocking_reason": null,
-     *     "message": null
+     *     "credit_balance": 10,
+     *     "has_sufficient_credits": true
      *   }
      * }</pre>
      * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
@@ -444,6 +440,8 @@ public class AssignmentResource extends BaseResource {
      *   "data": {
      *     "resource": "assignment",
      *     "id": "615606ef81d199996981dbce",
+     *     "document_id": "615601fab04c0a3147bb1246",
+     *     "created_at": "2026-06-03T03:54:16Z",
      *     "sender_email": "sender@example.invalid",
      *     "method": "virtual",
      *     "expires_at": null,
@@ -585,25 +583,16 @@ public class AssignmentResource extends BaseResource {
      *   "status": 200,
      *   "message": "",
      *   "data": {
-     *     "documents": 1,
-     *     "credits": 1,
-     *     "needs_extra_document": false,
-     *     "extra_document_cost": 1,
-     *     "total_credits": 1,
+     *     "total": 0.45,
      *     "breakdown": [
      *       {
-     *         "code": "NotificationWhatsapp",
-     *         "name": "Whatsapp Notification",
-     *         "cost": 0.9,
-     *         "quantity": 2,
-     *         "unit_cost": 0.45
+     *         "code": "NotificationWhatsappResend",
+     *         "name": "Whatsapp Notification Resend",
+     *         "cost": 0.45
      *       }
      *     ],
-     *     "document_balance": 1,
-     *     "credit_balance": 1,
-     *     "has_sufficient_resources": false,
-     *     "blocking_reason": null,
-     *     "message": null
+     *     "credit_balance": 10,
+     *     "has_sufficient_credits": true
      *   }
      * }</pre>
      * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
@@ -638,8 +627,9 @@ public class AssignmentResource extends BaseResource {
      * @param signerId recipient signer ID
      * @return the typed resend cost breakdown
      */
-    public CostEstimate estimateResendCostTyped(String documentId, String assignmentId, String signerId) {
-        return ResponseHandler.convert(estimateResendCost(documentId, assignmentId, signerId), CostEstimate.class);
+    public ResendCostEstimate estimateResendCostTyped(String documentId, String assignmentId, String signerId) {
+        return ResponseHandler.convert(
+                estimateResendCost(documentId, assignmentId, signerId), ResendCostEstimate.class);
     }
 
     /**

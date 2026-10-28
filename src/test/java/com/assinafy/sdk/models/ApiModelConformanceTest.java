@@ -19,7 +19,8 @@ class ApiModelConformanceTest {
                 """, AuthAccount.class);
         Workspace workspace = decode("""
                 {"resource":"account","id":"a1","primary_color":"112233",
-                 "secondary_color":"445566","notification_sender_type":"Account"}
+                 "secondary_color":"445566","notification_sender_type":"Account",
+                 "limits":{"webhook_endpoints":3}}
                 """, Workspace.class);
         Signer signer = decode("""
                 {"resource":"signer","id":"s1","government_id":"39053344705"}
@@ -41,6 +42,7 @@ class ApiModelConformanceTest {
         assertThat(workspace.getPrimaryColor()).isEqualTo("112233");
         assertThat(workspace.getSecondaryColor()).isEqualTo("445566");
         assertThat(workspace.getNotificationSenderType()).isEqualTo("Account");
+        assertThat(workspace.getLimits()).containsEntry("webhook_endpoints", 3);
         assertThat(signer.getResource()).isEqualTo("signer");
         assertThat(signer.getGovernmentId()).isEqualTo("39053344705");
         assertThat(field.getResource()).isEqualTo("field");
@@ -60,7 +62,8 @@ class ApiModelConformanceTest {
         Document uploaded = decode("""
                 {"resource":"document","id":"d1","status":"uploaded",
                  "signing_url":"https://example.test/sign","tags":[{"id":"tag1","name":"Legal"}],
-                 "artifacts":{"pades":"https://example.test/pades.pdf"}}
+                 "artifacts":{"pades":"https://example.test/pades.pdf"},"has_contract":true,
+                 "verification_code":"secret","verification_url":"https://example.test/verify#secret"}
                 """, Document.class);
         Document assigned = decode("""
                 {"resource":"document","id":"d1","assignment":{"id":"as1"},
@@ -73,6 +76,9 @@ class ApiModelConformanceTest {
         assertThat(uploaded.getSigningUrl()).isEqualTo("https://example.test/sign");
         assertThat(uploaded.getTags()).extracting(Tag::getId).containsExactly("tag1");
         assertThat(uploaded.getArtifacts().getPades()).isEqualTo("https://example.test/pades.pdf");
+        assertThat(uploaded.getHasContract()).isTrue();
+        assertThat(uploaded.getVerificationCode()).isEqualTo("secret");
+        assertThat(uploaded.getVerificationUrl()).endsWith("#secret");
         assertThat(assigned.getAssignment().getId()).isEqualTo("as1");
         assertThat(assigned.getDeclineReason()).isEqualTo("Unfavorable terms");
         assertThat(assigned.getIsClosed()).isTrue();
@@ -167,5 +173,42 @@ class ApiModelConformanceTest {
         assertThat(sandbox.getButtons().getFirst().getUrl()).isEqualTo("https://example.invalid/sign?code=secret");
         assertThat(decode("{\"buttons\":[{\"text\":\"Sign\"}]}", WhatsappNotification.class)
                 .getButtons().getFirst().getUrl()).isNull();
+    }
+
+    @Test
+    void deserializesCurrentAssignmentWebhookAndPreferenceFields() {
+        Assignment assignment = decode("""
+                {"id":"a1","document_id":"d1","sender_email":null,
+                 "created_at":"2026-10-28T12:00:00Z"}
+                """, Assignment.class);
+        NotificationPreferences preferences = decode("""
+                {"ContractRenewalNotice":true,"ContractExpiring":false,
+                 "ContractExpired":true,"ContractRenewed":true}
+                """, NotificationPreferences.class);
+        WebhookEndpoint endpoint = decode("""
+                {"resource":"webhook_endpoint","id":"w1","is_held":true,"held_since":1710000000}
+                """, WebhookEndpoint.class);
+        WebhookSubscription subscription = decode("""
+                {"is_held":false,"held_since":null}
+                """, WebhookSubscription.class);
+        WebhookDispatch dispatch = decode("""
+                {"id":"h1","webhook_id":"msg_1","kind":"manual","attempt":2,"will_retry":false}
+                """, WebhookDispatch.class);
+
+        assertThat(assignment.getDocumentId()).isEqualTo("d1");
+        assertThat(assignment.getSenderEmail()).isNull();
+        assertThat(assignment.getCreatedAt()).isEqualTo("2026-10-28T12:00:00Z");
+        assertThat(preferences.getContractRenewalNotice()).isTrue();
+        assertThat(preferences.getContractExpiring()).isFalse();
+        assertThat(preferences.getContractExpired()).isTrue();
+        assertThat(preferences.getContractRenewed()).isTrue();
+        assertThat(endpoint.getResource()).isEqualTo("webhook_endpoint");
+        assertThat(endpoint.getIsHeld()).isTrue();
+        assertThat(endpoint.getHeldSince()).isEqualTo(1_710_000_000L);
+        assertThat(subscription.getIsHeld()).isFalse();
+        assertThat(dispatch.getWebhookId()).isEqualTo("msg_1");
+        assertThat(dispatch.getKind()).isEqualTo("manual");
+        assertThat(dispatch.getAttempt()).isEqualTo(2);
+        assertThat(dispatch.getWillRetry()).isFalse();
     }
 }

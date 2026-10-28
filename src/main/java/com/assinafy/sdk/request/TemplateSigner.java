@@ -13,8 +13,9 @@ import java.util.List;
  * {@code notification_methods} array contains one channel matching Email/WhatsApp verification;
  * DigitalCertificate and IdDocumentFaceMatchBasic permit either. Null lets the API infer delivery
  * defaults; an empty array requests no notification. Signing steps are all-or-none and
- * contiguous from 1. Template requests temporarily reject {@code DigitalCertificate} because the
- * API derives the assignment method from the template's placed fields.
+ * contiguous from 1. Supply either an existing signer {@code id}, or {@code name} and
+ * {@code email} so the API can reuse or create the contact. {@code DigitalCertificate} is valid
+ * for virtual templates without placed signer fields; the API rejects it for collect templates.
  *
  * @see com.assinafy.sdk.resources.AssignmentResource#create(String, CreateAssignmentRequest)
  * @see com.assinafy.sdk.resources.DocumentResource#createFromTemplate(String, CreateDocumentFromTemplateRequest, String)
@@ -27,6 +28,15 @@ public class TemplateSigner {
 
     @JsonProperty("id")
     private String id;
+
+    @JsonProperty("name")
+    private String name;
+
+    @JsonProperty("email")
+    private String email;
+
+    @JsonProperty("whatsapp_phone_number")
+    private String whatsappPhoneNumber;
 
     @JsonProperty("verification_method")
     private String verificationMethod;
@@ -79,6 +89,50 @@ public class TemplateSigner {
      * @param id the ID
      */
     public void setId(String id) { this.id = id; }
+
+    /**
+     * Returns the full name used when an email contact must be created.
+     *
+     * @return the full name, or {@code null}
+     */
+    public String getName() { return name; }
+
+    /**
+     * Sets the full name used when an email contact must be created.
+     *
+     * @param name the full name
+     */
+    public void setName(String name) { this.name = name; }
+
+    /**
+     * Returns the email used to reuse or create a signer when no ID is supplied.
+     *
+     * @return the signer email, or {@code null}
+     */
+    public String getEmail() { return email; }
+
+    /**
+     * Sets the email used to reuse or create a signer when no ID is supplied.
+     *
+     * @param email the signer email
+     */
+    public void setEmail(String email) { this.email = email; }
+
+    /**
+     * Returns the WhatsApp number used only when a new email contact is created.
+     *
+     * @return the WhatsApp number, or {@code null}
+     */
+    public String getWhatsappPhoneNumber() { return whatsappPhoneNumber; }
+
+    /**
+     * Sets the WhatsApp number used only when a new email contact is created.
+     *
+     * @param whatsappPhoneNumber the WhatsApp number
+     */
+    public void setWhatsappPhoneNumber(String whatsappPhoneNumber) {
+        this.whatsappPhoneNumber = whatsappPhoneNumber;
+    }
 
     /**
      * Returns the verification method.
@@ -146,6 +200,30 @@ public class TemplateSigner {
          * @return this builder
          */
         public Builder id(String id) { ts.setId(id); return this; }
+
+        /**
+         * Sets the full name for an inline signer contact.
+         *
+         * @param name the full name
+         * @return this builder
+         */
+        public Builder name(String name) { ts.setName(name); return this; }
+
+        /**
+         * Sets the email for an inline signer contact.
+         *
+         * @param email the email address
+         * @return this builder
+         */
+        public Builder email(String email) { ts.setEmail(email); return this; }
+
+        /**
+         * Sets the WhatsApp number for an inline signer contact.
+         *
+         * @param phone the WhatsApp number
+         * @return this builder
+         */
+        public Builder whatsappPhoneNumber(String phone) { ts.setWhatsappPhoneNumber(phone); return this; }
 
         /**
          * Sets the verification method for the object being built.

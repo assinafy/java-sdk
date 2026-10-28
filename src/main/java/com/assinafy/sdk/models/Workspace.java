@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * A workspace account, as returned by the {@code /accounts} endpoints. The
@@ -38,6 +39,9 @@ public class Workspace {
 
     @JsonProperty("is_delete_allowed")
     private Boolean isDeleteAllowed;
+
+    @JsonProperty("limits")
+    private Map<String, Integer> limits;
 
     @JsonProperty("created_at")
     private String createdAt;
@@ -158,6 +162,20 @@ public class Workspace {
      * @param isDeleteAllowed the deletion-permission flag
      */
     public void setIsDeleteAllowed(Boolean isDeleteAllowed) { this.isDeleteAllowed = isDeleteAllowed; }
+
+    /**
+     * Returns plan limits keyed by resource, currently including {@code webhook_endpoints}.
+     *
+     * @return plan limits, or {@code null} when the response omits them
+     */
+    public Map<String, Integer> getLimits() { return limits; }
+
+    /**
+     * Sets plan limits.
+     *
+     * @param limits plan limits
+     */
+    public void setLimits(Map<String, Integer> limits) { this.limits = limits; }
 
     /**
      * Returns the creation timestamp.

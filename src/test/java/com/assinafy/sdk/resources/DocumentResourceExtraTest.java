@@ -405,22 +405,45 @@ class DocumentResourceExtraTest {
     }
 
     @Test
-    void templateCreationAndEstimateRejectDigitalCertificateBeforeSending() {
+    void templateCreationAndEstimateAllowDigitalCertificateForServerValidatedTemplates() {
         CreateDocumentFromTemplateRequest request = CreateDocumentFromTemplateRequest.builder()
                 .signers(List.of(TemplateSigner.builder().roleId("r1").id("s1")
                         .verificationMethod("DigitalCertificate").build()))
                 .build();
 
-        for (Runnable call : List.<Runnable>of(
-                () -> documents.createFromTemplate("tmpl", request),
-                () -> documents.estimateCostFromTemplate("tmpl", request))) {
-            assertThatExceptionOfType(ValidationException.class)
-                    .isThrownBy(call::run)
-                    .satisfies(error -> assertThat(error.getErrors())
-                            .containsEntry("code",
-                                    AssignmentResource.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD)
-                            .containsEntry("method", null));
-        }
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"}}")
+                .enqueue(200, "{\"status\":200,\"data\":{\"total_credits\":0.5}}");
+
+        documents.createFromTemplate("tmpl", request);
+        documents.estimateCostFromTemplate("tmpl", request);
+
+        assertThat(http.capturedAt(0).getJsonBody()).contains("DigitalCertificate", "\"id\":\"s1\"");
+        assertThat(http.capturedAt(1).getJsonBody()).contains("DigitalCertificate").doesNotContain("\"id\"");
+    }
+
+    @Test
+    void templateCreationAcceptsInlineSignerContact() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"}}");
+
+        documents.createFromTemplate("tmpl", CreateDocumentFromTemplateRequest.builder()
+                .signers(List.of(TemplateSigner.builder().roleId("r1")
+                        .name("Maria Silva").email("maria@example.invalid")
+                        .whatsappPhoneNumber("+5548999999999").build()))
+                .build());
+
+        assertThat(http.lastCaptured().getJsonBody())
+                .contains("\"name\":\"Maria Silva\"")
+                .contains("\"email\":\"maria@example.invalid\"")
+                .contains("\"whatsapp_phone_number\":\"+5548999999999\"")
+                .doesNotContain("\"id\"");
+    }
+
+    @Test
+    void templateCreationRejectsMissingSignerSelectionBeforeSending() {
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").build())).build()))
+                .isInstanceOf(ValidationException.class);
         assertThat(http.capturedCount()).isZero();
     }
 }

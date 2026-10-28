@@ -3,9 +3,9 @@
 *[Leia em português](README.md) · English*
 
 A Java client for the [Assinafy API](https://api.assinafy.com.br/v1/docs), the Brazilian digital
-signature platform. It covers all 112 documented operations — document upload and certification,
-signer management, signature requests, templates, field definitions, tags, workspaces, signed
-webhooks with multiple endpoints, two-factor login, OAuth 2.1, and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
+signature platform. It covers all 118 documented operations — document upload and certification,
+signer management, signature requests, templates, field definitions, tags, contracts, workspaces,
+signed webhooks with multiple endpoints, two-factor login, OAuth 2.1, and the signer-facing self-service flows — behind typed models, typed exceptions, and a single
 thread-safe client.
 
 This README is written to be read top to bottom: install the SDK, understand how it is organized,
@@ -36,6 +36,7 @@ the [complete Java API reference](docs/API_REFERENCE.md).
 - [Signer self-service](#signer-self-service)
 - [Templates and field definitions](#templates-and-field-definitions)
 - [Tags](#tags)
+- [Contracts](#contracts)
 - [Workspaces and branding](#workspaces-and-branding)
 - [Users, sessions, and API keys](#users-sessions-and-api-keys)
 - [Webhooks](#webhooks)
@@ -63,14 +64,14 @@ The SDK is published to Maven Central, with no repository configuration or authe
 <dependency>
     <groupId>com.assinafy</groupId>
     <artifactId>assinafy-sdk</artifactId>
-    <version>2.1.0</version>
+    <version>2.2.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("com.assinafy:assinafy-sdk:2.1.0")
+implementation("com.assinafy:assinafy-sdk:2.2.0")
 ```
 
 The same versions are also published to GitHub Packages (`https://maven.pkg.github.com/assinafy/java-sdk`),
@@ -367,7 +368,7 @@ Assignment extended = client.assignments().resetExpiration(
     documentId, assignmentId,
     Instant.now().plus(60, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString());
 
-CostEstimate resendCost = client.assignments().estimateResendCostTyped(documentId, assignmentId, signerId);
+ResendCostEstimate resendCost = client.assignments().estimateResendCostTyped(documentId, assignmentId, signerId);
 ResendNotificationResponse resent = client.assignments().resendNotification(documentId, assignmentId, signerId);
 
 List<WhatsappNotification> delivery =
@@ -804,7 +805,7 @@ Two operations need no credential at all, which is what makes an embedded signin
 ```java
 Document basic = client.publicDocuments().getBasicInfo(documentId);
 // sends { "channel": "email", "recipient": ... } to a signer who has not signed yet
-TokenDelivery sent = client.publicDocuments().sendTokenTyped(documentId, "signer@example.com");
+TokenDelivery sent = client.publicDocuments().sendTokenTyped(documentId, "signer@example.invalid");
 ```
 
 ## Templates and field definitions
@@ -818,7 +819,11 @@ Template template = client.templates().get(templateId);   // deployment extensio
 
 CreateDocumentFromTemplateRequest request = CreateDocumentFromTemplateRequest.builder()
     .name("contract.pdf")
-    .signers(List.of(TemplateSigner.builder().roleId("role-id").id(signerId).build()))
+    .signers(List.of(TemplateSigner.builder()
+        .roleId("role-id")
+        .email("signer@example.invalid")
+        .name("Maria Silva")
+        .build()))
     .message("Please sign")
     .build();
 
@@ -826,14 +831,13 @@ CostEstimate cost = client.documents().estimateCostFromTemplateTyped(templateId,
 Document fromTemplate = client.documents().createFromTemplate(templateId, request);
 ```
 
-Template signers follow the same delivery and ordering rules as assignment signers, with one extra
-rule: each signer may use zero or one notification method; a selected channel must match
-Email/WhatsApp verification. DigitalCertificate and IdDocumentFaceMatchBasic permit either channel.
-
-The API derives `virtual` versus `collect` from the template's placed fields. Until the API enforces
-the certificate rule after that derivation, the SDK rejects `DigitalCertificate` in both template
-creation and template cost estimation with the same stable code; use a direct virtual assignment
-instead.
+Template signers follow the same delivery and ordering rules as assignment signers. Select an
+existing signer with `id`, or supply `email` and `name` so the API can reuse that account's contact
+or create it; `whatsappPhoneNumber` is used only for a newly created contact. Each signer may use
+zero or one notification method; a selected channel must match Email/WhatsApp verification.
+DigitalCertificate and IdDocumentFaceMatchBasic permit either channel. The API derives `virtual`
+versus `collect` from placed fields: DigitalCertificate works for a virtual template and returns
+`400` when signer fields make the template `collect`.
 
 Field definitions describe the typed inputs a signer fills in during a `collect` assignment:
 
@@ -883,6 +887,41 @@ client.documents().appendTags(documentId, List.of("2026 Contracts"));
 List<Tag> docTags = client.documents().listTags(documentId);
 client.documents().detachTag(documentId, attached.getFirst().getId());
 ```
+
+## Contracts
+
+`contracts()` tracks contract terms and lifecycle on documents. The feature depends on the
+workspace plan; reads remain available if the plan later stops including contract tracking. Create
+or partially update only the supplied terms:
+
+```java
+ContractRecord saved = client.contracts().set(documentId, SetContractRequest.builder()
+    .status("active")
+    .counterpartyName("Example Ltda.")
+    .value(new BigDecimal("120000.50"))
+    .currency("BRL")
+    .startDate("2026-11-01")
+    .endDate("2027-10-31")
+    .autoRenew(true)
+    .renewalTermMonths(12)
+    .noticePeriodDays(30)
+    .externalReferences(List.of(new ContractExternalReference("crm", "98765")))
+    .build());
+
+DocumentContract contract = (DocumentContract) client.contracts().get(documentId);
+PaginatedResult<DocumentContract> endingSoon = client.contracts().list(ListParams.builder()
+    .status("active")
+    .sort("end_date")
+    .extra("ending_within_days", 30)
+    .build());
+```
+
+To link an amendment, set `parentDocumentId(...)` and `relationType("amendment")`. That call returns
+a `DocumentContractAmendment`; its delta applies to the root only after the amendment document is
+`certificated`. `listRelated(...)` returns the complete family. `renew(...)` starts the next term,
+and `terminate(...)` ends the contract. Include the `updated_at` value you read in a set, renewal,
+or termination request to receive `409` instead of overwriting a concurrent change. Renewal-notice,
+expiring, expired, and renewed email switches are exposed by `NotificationPreferences`.
 
 ## Workspaces and branding
 
@@ -945,13 +984,15 @@ current device, or a recovery code). Regenerating and removing always require th
 code; a recovery code used this way is consumed. Removing the last method discards the recovery codes.
 
 Notification preferences use the exact case-sensitive codes the API publishes. Updates merge, so
-omitted switches keep their current values, and the response always returns all nine.
+omitted switches keep their current values, and the response always returns every document and
+contract switch.
 
 ```java
 NotificationPreferences preferences = client.users().getNotificationPreferences();
 NotificationPreferences updated = client.users().updateNotificationPreferences(Map.of(
     "DocumentCompleted", true,
-    "SignerWhatsappFailed", false
+    "SignerWhatsappFailed", false,
+    "ContractRenewalNotice", true
 ));
 ```
 
@@ -1014,6 +1055,11 @@ PaginatedResult<WebhookDispatch> dispatches = client.webhooks().listDispatches(
 String endpointId = dispatches.getData().getFirst().getEndpointId();   // null once deleted
 client.webhooks().retryDispatch(dispatchId);
 ```
+
+After ten consecutive failures the API reports `isHeld=true` and `heldSince` on the endpoint and
+subscription while it probes for recovery. Dispatch history exposes the stable `webhookId`,
+`attempt`, `kind` (`scheduled`, `probe`, or `manual`) and `willRetry` for idempotent processing and
+operational visibility.
 
 ### Verifying signatures
 
@@ -1198,6 +1244,8 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
 {
   "resource": "assignment",
   "id": "615606ef81d199996981dbce",
+  "document_id": "doc_123",
+  "created_at": "2026-06-03T03:54:16Z",
   "sender_email": "sender@example.invalid",
   "method": "virtual",
   "expires_at": null,
@@ -1274,6 +1322,40 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
   "has_sufficient_resources": true, "blocking_reason": null, "message": null }
 ```
 
+The resend estimate has its own `ResendCostEstimate` shape because it consumes credits but no
+document:
+
+```json
+{ "total": 0.45,
+  "breakdown": [{ "code": "NotificationWhatsappResend", "name": "Whatsapp Notification Resend", "cost": 0.45 }],
+  "credit_balance": 10, "has_sufficient_credits": true }
+```
+
+**Contract terms** — `contracts().set/get/listRelated/renew/terminate(...)` return either
+`DocumentContract` or `DocumentContractAmendment` as documented by each method:
+
+```jsonc
+// root contract
+{ "resource": "document_contract", "document_id": "doc_123", "status": "active",
+  "counterparty_name": "Example Ltda.", "counterparty_taxpayer_id": null,
+  "value": 120000.50, "currency": "BRL", "start_date": "2026-11-01",
+  "end_date": "2027-10-31", "auto_renew": true, "renewal_term_months": 12,
+  "notice_period_days": 30, "term": 1, "owner_id": null,
+  "metadata": { "crm_stage": "won" },
+  "external_references": [{ "system": "crm", "id": "98765" }],
+  "amendments": [], "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2026-10-23T12:00:00Z" }
+// linked instrument
+{ "resource": "document_contract_amendment", "document_id": "doc_amendment",
+  "document_name": "Amendment.pdf", "parent_document_id": "doc_123",
+  "relation_type": "amendment", "number": null, "status": "pending",
+  "document_status": "pending_signature", "apply_error": null, "currency": "BRL",
+  "terms": { "value": 130000 },
+  "changes": { "value": { "from": 120000.50, "to": 130000 } },
+  "applied_at": null, "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2026-10-23T12:00:00Z" }
+```
+
 **Field definition** — `fields().create/get/update(...)` → `FieldDefinition`:
 
 ```json
@@ -1297,6 +1379,7 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
 
 ```json
 { "events": ["document_ready","signer_signed_document"], "is_active": true,
+  "is_held": false, "held_since": null,
   "url": "https://example.invalid/webhook", "email": "admin@example.invalid",
   "updated_at": "2026-08-27T02:36:02Z" }
 ```
@@ -1307,10 +1390,12 @@ artifact and a populated `pages` array of `{ id, number, height, width, download
 ```jsonc
 // request: only the switches you want to change
 { "DocumentCompleted": true, "SignerWhatsappFailed": false }
-// response data: always all nine
+// response data: always every switch
 { "DocumentCompleted": true, "SignerDeclined": true, "DocumentCancelled": true,
   "DocumentAboutToExpire": true, "DocumentExpired": true, "DocumentExpirationReset": true,
-  "DocumentProcessingFailed": true, "TemplateProcessingFailed": true, "SignerWhatsappFailed": false }
+  "DocumentProcessingFailed": true, "TemplateProcessingFailed": true, "SignerWhatsappFailed": false,
+  "ContractRenewalNotice": true, "ContractExpiring": true,
+  "ContractExpired": true, "ContractRenewed": true }
 ```
 
 **OAuth tokens** — `oauth().exchangeCode(...)` / `refreshToken(...)` → `OAuthTokens`. Flat, not

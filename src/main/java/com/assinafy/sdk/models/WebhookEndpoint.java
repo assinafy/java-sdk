@@ -16,6 +16,9 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WebhookEndpoint {
 
+    @JsonProperty("resource")
+    private String resource;
+
     @JsonProperty("id")
     private String id;
 
@@ -33,6 +36,12 @@ public class WebhookEndpoint {
 
     @JsonProperty("is_active")
     private Boolean isActive;
+
+    @JsonProperty("is_held")
+    private Boolean isHeld;
+
+    @JsonProperty("held_since")
+    private Long heldSince;
 
     @JsonProperty("signing_enabled")
     private Boolean signingEnabled;
@@ -62,6 +71,20 @@ public class WebhookEndpoint {
      * Creates an empty instance.
      */
     public WebhookEndpoint() {}
+
+    /**
+     * Returns the resource type.
+     *
+     * @return the resource type
+     */
+    public String getResource() { return resource; }
+
+    /**
+     * Sets the resource type.
+     *
+     * @param resource the resource type
+     */
+    public void setResource(String resource) { this.resource = resource; }
 
     /**
      * Returns the endpoint ID.
@@ -146,6 +169,34 @@ public class WebhookEndpoint {
      * @param isActive whether events are delivered to this endpoint
      */
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+    /**
+     * Returns whether delivery is held after repeated failures.
+     *
+     * @return the hold flag
+     */
+    public Boolean getIsHeld() { return isHeld; }
+
+    /**
+     * Sets the hold flag.
+     *
+     * @param isHeld whether delivery is held
+     */
+    public void setIsHeld(Boolean isHeld) { this.isHeld = isHeld; }
+
+    /**
+     * Returns the Unix timestamp at which delivery was held.
+     *
+     * @return the hold timestamp, or {@code null}
+     */
+    public Long getHeldSince() { return heldSince; }
+
+    /**
+     * Sets the Unix hold timestamp.
+     *
+     * @param heldSince hold timestamp, or {@code null}
+     */
+    public void setHeldSince(Long heldSince) { this.heldSince = heldSince; }
 
     /**
      * Returns whether deliveries are signed.

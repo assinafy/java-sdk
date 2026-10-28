@@ -11,7 +11,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *
  * <pre>{
  *   "full_name": "John Dove",
- *   "email": "signer@example.com",
+ *   "email": "signer@example.invalid",
  *   "whatsapp_phone_number": "+5548999990000",
  *   "government_id": "390.533.447-05"
  * }</pre>

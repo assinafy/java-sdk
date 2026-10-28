@@ -65,6 +65,15 @@ public class Document {
     @JsonProperty("is_closed")
     private Boolean isClosed;
 
+    @JsonProperty("has_contract")
+    private Boolean hasContract;
+
+    @JsonProperty("verification_code")
+    private String verificationCode;
+
+    @JsonProperty("verification_url")
+    private String verificationUrl;
+
     @JsonProperty("decline_reason")
     private String declineReason;
 
@@ -306,6 +315,48 @@ public class Document {
      * @param isClosed the closed flag
      */
     public void setIsClosed(Boolean isClosed) { this.isClosed = isClosed; }
+
+    /**
+     * Returns whether the document has tracked contract terms or an amendment link.
+     *
+     * @return the contract-tracking flag, or {@code null} when omitted
+     */
+    public Boolean getHasContract() { return hasContract; }
+
+    /**
+     * Sets the contract-tracking flag.
+     *
+     * @param hasContract whether contract data exists
+     */
+    public void setHasContract(Boolean hasContract) { this.hasContract = hasContract; }
+
+    /**
+     * Returns the public code printed on the certificate page.
+     *
+     * @return the verification code, or {@code null}
+     */
+    public String getVerificationCode() { return verificationCode; }
+
+    /**
+     * Sets the response-specific verification code.
+     *
+     * @param verificationCode public verification code
+     */
+    public void setVerificationCode(String verificationCode) { this.verificationCode = verificationCode; }
+
+    /**
+     * Returns the public document-verification page URL.
+     *
+     * @return the verification URL, or {@code null}
+     */
+    public String getVerificationUrl() { return verificationUrl; }
+
+    /**
+     * Sets the response-specific verification URL.
+     *
+     * @param verificationUrl public verification URL
+     */
+    public void setVerificationUrl(String verificationUrl) { this.verificationUrl = verificationUrl; }
 
     /**
      * Returns the decline reason.

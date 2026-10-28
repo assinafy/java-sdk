@@ -4,11 +4,14 @@ import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.helper.MockApiHttpClient;
 import com.assinafy.sdk.models.Document;
 import com.assinafy.sdk.models.DocumentActivity;
+import com.assinafy.sdk.models.PaginatedResult;
 import com.assinafy.sdk.models.Tag;
+import com.assinafy.sdk.request.ListParams;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -125,6 +128,32 @@ class DocumentResourceTest {
         assertThat(activities.get(0).getOrigin()).isNotNull();
         assertThat(activities.get(0).getOrigin().getIp()).isEqualTo("1.2.3.4");
         assertThat(activities.get(0).getOrigin().getUserAgent()).isEqualTo("sdk/1.0");
+    }
+
+    @Test
+    void activitiesSupportSortingAndPagination() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}", Map.of(
+                "x-pagination-current-page", "2",
+                "x-pagination-per-page", "10",
+                "x-pagination-total-count", "11",
+                "x-pagination-page-count", "2"));
+
+        PaginatedResult<DocumentActivity> activities = resource.activities("doc-1",
+                ListParams.builder().sort("-id").page(2).perPage(10).build());
+
+        assertThat(mock.lastCaptured().getQueryParams())
+                .containsEntry("sort", "-id")
+                .containsEntry("page", 2)
+                .containsEntry("per-page", 10);
+        assertThat(activities.getMeta().getTotal()).isEqualTo(11);
+    }
+
+    @Test
+    void activitiesRejectUnsupportedSortBeforeSending() {
+        assertThatThrownBy(() -> resource.activities("doc-1",
+                ListParams.builder().sort("created_at").build()))
+                .isInstanceOf(ValidationException.class);
+        assertThat(mock.capturedCount()).isZero();
     }
 
     @Test

@@ -28,6 +28,18 @@ public class WebhookDispatch {
     @JsonProperty("endpoint_id")
     private String endpointId;
 
+    @JsonProperty("webhook_id")
+    private String webhookId;
+
+    @JsonProperty("kind")
+    private String kind;
+
+    @JsonProperty("attempt")
+    private Integer attempt;
+
+    @JsonProperty("will_retry")
+    private Boolean willRetry;
+
     @JsonProperty("payload")
     private Object payload;
 
@@ -67,6 +79,62 @@ public class WebhookDispatch {
      * @param endpointId the endpoint ID
      */
     public void setEndpointId(String endpointId) { this.endpointId = endpointId; }
+
+    /**
+     * Returns the Standard Webhooks delivery ID used for receiver deduplication.
+     *
+     * @return the webhook ID, or {@code null}
+     */
+    public String getWebhookId() { return webhookId; }
+
+    /**
+     * Sets the Standard Webhooks delivery ID.
+     *
+     * @param webhookId the webhook ID
+     */
+    public void setWebhookId(String webhookId) { this.webhookId = webhookId; }
+
+    /**
+     * Returns {@code scheduled}, {@code probe}, or {@code manual}.
+     *
+     * @return the dispatch kind
+     */
+    public String getKind() { return kind; }
+
+    /**
+     * Sets the dispatch kind.
+     *
+     * @param kind dispatch kind
+     */
+    public void setKind(String kind) { this.kind = kind; }
+
+    /**
+     * Returns the delivery attempt number.
+     *
+     * @return the attempt number, or {@code null}
+     */
+    public Integer getAttempt() { return attempt; }
+
+    /**
+     * Sets the delivery attempt number.
+     *
+     * @param attempt attempt number, or {@code null}
+     */
+    public void setAttempt(Integer attempt) { this.attempt = attempt; }
+
+    /**
+     * Returns whether the server has another retry scheduled.
+     *
+     * @return the retry flag
+     */
+    public Boolean getWillRetry() { return willRetry; }
+
+    /**
+     * Sets whether another retry is scheduled.
+     *
+     * @param willRetry retry flag
+     */
+    public void setWillRetry(Boolean willRetry) { this.willRetry = willRetry; }
 
     /**
      * Returns the resource type.

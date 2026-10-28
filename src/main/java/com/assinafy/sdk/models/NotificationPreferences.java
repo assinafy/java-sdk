@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Owner-facing document email preferences returned by
+ * Owner-facing document and contract email preferences returned by
  * {@code GET /users/self/notification-preferences}. Every property is present in a successful API
  * response; {@code true} means that email is enabled.
  */
@@ -29,6 +29,14 @@ public class NotificationPreferences {
     private Boolean templateProcessingFailed;
     @JsonProperty("SignerWhatsappFailed")
     private Boolean signerWhatsappFailed;
+    @JsonProperty("ContractRenewalNotice")
+    private Boolean contractRenewalNotice;
+    @JsonProperty("ContractExpiring")
+    private Boolean contractExpiring;
+    @JsonProperty("ContractExpired")
+    private Boolean contractExpired;
+    @JsonProperty("ContractRenewed")
+    private Boolean contractRenewed;
 
     /** Creates an empty notification-preferences model. */
     public NotificationPreferences() {}
@@ -158,4 +166,60 @@ public class NotificationPreferences {
      * @param value the signer WhatsApp failure preference
      */
     public void setSignerWhatsappFailed(Boolean value) { signerWhatsappFailed = value; }
+
+    /**
+     * Whether to email when a contract enters its renewal-notice period.
+     *
+     * @return the renewal-notice preference
+     */
+    public Boolean getContractRenewalNotice() { return contractRenewalNotice; }
+
+    /**
+     * Sets the contract renewal-notice preference.
+     *
+     * @param value the renewal-notice preference
+     */
+    public void setContractRenewalNotice(Boolean value) { contractRenewalNotice = value; }
+
+    /**
+     * Whether to email when a contract approaches its end date.
+     *
+     * @return the contract-expiring preference
+     */
+    public Boolean getContractExpiring() { return contractExpiring; }
+
+    /**
+     * Sets the contract-expiring preference.
+     *
+     * @param value the contract-expiring preference
+     */
+    public void setContractExpiring(Boolean value) { contractExpiring = value; }
+
+    /**
+     * Whether to email when a contract expires.
+     *
+     * @return the contract-expired preference
+     */
+    public Boolean getContractExpired() { return contractExpired; }
+
+    /**
+     * Sets the contract-expired preference.
+     *
+     * @param value the contract-expired preference
+     */
+    public void setContractExpired(Boolean value) { contractExpired = value; }
+
+    /**
+     * Whether to email after a contract renews.
+     *
+     * @return the contract-renewed preference
+     */
+    public Boolean getContractRenewed() { return contractRenewed; }
+
+    /**
+     * Sets the contract-renewed preference.
+     *
+     * @param value the contract-renewed preference
+     */
+    public void setContractRenewed(Boolean value) { contractRenewed = value; }
 }
