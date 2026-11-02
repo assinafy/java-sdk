@@ -62,6 +62,22 @@ class SignerResourceTest {
     }
 
     @Test
+    void rejectsInvalidWhatsappNumbersBeforeCreateOrUpdate() {
+        assertThatThrownBy(() -> resource.create(CreateSignerRequest.builder()
+                .fullName("Test")
+                .whatsappPhoneNumber("55 48 99999-0000")
+                .build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("E.164");
+        assertThatThrownBy(() -> resource.update("123", UpdateSignerRequest.builder()
+                .whatsappPhoneNumber("+0123")
+                .build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("E.164");
+        assertThat(mock.capturedCount()).isZero();
+    }
+
+    @Test
     void rejectsBlankEmailInsteadOfSerializingIt() {
         assertThatThrownBy(() -> resource.create(CreateSignerRequest.builder()
                 .fullName("Test")

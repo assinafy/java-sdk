@@ -585,7 +585,8 @@ Documented statuses: `200` A page of signers; `401` Missing or invalid credentia
 - **HTTP:** `POST /v1/accounts/{accountId}/signers`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Changes signing state: create signer.
-- **Contract notes:** Create a signer in the workspace.
+- **Contract notes:** Create a signer in the workspace. The Java SDK validates email syntax and an
+  optional WhatsApp number's E.164 form before sending.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -668,7 +669,13 @@ Documented statuses: `200` The signer; `401` Missing or invalid credentials; `40
 - **HTTP:** `PUT /v1/accounts/{accountId}/signers/{signerId}`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Changes signing state: update signer.
-- **Contract notes:** Update a signer's information. **Verification integrity:** `email` / `whatsapp_phone_number` cannot be changed while the signer has verified that channel on an in-flight (not yet certificated) document — the response is `400` naming the offending document(s). Already-certificated documents do not block updates. Changing a channel that has *unverified* in-flight requests rotates their access/verification codes (invalidating previously sent links/OTPs); use the resend endpoint to redeliver. `full_name` can always be updated.
+- **Contract notes:** Update a signer's information. The Java SDK validates nonblank names, email
+  syntax and WhatsApp E.164 form before sending. **Verification integrity:** `email` /
+  `whatsapp_phone_number` cannot be changed while the signer has verified that channel on an
+  in-flight (not yet certificated) document — the response is `400` naming the offending
+  document(s). Already-certificated documents do not block updates. Changing a channel that has
+  *unverified* in-flight requests rotates their access/verification codes (invalidating previously
+  sent links/OTPs); use the resend endpoint to redeliver. `full_name` can always be updated.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -909,7 +916,17 @@ Documented statuses: `200` Matching documents; `401` Missing or invalid credenti
 - **HTTP:** `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create document from template.
-- **Contract notes:** Generate a new document from a template, creating its assignment in the same call. Provide one entry per template role. Select an existing account signer with `id`, or omit it and send `email` plus `name`; the API reuses the matching account contact or creates it, applying `whatsapp_phone_number` only to a new contact. The Java SDK requires a nonblank role and one of those signer selections, accepts only the documented verification and notification methods, permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to match verification, and validates signing steps as an all-or-none contiguous sequence starting at 1. The API derives `virtual` versus `collect` from placed fields: `DigitalCertificate` is accepted for virtual templates and returns `400` when signer fields make the template collect. `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in `government_id`; it accepts either notification channel and uses explicit biometric consent.
+- **Contract notes:** Generate a new document from a template, creating its assignment in the same
+  call. Provide one entry per template role. Select an existing account signer with `id`, or omit it
+  and send `email`; the API reuses the matching account contact or creates it, using optional `name`
+  and E.164 `whatsapp_phone_number` only for a new contact. The Java SDK requires a nonblank role and
+  one of those signer selections, accepts only the documented verification and notification methods,
+  permits zero or one notification method per signer, requires a selected Email/WhatsApp channel to
+  match verification, and validates signing steps as an all-or-none contiguous sequence starting at
+  1. The API derives `virtual` versus `collect` from placed fields: `DigitalCertificate` is accepted
+  for virtual templates and returns `400` when signer fields make the template collect.
+  `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in
+  `government_id`; it accepts either notification channel and uses explicit biometric consent.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -922,11 +939,11 @@ Request body: **required**.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `signers` | array<object{role_id!: `string`; id: `string`; email: `string(email)`; name: `string`; whatsapp_phone_number: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}> | yes | no | One entry per template role. Send `id`, or `email` plus `name`; `id` wins when both are sent. |
+| `signers` | array<object{role_id!: `string`; id: `string`; email: `string(email)`; name: `string`; whatsapp_phone_number: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string`>; step: `integer`}> | yes | no | One entry per template role. Send `id`, or `email` with optional creation fields `name` and E.164 `whatsapp_phone_number`; `id` wins when both are sent. |
 | `editor_fields` | array<object{field_id!: `string`; value!: `string`}> | no | no | Editor field values to bake into the generated document. |
 | `name` | `string` | no | no | Title for the document. Defaults to the template name. |
 | `message` | `string` | no | no | Optional message sent to signers. |
-| `expires_at` | `string(date-time)` | no | no | Assignment expiration date (ISO 8601). No expiration by default. |
+| `expires_at` | `string(date-time)` | no | no | ISO 8601 date or date-time at least one hour ahead. A date ends at 23:59 UTC; a date-time without an offset is UTC; an explicit offset is honored. No expiration by default. |
 | `tags` | array<`string`> | no | no | Tag names to attach to the new document. Names that don't exist are auto-created. The template's default-document-tags are always applied; values here are merged on top (duplicates removed). |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [Document](#schema-document)}.
@@ -1382,7 +1399,24 @@ Documented statuses: `200` A page of assignments; `401` Missing or invalid crede
 - **HTTP:** `POST /v1/documents/{documentId}/assignments`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Creates the assignment and dispatches configured signature requests.
-- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to `pending_signature` automatically once metadata processing completes. For **collect**, the document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires signer IDs, permits zero or one notification channel matching Email/WhatsApp verification (DigitalCertificate and IdDocumentFaceMatchBasic allow either), validates an optional ISO 8601 expiration with an offset at least one hour ahead, and requires nonempty `entries` for `collect`. `step` controls signing order: signers sharing a step sign in parallel, and the next step is notified only after the previous step completes. If supplied, every signer must supply it and values must be contiguous starting at 1. A `DigitalCertificate` signer requires `method: virtual` and must be alone in its step; certificate completion completes its virtual item, while the ordinary signing endpoint refuses certificate signers and cannot submit placed fields. A certificate/`collect` request fails locally with the stable code documented under [Conventions](#conventions). `IdDocumentFaceMatchBasic` requires the ID Document + Face Match feature and a valid CPF in `government_id`; it accepts either notification channel and uses explicit biometric consent.
+- **Contract notes:** Request signatures on a document. Use `method: virtual` to sign without input
+  fields, or `method: collect` to place input fields on specific pages. For **virtual**, the document
+  may be in `uploaded`, `metadata_processing` or `metadata_ready`; it is promoted to
+  `pending_signature` automatically once metadata processing completes. For **collect**, the
+  document must be in `metadata_ready` (fields reference specific pages). The Java SDK requires
+  signer IDs, permits zero or one notification channel matching Email/WhatsApp verification
+  (DigitalCertificate and IdDocumentFaceMatchBasic allow either), validates an optional ISO 8601
+  date or date-time at least one hour ahead, and requires nonempty `entries` for `collect`. Date-only
+  values end at 23:59 UTC, date-times without offsets are UTC, and explicit offsets are honored.
+  `step` controls signing order: signers sharing a step sign in parallel, and the next step is
+  notified only after the previous step completes. If supplied, every signer must supply it and
+  values must be contiguous starting at 1. A `DigitalCertificate` signer requires `method: virtual`
+  and must be alone in its step; certificate completion completes its virtual item, while the
+  ordinary signing endpoint refuses certificate signers and cannot submit placed fields. A
+  certificate/`collect` request fails locally with the stable code documented under
+  [Conventions](#conventions). `IdDocumentFaceMatchBasic` requires the ID Document + Face Match
+  feature and a valid CPF in `government_id`; it accepts either notification channel and uses
+  explicit biometric consent.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1398,7 +1432,7 @@ Request body: **required**.
 | `signers` | array<object{id!: `string`; verification_method: `string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]`; notification_methods: array<`string enum[Email, Whatsapp]`>; step: `integer`}> | yes | no |  |
 | `entries` | array<object{page_id: `string`; fields: array<object{signer_id: `string`; field_id: `string`; display_settings: [DisplaySettings](#schema-displaysettings)}>}> | no | no | Required for `collect`: field placements per page. |
 | `message` | `string` | no | no | Text included in the invitation email. |
-| `expires_at` | `string(date-time)` | no | no | ISO 8601; default is no expiration. |
+| `expires_at` | `string(date-time)` | no | no | ISO 8601 date or date-time at least one hour ahead. A date ends at 23:59 UTC; a date-time without an offset is UTC; an explicit offset is honored. |
 | `copy_receivers` | array<`string`> | no | no | Signer IDs that only receive a copy. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [Assignment](#schema-assignment)}.
@@ -1417,7 +1451,10 @@ Documented statuses: `200` The created assignment; `400` One or more fields fail
 - **HTTP:** `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Changes signing state: reset assignment expiration.
-- **Contract notes:** Set a new expiration date for an assignment, or remove its expiration by sending `expires_at: null`. Not allowed once the document is closed. `resetExpiration(..., null)` sends `{"expires_at": null}`.
+- **Contract notes:** Set a new expiration date for an assignment, or remove its expiration by
+  sending `expires_at: null`. Dates end at 23:59 UTC; date-times without offsets are UTC; explicit
+  offsets are honored. Not allowed once the document is closed. `resetExpiration(..., null)` sends
+  `{"expires_at": null}`.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -1430,7 +1467,7 @@ Request body: **required**.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `expires_at` | `string(date-time)`? | yes | yes | New expiration date (ISO 8601), at least one hour in the future. `null` removes the expiration; the key itself is required. |
+| `expires_at` | `string(date-time)`? | yes | yes | New ISO 8601 date or date-time, at least one hour ahead. A date ends at 23:59 UTC; a date-time without an offset is UTC. `null` removes the expiration; the key itself is required. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [Assignment](#schema-assignment)}.
 
@@ -2708,15 +2745,21 @@ Documented statuses: `200` Event types; `401` Missing or invalid credentials; `5
 
 ### 98. List webhook endpoints
 
-- **Java:** `client.webhooks()` — `WebhookResource: public List<WebhookEndpoint> listEndpoints()`; `client.webhooks()` — `WebhookResource: public List<WebhookEndpoint> listEndpoints(String accountId)`
+- **Java:** `client.webhooks()` — `WebhookResource: public List<WebhookEndpoint> listEndpoints()`;
+  `public List<WebhookEndpoint> listEndpoints(String accountId)`; exact-URL filter:
+  `public List<WebhookEndpoint> listEndpointsByUrl(String url)`;
+  `public List<WebhookEndpoint> listEndpointsByUrl(String url, String accountId)`
 - **HTTP:** `GET /v1/accounts/{accountId}/webhooks/endpoints`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** None; read-only.
-- **Contract notes:** List the account's webhook endpoints, oldest first. Requires the `account:read` OAuth scope.
+- **Contract notes:** List the account's webhook endpoints, oldest first. The URL overloads send the
+  optional exact-match `url` query filter and accept an HTTP URL already stored before HTTPS became
+  mandatory. Requires the `account:read` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
 | `accountId` | path | `string` | yes | no | Workspace account ID. |
+| `url` | query | `string(uri)` | no | no | Only the endpoint registered with exactly this URL. |
 
 Request body: none.
 
@@ -2736,7 +2779,13 @@ Documented statuses: `200` The endpoints; `401` Missing or invalid credentials; 
 - **HTTP:** `POST /v1/accounts/{accountId}/webhooks/endpoints`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: create webhook endpoint.
-- **Contract notes:** Register a URL to receive the account's webhook events. An account can have 1 endpoint, or up to 3 on paid plans; creating one past the limit returns `403`. Each endpoint of a workspace must have a different `url` (`400` otherwise). When `signing_enabled` is `true`, a signing secret is returned once as `secret` (`WebhookEndpoint.getSecret()`). Store it immediately when returned; sandbox API-key creates may omit it, in which case use `getEndpointSecret`. List/get/update omit it. OAuth applications cannot read or rotate it later; recreate the endpoint if it is lost. Requires the `webhooks:write` OAuth scope.
+- **Contract notes:** Register a URL to receive the account's webhook events. An account can have 1
+  endpoint, or up to 3 on paid plans; creating one past the limit returns `403`. Each endpoint of a
+  workspace must have a different public HTTPS `url` (`400` otherwise). Deliveries do not follow
+  redirects. When `signing_enabled` is `true`, a signing secret is returned once as `secret`
+  (`WebhookEndpoint.getSecret()`). Store it immediately when returned; sandbox API-key creates may
+  omit it, in which case an API-key caller can use `getEndpointSecret`. OAuth applications cannot
+  read a secret but can rotate one with `webhooks:write`. Requires the `webhooks:write` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2746,7 +2795,7 @@ Request body `application/json` (required):
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `url` | `string(uri)` | yes | no | URL that receives the events (http or https). |
+| `url` | `string(uri)` | yes | no | Public HTTPS URL that receives events; redirects are not followed. |
 | `email` | `string(email)` | yes | no | Contact email for delivery-failure notices. |
 | `events` | array<`string`> | yes | no | Event types to deliver (see `GET /v1/webhooks/event-types`). |
 | `name` | `string` | no | no | Label to tell endpoints apart. |
@@ -2794,7 +2843,11 @@ Documented statuses: `200` The endpoint; `404` The requested resource does not e
 - **HTTP:** `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
 - **Auth:** Bearer JWT or `X-Api-Key`
 - **Side effects:** Mutates server state: update webhook endpoint.
-- **Contract notes:** Change a webhook endpoint. Only the fields sent are updated; `url` cannot be one another endpoint of the workspace already uses (`400`). Setting `signing_enabled` to `true` generates a secret if the endpoint has none and keeps the current one otherwise; setting it to `false` discards the secret. Requires the `webhooks:write` OAuth scope.
+- **Contract notes:** Change a webhook endpoint. Only the fields sent are updated; a changed `url`
+  must be public HTTPS and cannot be one another endpoint of the workspace already uses (`400`).
+  Setting `signing_enabled` to `true` generates a secret if the endpoint has none and keeps the
+  current one otherwise; setting it to `false` discards the secret. When the request turns signing
+  on, the response returns the new `secret` once. Requires the `webhooks:write` OAuth scope.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -2805,7 +2858,7 @@ Request body `application/json` (required):
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `url` | `string(uri)` | no | no |  |
+| `url` | `string(uri)` | no | no | New public HTTPS delivery URL. |
 | `email` | `string(email)` | no | no |  |
 | `events` | array<`string`> | no | no |  |
 | `name` | `string` | no | no |  |
@@ -2818,7 +2871,7 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{data: [W
 |---|---|---:|---:|---|
 | `status` | `integer` | no | no | HTTP status code, mirrored in the body. |
 | `message` | `string` | no | no | Human-readable message; empty on success. |
-| `data` | [WebhookEndpoint](#schema-webhookendpoint) | no | no |  |
+| `data` | [WebhookEndpoint](#schema-webhookendpoint) | no | no | Includes `secret` only when this update turns signing on. |
 
 Documented statuses: `200` The updated endpoint; `400` One or more fields failed validation; `404` The requested resource does not exist; `401` Missing or invalid credentials; `500` Unexpected server error.
 
@@ -2876,9 +2929,11 @@ Documented statuses: `200` The secret; `400` Signing is not enabled for this end
 
 - **Java:** `client.webhooks()` — `WebhookResource: public String rotateEndpointSecret(String endpointId)`; `client.webhooks()` — `WebhookResource: public String rotateEndpointSecret(String endpointId, String accountId)`. Returns the new `data.secret`.
 - **HTTP:** `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`
-- **Auth:** Bearer JWT or `X-Api-Key`
+- **Auth:** Bearer JWT or `X-Api-Key`; OAuth requires `webhooks:write`
 - **Side effects:** Mutates server state: replaces the signing secret; the old one stops working immediately.
-- **Contract notes:** Replace the endpoint's signing secret and return the new one. The old secret stops working immediately, so update your receiver right away. Returns `400` when signing is disabled. Not available to OAuth applications.
+- **Contract notes:** Replace the endpoint's signing secret and return the new one. The old secret
+  stops working immediately, so update your receiver right away. Returns `400` when signing is
+  disabled. OAuth applications require `webhooks:write`.
 
 | Parameter | Location | Type | Required | Nullable | Notes |
 |---|---|---|---:|---:|---|
@@ -3820,7 +3875,7 @@ A URL that receives the account's webhook events. Every active endpoint subscrib
 | `is_active` | `boolean` | no | no | Whether events are delivered to this endpoint. |
 | `is_held` | `boolean` | no | no | Whether delivery is paused after ten consecutive failures. |
 | `held_since` | `integer`? | no | yes | Unix timestamp when the pause began; null while delivery runs. |
-| `secret` | `string` | no | no | One-time `whsec_` secret returned only by create when signing is enabled. Store it immediately; OAuth cannot read or rotate it. |
+| `secret` | `string` | no | no | One-time `whsec_` secret returned by creation or by an update that turns signing on. Store it immediately; OAuth cannot read it but can rotate it with `webhooks:write`. |
 | `signing_enabled` | `boolean` | no | no | Whether deliveries carry a `webhook-signature` header (see **Webhook Payloads → Verifying signatures**). |
 | `created_at` | `string(date-time)` | no | no |  |
 | `updated_at` | `string(date-time)` | no | no |  |
@@ -4095,7 +4150,10 @@ Statuses: `200` Signature completed; `400` Invalid signed token or signing state
 - `AssinafyClient: public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request)` composes upload, polling, signer resolution, and assignment creation. On an ordinary later-step failure, it attempts to delete the uploaded document and signer records whose create responses returned valid IDs; cleanup failures are suppressed on the original exception. Signers recovered after an indeterminate create response are not updated or deleted. A recovered entry containing CPF/CNPJ fails before assignment creation. If assignment creation has an indeterminate result and reconciliation cannot find it, the resources are retained to avoid deleting a potentially active request.
 - `SignerResource.create(...)` always sends the create POST, including `government_id` when `CreateSignerRequest.governmentId` (CPF or CNPJ) is set. `findByEmail(...)` is a list/search convenience. `findOrCreate(...)` reuses an exact case-insensitive email match unchanged and handles a concurrent duplicate-create response.
 - `TemplateResource: public Template get(String templateId)` and `public Template get(String templateId, String accountId)` call `GET /accounts/{accountId}/templates/{templateId}`, a live route that the published OpenAPI document does not list — see [Deployed extensions](#deployed-extensions).
-- Assignment/template creation and expiration reset validate timestamps with an offset at least one hour ahead; estimates ignore expiration. Rename and decline enforce 255 and 2,000 Unicode-character limits.
+- Assignment/template creation and expiration reset validate ISO 8601 dates and date-times at least
+  one hour ahead. A date ends at 23:59 UTC, a date-time without an offset is UTC, and an explicit
+  offset is honored. Estimates ignore expiration. Rename and decline enforce 255 and 2,000 Unicode
+  character limits.
 - A password-reset request for an unknown user returns `404`, with no user found; a signer contact does not establish a registered user identity.
 - `AssignmentResource.resetExpiration(..., null)` sends `{"expires_at": null}`, which removes the expiration.
 - `AssignmentResource.list(..., accountId)` adds an `accountId` query parameter that the published document does not list. The sandbox answers `400` ("account context is required") to an API-key request without it, so the SDK sends the explicit or default account.
@@ -4124,12 +4182,12 @@ signer, and assignment requests.
 | `message` | `String` | optional | Assignment invitation message. |
 | `metadata` | `Map<String,Object>` | optional | Upload metadata multipart field. |
 | `waitForReady` | `boolean` | `true` | Poll before signer and assignment creation. |
-| `expiresAt` | `String` | optional | ISO-8601 assignment expiration timestamp; use whole-second UTC form such as `2026-12-31T23:59:59Z`. |
+| `expiresAt` | `String` | optional | ISO 8601 date or date-time at least one hour ahead; date-only ends at 23:59 UTC and a date-time without an offset is UTC. |
 | `copyReceivers` | `List<String>` | optional | Assignment copy recipients. |
 | `accountId` | `String` | client default | Explicit workspace account ID. |
 
-`SignerEntry` fields are `name` (required), `email`, `whatsappPhoneNumber`, and `cpf`. Each entry
-requires an email or WhatsApp number. Email entries reuse an exact
+`SignerEntry` fields are `name` (required), `email`, `whatsappPhoneNumber` (E.164), and `cpf`. Each
+entry requires an email or WhatsApp number. Email entries reuse an exact
 case-insensitive match without replacing its name, phone, or CPF/CNPJ. When a signer create response
 returns a valid ID, a supplied CPF/CNPJ is persisted through the signer's `government_id` update.
 A signer recovered after an indeterminate create response is not updated or deleted; if the entry
@@ -4176,9 +4234,17 @@ transport, so deserialize the raw request body into this model with your own Jac
 `getAdditionalProperties()`.
 
 Enable `signing_enabled` on each endpoint and verify the raw body with `WebhookSignature` before
-deserializing it. Store `WebhookEndpoint.getSecret()` from creation in server-side secret storage;
-OAuth applications cannot retrieve it later. Deduplicate on the `webhook-id` header, check the
+deserializing it. Store `WebhookEndpoint.getSecret()` whenever creation or an update returns it in
+server-side secret storage. OAuth applications cannot read it later but can rotate it with
+`webhooks:write`. Deduplicate on the `webhook-id` header, check the
 workspace `account_id`, and process accepted events asynchronously.
+
+Return a `2xx` response quickly. A transient connection error, timeout, `408`, `429` or `5xx` is
+retried up to six times, about ten minutes apart. Ten failed deliveries in a row hold the endpoint;
+the API probes the oldest missed event after 3, 15 and 60 minutes, then every 6 hours, and resumes
+oldest-first delivery after success. `retryDispatch(...)`, a URL change or `is_active: true` can also
+release the hold. The API retains delivery entries for seven days and at most the first 2,000
+characters of a response body.
 
 | JSON field | Java type | Meaning |
 |---|---|---|

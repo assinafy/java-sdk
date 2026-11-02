@@ -50,9 +50,10 @@ public class WebhookEndpoint {
     private String secret;
 
     /**
-     * The signing secret returned once at endpoint creation. OAuth applications must store it
-     * immediately because secret read and rotation are unavailable to them.
-     * @return the whsec_ secret on creation, or null in list/get/update responses
+     * The signing secret returned once when endpoint creation or an update turns signing on. OAuth
+     * applications must store it immediately because the secret-read route is unavailable to them;
+     * they may rotate a lost secret with {@code webhooks:write}.
+     * @return the whsec_ secret when returned, or null in ordinary list/get/update responses
      */
     public String getSecret() { return secret; }
 

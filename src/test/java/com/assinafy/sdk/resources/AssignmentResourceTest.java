@@ -24,7 +24,7 @@ class AssignmentResourceTest {
         AssignmentResource assignments = new AssignmentResource(http, "acc");
         DocumentResource documents = new DocumentResource(http, "acc");
         SignerResource signers = new SignerResource(http, "acc");
-        for (String expiration : List.of("not-a-date", "2030-01-01", "2020-01-01T00:00:00Z",
+        for (String expiration : List.of("not-a-date", "2030-13-01", "2020-01-01T00:00:00Z",
                 java.time.Instant.now().plusSeconds(1800).toString())) {
             var request = CreateAssignmentRequest.builder().signers(List.of(SignerReference.ofId("s1")))
                     .expiresAt(expiration).build();
@@ -52,6 +52,9 @@ class AssignmentResourceTest {
         String futureWithOffset = java.time.OffsetDateTime.now(java.time.ZoneOffset.ofHours(3))
                 .plusDays(2).toString();
         assertThat(BaseResource.requireExpiration(futureWithOffset)).isEqualTo(futureWithOffset);
+        assertThat(BaseResource.requireExpiration("2099-01-01")).isEqualTo("2099-01-01");
+        assertThat(BaseResource.requireExpiration("2099-01-01T12:30:00"))
+                .isEqualTo("2099-01-01T12:30:00");
     }
 
     @Test

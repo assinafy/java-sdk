@@ -12,10 +12,10 @@ import com.assinafy.sdk.request.ListParams;
 import com.assinafy.sdk.request.RegisterWebhookRequest;
 import com.assinafy.sdk.request.WebhookEndpointRequest;
 
+import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.net.URI;
 
 /**
  * Manages webhook endpoints, their signing secrets, event types, delivery history, and retries.
@@ -99,7 +99,7 @@ public class WebhookResource extends BaseResource {
      *     "events_example"
      *   ],
      *   "is_active": true,
-     *   "url": "http://example.com?test=1",
+     *   "url": "https://example.invalid/webhooks/assinafy",
      *   "email": "email@example.invalid"
      * }</pre>
      * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
@@ -471,6 +471,41 @@ public class WebhookResource extends BaseResource {
     }
 
     /**
+     * List endpoints whose registered URL exactly matches {@code url} in the default account.
+     *
+     * <p>Wire contract, payloads and failures: {@link #listEndpointsByUrl(String, String)}.</p>
+     *
+     * @param url exact registered endpoint URL
+     * @return matching endpoints
+     */
+    public List<WebhookEndpoint> listEndpointsByUrl(String url) {
+        return listEndpointsByUrl(url, null);
+    }
+
+    /**
+     * List endpoints by exact registered URL.
+     *
+     * <p><strong>HTTP:</strong> <code>GET /v1/accounts/{accountId}/webhooks/endpoints?url=...</code>.
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; OAuth scope
+     * <code>account:read</code>.</p>
+     * <p>The query URL is sent as one encoded value. Existing HTTP endpoint URLs remain valid as a
+     * lookup key, although newly created or changed endpoint URLs must use HTTPS.</p>
+     * <p>Success 200: the same endpoint array returned by {@link #listEndpoints(String)}. Non-2xx
+     * HTTP or envelope statuses raise the standard SDK exception hierarchy.</p>
+     *
+     * @param url exact registered endpoint URL
+     * @param accountId explicit account ID, or {@code null} for the default
+     * @return matching endpoints
+     * @throws ValidationException if the URL or account ID is missing or invalid
+     */
+    public List<WebhookEndpoint> listEndpointsByUrl(String url, String accountId) {
+        requireWebhookUrl(url, true);
+        String id = pathSegment(accountId(accountId), "Account ID");
+        return callList("Failed to list webhook endpoints",
+                () -> http.get(endpointsPath(id), Map.of("url", url)), WebhookEndpoint.class).getData();
+    }
+
+    /**
      * Create a webhook endpoint in the default account.
      *
      * <p>Wire contract, payloads and failures: {@link #createEndpoint(WebhookEndpointRequest, String)}.</p>
@@ -487,7 +522,7 @@ public class WebhookResource extends BaseResource {
      * is null the SDK subscribes to the same default set as {@link #register}. The API defaults
      * {@code is_active} to {@code true} and {@code signing_enabled} to {@code false}. When signing is
      * enabled, store {@link WebhookEndpoint#getSecret()} from this response immediately. OAuth
-     * applications cannot read or rotate it later; recreate the endpoint if it is lost.
+     * applications cannot read it later, but may rotate it with {@link #rotateEndpointSecret}.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/webhooks/endpoints</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; OAuth scope
@@ -502,8 +537,7 @@ public class WebhookResource extends BaseResource {
      *   "signing_enabled": true
      * }</pre>
      * <p>Success 200: the complete endpoint shape from {@link #listEndpoints(String)}, plus
-     * {@code "secret":"whsec_..."} in {@code data} when signing is enabled. List/get/update
-     * responses omit the secret.</p>
+     * {@code "secret":"whsec_..."} in {@code data} when signing is enabled.</p>
      * <p>Documented HTTP statuses: 200 The created endpoint; 400 Validation failed, including a URL
      * another endpoint of the workspace already uses; 401 Missing or invalid credentials; 403 The
      * plan's endpoint limit (1, or 3 on paid plans) is reached; 500 Unexpected server error.
@@ -513,7 +547,7 @@ public class WebhookResource extends BaseResource {
      * @param request URL, email, events, and optional name, active and signing flags
      * @param accountId explicit account ID, or {@code null} for the default
      * @return the created endpoint
-     * @throws ValidationException if the URL is not an absolute HTTP(S) URL or the email is invalid
+     * @throws ValidationException if the URL is not an absolute HTTPS URL or the email is invalid
      */
     public WebhookEndpoint createEndpoint(WebhookEndpointRequest request, String accountId) {
         if (request == null) throw new ValidationException("Webhook endpoint request is required");
@@ -574,7 +608,8 @@ public class WebhookResource extends BaseResource {
     /**
      * Update a webhook endpoint. Only the fields set on {@code request} are sent and changed.
      * Setting {@code signing_enabled} to {@code true} generates a secret when the endpoint has none
-     * and keeps the current one otherwise; setting it to {@code false} discards the secret.
+     * and keeps the current one otherwise; setting it to {@code false} discards the secret. A
+     * request that turns signing on returns the new secret once in {@link WebhookEndpoint#getSecret()}.
      *
      * <p><strong>HTTP:</strong> <code>PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; OAuth scope
@@ -588,7 +623,8 @@ public class WebhookResource extends BaseResource {
      *   "is_active": false,
      *   "signing_enabled": true
      * }</pre>
-     * <p>Success 200: the updated endpoint, shaped as in {@link #listEndpoints(String)}.</p>
+     * <p>Success 200: the updated endpoint, shaped as in {@link #listEndpoints(String)}, plus the
+     * one-time {@code secret} when this request turns signing on.</p>
      * <p>Documented HTTP statuses: 200 The updated endpoint; 400 Validation failed, including a URL
      * another endpoint of the workspace already uses; 401 Missing or invalid credentials; 404 No
      * such endpoint; 500 Unexpected server error.</p>
@@ -690,10 +726,11 @@ public class WebhookResource extends BaseResource {
 
     /**
      * Replace an endpoint's signing secret. The old secret stops working immediately, so update
-     * the receiver right away. Not available to OAuth applications.
+     * the receiver right away. OAuth applications require the <code>webhooks:write</code> scope.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate</code>.
-     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
+     * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>; OAuth scope
+     * <code>webhooks:write</code>.</p>
      * <p>Request body: none. Success 200: the new secret, shaped as in
      * {@link #getEndpointSecret(String, String)}.</p>
      * <p>Documented HTTP statuses: 200 The new secret; 400 Signing is disabled on the endpoint; 401
@@ -733,7 +770,7 @@ public class WebhookResource extends BaseResource {
      * @throws ValidationException if the URL or account ID is missing or invalid
      */
     public void deleteEndpointByUrl(String url, String accountId) {
-        requireWebhookUrl(url);
+        requireWebhookUrl(url, true);
         String id = pathSegment(accountId(accountId), "Account ID");
         String path = endpointsPath(id) + "?url=" + encode(url);
         callVoid("Failed to delete webhook endpoint by URL", () -> http.delete(path));
@@ -753,14 +790,19 @@ public class WebhookResource extends BaseResource {
     }
 
     private static void requireWebhookUrl(String value) {
+        requireWebhookUrl(value, false);
+    }
+
+    private static void requireWebhookUrl(String value, boolean allowStoredHttp) {
         if (value == null || value.isBlank()) throw new ValidationException("Webhook URL is required");
         try {
             URI url = URI.create(value);
             String scheme = url.getScheme();
-            if (("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) && url.getHost() != null) return;
+            if (("https".equalsIgnoreCase(scheme)
+                    || allowStoredHttp && "http".equalsIgnoreCase(scheme)) && url.getHost() != null) return;
         } catch (IllegalArgumentException ignored) {
             // falls through to the validation error
         }
-        throw new ValidationException("Webhook URL must be an absolute HTTP(S) URL");
+        throw new ValidationException("Webhook URL must be an absolute HTTPS URL");
     }
 }

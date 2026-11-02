@@ -13,8 +13,9 @@ import java.util.List;
  * {@code notification_methods} array contains one channel matching Email/WhatsApp verification;
  * DigitalCertificate and IdDocumentFaceMatchBasic permit either. Null lets the API infer delivery
  * defaults; an empty array requests no notification. Signing steps are all-or-none and
- * contiguous from 1. Supply either an existing signer {@code id}, or {@code name} and
- * {@code email} so the API can reuse or create the contact. {@code DigitalCertificate} is valid
+ * contiguous from 1. Supply either an existing signer {@code id}, or an {@code email} so the API
+ * can reuse or create the contact; {@code name} and an E.164 WhatsApp number are optional creation
+ * fields. {@code DigitalCertificate} is valid
  * for virtual templates without placed signer fields; the API rejects it for collect templates.
  *
  * @see com.assinafy.sdk.resources.AssignmentResource#create(String, CreateAssignmentRequest)
@@ -128,7 +129,7 @@ public class TemplateSigner {
     /**
      * Sets the WhatsApp number used only when a new email contact is created.
      *
-     * @param whatsappPhoneNumber the WhatsApp number
+     * @param whatsappPhoneNumber the WhatsApp number in E.164 form
      */
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) {
         this.whatsappPhoneNumber = whatsappPhoneNumber;
@@ -220,7 +221,7 @@ public class TemplateSigner {
         /**
          * Sets the WhatsApp number for an inline signer contact.
          *
-         * @param phone the WhatsApp number
+         * @param phone the WhatsApp number in E.164 form
          * @return this builder
          */
         public Builder whatsappPhoneNumber(String phone) { ts.setWhatsappPhoneNumber(phone); return this; }

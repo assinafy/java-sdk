@@ -90,7 +90,7 @@ public class CreateSignerRequest {
     /**
      * Sets the WhatsApp phone number.
      *
-     * @param whatsappPhoneNumber the WhatsApp phone number
+     * @param whatsappPhoneNumber the WhatsApp phone number in E.164 form
      */
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
@@ -156,7 +156,7 @@ public class CreateSignerRequest {
         /**
          * Sets the WhatsApp phone number for the object being built.
          *
-         * @param phone the WhatsApp phone number
+         * @param phone the WhatsApp phone number in E.164 form
          * @return this builder
          */
         public Builder whatsappPhoneNumber(String phone) { req.setWhatsappPhoneNumber(phone); return this; }

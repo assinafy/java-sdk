@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-02
+
+### Added
+
+- `WebhookResource.listEndpointsByUrl(...)` filters endpoints by the exact registered URL while
+  retaining compatibility with HTTP URLs stored before HTTPS became mandatory.
+
+### Changed
+
+- Assignment and template deadlines accept ISO 8601 dates, UTC date-times without an offset, and
+  offset-aware date-times while retaining the one-hour minimum. Date-only values end at 23:59 UTC.
+- Template documents can reuse an existing signer by email without also supplying a name. Inline
+  template, signer create/update, and high-level workflow WhatsApp numbers are validated as E.164
+  before a request is sent.
+- New and changed webhook endpoint URLs require HTTPS. Endpoint updates expose the one-time secret
+  returned when signing is enabled, and OAuth applications can rotate a secret with
+  `webhooks:write`; the secret-read route remains unavailable to OAuth.
+- OkHttp is 5.5.1, including its updated compromised-certificate blocklist. Maven Surefire and
+  Failsafe are 3.6.1.
+
 ## [2.2.0] - 2026-10-28
 
 ### Added

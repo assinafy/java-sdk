@@ -126,7 +126,7 @@ public class UploadAndRequestSignaturesRequest {
     /**
      * Sets the expiration timestamp.
      *
-     * @param expiresAt ISO-8601 expiration timestamp; whole-second UTC form is recommended
+     * @param expiresAt ISO-8601 date or date-time at least one hour ahead
      */
     public void setExpiresAt(String expiresAt) { this.expiresAt = expiresAt; }
 
@@ -217,7 +217,7 @@ public class UploadAndRequestSignaturesRequest {
         /**
          * Sets the WhatsApp phone number.
          *
-         * @param phone the WhatsApp phone number
+         * @param phone the WhatsApp phone number in E.164 form
          */
         public void setWhatsappPhoneNumber(String phone) { this.whatsappPhoneNumber = phone; }
 
@@ -263,7 +263,7 @@ public class UploadAndRequestSignaturesRequest {
             /**
              * Sets the WhatsApp phone number for the object being built.
              *
-             * @param phone the WhatsApp phone number
+             * @param phone the WhatsApp phone number in E.164 form
              * @return this builder
              */
             public Builder whatsappPhoneNumber(String phone) { entry.setWhatsappPhoneNumber(phone); return this; }
@@ -345,7 +345,7 @@ public class UploadAndRequestSignaturesRequest {
         /**
          * Sets the expiration timestamp for the object being built.
          *
-         * @param expiresAt ISO-8601 expiration timestamp; whole-second UTC form is recommended
+         * @param expiresAt ISO-8601 date or date-time at least one hour ahead
          * @return this builder
          */
         public Builder expiresAt(String expiresAt) { req.setExpiresAt(expiresAt); return this; }

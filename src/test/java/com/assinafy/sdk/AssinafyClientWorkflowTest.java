@@ -119,6 +119,22 @@ class AssinafyClientWorkflowTest {
     }
 
     @Test
+    void uploadAndRequestSignaturesValidatesWhatsappBeforeUpload() {
+        MockApiHttpClient http = new MockApiHttpClient();
+
+        assertThatThrownBy(() -> clientWith(http).uploadAndRequestSignatures(
+                UploadAndRequestSignaturesRequest.builder()
+                        .fileData("%PDF-1.4".getBytes())
+                        .fileName("c.pdf")
+                        .signers(List.of(SignerEntry.builder().name("Invalid")
+                                .whatsappPhoneNumber("5548999990000").build()))
+                        .build()))
+                .isInstanceOf(com.assinafy.sdk.exceptions.ValidationException.class)
+                .hasMessageContaining("E.164");
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
     void uploadAndRequestSignaturesRequiresADeliveryChannelBeforeUpload() {
         MockApiHttpClient http = new MockApiHttpClient();
 

@@ -43,6 +43,18 @@ class WebhookEndpointTest {
     }
 
     @Test
+    void listEndpointsByUrlSendsTheExactUrlFilterAndAllowsStoredHttp() {
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+
+        webhooks.listEndpointsByUrl("http://example.invalid/hook?a=1", "other");
+
+        assertThat(mock.lastCaptured().getMethod()).isEqualTo("GET");
+        assertThat(mock.lastCaptured().getPath()).isEqualTo("/accounts/other/webhooks/endpoints");
+        assertThat(mock.lastCaptured().getQueryParams())
+                .containsExactly(entry("url", "http://example.invalid/hook?a=1"));
+    }
+
+    @Test
     void createEndpointSendsOnlySetFieldsAndDefaultsEvents() {
         mock.enqueue(200, "{\"status\":200,\"data\":" + ENDPOINT + "}");
 
@@ -86,6 +98,9 @@ class WebhookEndpointTest {
         assertThatThrownBy(() -> webhooks.createEndpoint(WebhookEndpointRequest.builder()
                 .url("ftp://example.com").email("ops@example.invalid").build()))
                 .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> webhooks.createEndpoint(WebhookEndpointRequest.builder()
+                .url("http://example.invalid/hook").email("ops@example.invalid").build()))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("HTTPS");
         assertThatThrownBy(() -> webhooks.createEndpoint(WebhookEndpointRequest.builder()
                 .url("https://example.com/hook").email("not-an-email").build()))
                 .isInstanceOf(ValidationException.class);
@@ -132,6 +147,9 @@ class WebhookEndpointTest {
                 WebhookEndpointRequest.builder().url("relative/path").build()))
                 .isInstanceOf(ValidationException.class);
         assertThatThrownBy(() -> webhooks.updateEndpoint("ep1",
+                WebhookEndpointRequest.builder().url("http://example.invalid/hook").build()))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("HTTPS");
+        assertThatThrownBy(() -> webhooks.updateEndpoint("ep1",
                 WebhookEndpointRequest.builder().email("bad").build()))
                 .isInstanceOf(ValidationException.class);
         assertThat(mock.capturedCount()).isZero();
@@ -162,6 +180,9 @@ class WebhookEndpointTest {
         mock.enqueue(200, "{\"status\":200,\"data\":[]}");
         webhooks.deleteEndpointByUrl("https://example.invalid/hook");
         assertThat(mock.lastCaptured().getPath()).startsWith("/accounts/acc/webhooks/endpoints?url=");
+        mock.enqueue(200, "{\"status\":200,\"data\":[]}");
+        webhooks.deleteEndpointByUrl("http://example.invalid/legacy-hook");
+        assertThat(mock.lastCaptured().getPath()).contains("http%3A%2F%2Fexample.invalid");
     }
 
     @Test

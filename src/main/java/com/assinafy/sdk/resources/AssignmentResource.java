@@ -502,8 +502,8 @@ public class AssignmentResource extends BaseResource {
      *
      * @param documentId owning document ID
      * @param assignmentId assignment ID
-     * @param expiresAt new ISO-8601 expiration timestamp (whole-second UTC recommended), or
-     *                  {@code null} to remove it
+     * @param expiresAt new ISO-8601 date or date-time at least one hour ahead, or {@code null} to
+     *                  remove it
      * @return the updated assignment
      */
     public Assignment resetExpiration(String documentId, String assignmentId, String expiresAt) {

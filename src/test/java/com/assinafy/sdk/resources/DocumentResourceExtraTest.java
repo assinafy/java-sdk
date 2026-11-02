@@ -446,6 +446,31 @@ class DocumentResourceExtraTest {
     }
 
     @Test
+    void templateCreationCanReuseAnEmailWithoutAName() {
+        http.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"d1\"}}");
+
+        documents.createFromTemplate("tmpl", CreateDocumentFromTemplateRequest.builder()
+                .signers(List.of(TemplateSigner.builder().roleId("r1")
+                        .email("maria@example.invalid").build()))
+                .build());
+
+        assertThat(http.lastCaptured().getJsonBody())
+                .contains("\"email\":\"maria@example.invalid\"")
+                .doesNotContain("\"name\"");
+    }
+
+    @Test
+    void templateCreationRejectsInvalidInlineWhatsappNumberBeforeSending() {
+        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
+                CreateDocumentFromTemplateRequest.builder().signers(List.of(
+                        TemplateSigner.builder().roleId("r1").email("maria@example.invalid")
+                                .whatsappPhoneNumber("+1").build())).build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("E.164");
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
     void templateCreationRejectsMissingSignerSelectionBeforeSending() {
         assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
                 CreateDocumentFromTemplateRequest.builder().signers(List.of(

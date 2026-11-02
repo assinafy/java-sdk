@@ -787,7 +787,8 @@ public class DocumentResource extends BaseResource {
     /**
      * Create a document from a template in an explicit or default account. At least one template
      * signer is required, and each signer needs a nonblank role plus either an existing signer ID
-     * or a name/email pair that the API can reuse or create. Verification methods
+     * or an email that the API can reuse or create; name and E.164 WhatsApp number are optional
+     * creation fields. Verification methods
      * are {@code Email}, {@code Whatsapp}, {@code DigitalCertificate}, or
      * {@code IdDocumentFaceMatchBasic}; notification methods,
      * when supplied, may be empty, but every element must be {@code Email} or {@code Whatsapp}; at
@@ -1554,11 +1555,13 @@ public class DocumentResource extends BaseResource {
                 value.put("id", signer.getId());
             } else {
                 requireEmail(signer.getEmail());
-                requireText(signer.getName(), "Template signer name", 255);
-                value.put("name", signer.getName());
                 value.put("email", signer.getEmail());
+                if (signer.getName() != null) {
+                    requireText(signer.getName(), "Template signer name", 255);
+                    value.put("name", signer.getName());
+                }
                 if (signer.getWhatsappPhoneNumber() != null) {
-                    requireId(signer.getWhatsappPhoneNumber(), "Template signer WhatsApp number");
+                    requireWhatsappPhoneNumber(signer.getWhatsappPhoneNumber());
                     value.put("whatsapp_phone_number", signer.getWhatsappPhoneNumber());
                 }
             }

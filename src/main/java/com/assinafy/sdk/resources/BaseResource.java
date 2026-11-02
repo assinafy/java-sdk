@@ -13,9 +13,12 @@ import com.assinafy.sdk.util.ResponseHandler;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.YearMonth;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,6 +30,7 @@ public abstract class BaseResource {
 
     private static final char[] HEX = "0123456789ABCDEF".toCharArray();
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    private static final Pattern E164_PHONE = Pattern.compile("^\\+[1-9]\\d{1,14}$");
 
     /** HTTP transport used by this resource. */
     protected final ApiHttpClient http;
@@ -134,20 +138,47 @@ public abstract class BaseResource {
     }
 
     /**
+     * Require an E.164 phone number: {@code +}, a nonzero country-code digit, and at most 15 digits.
+     *
+     * @param value phone number to validate
+     * @return the validated phone number
+     * @throws ValidationException if the number is not in E.164 form
+     */
+    public static String requireWhatsappPhoneNumber(String value) {
+        if (value == null || !E164_PHONE.matcher(value).matches()) {
+            throw new ValidationException("WhatsApp phone number must use E.164 format");
+        }
+        return value;
+    }
+
+    /**
      * Validate an optional assignment expiration before any request is sent.
      *
-     * @param value ISO-8601 timestamp with an offset, or {@code null} for no expiration
-     * @return validated timestamp, or {@code null}
-     * @throws ValidationException if the timestamp is malformed or less than one hour ahead
+     * <p>A date-only value ends at 23:59 UTC. A date-time without an offset is interpreted as UTC;
+     * an explicit offset is honored.</p>
+     *
+     * @param value ISO-8601 date or date-time, or {@code null} for no expiration
+     * @return the validated value unchanged, or {@code null}
+     * @throws ValidationException if the value is malformed or less than one hour ahead
      */
     public static String requireExpiration(String value) {
         if (value == null) return null;
+        Instant expiration;
         try {
-            if (OffsetDateTime.parse(value).toInstant().isBefore(Instant.now().plusSeconds(3600))) {
-                throw new ValidationException("Expiration must be at least one hour in the future");
+            expiration = OffsetDateTime.parse(value).toInstant();
+        } catch (DateTimeParseException offsetFailure) {
+            try {
+                expiration = LocalDateTime.parse(value).toInstant(ZoneOffset.UTC);
+            } catch (DateTimeParseException dateTimeFailure) {
+                try {
+                    expiration = LocalDate.parse(value).atTime(23, 59).toInstant(ZoneOffset.UTC);
+                } catch (DateTimeParseException dateFailure) {
+                    throw new ValidationException("Expiration must be an ISO-8601 date or date-time");
+                }
             }
-        } catch (DateTimeParseException e) {
-            throw new ValidationException("Expiration must be an ISO-8601 timestamp with an offset");
+        }
+        if (expiration.isBefore(Instant.now().plusSeconds(3600))) {
+            throw new ValidationException("Expiration must be at least one hour in the future");
         }
         return value;
     }

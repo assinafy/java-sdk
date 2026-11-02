@@ -118,6 +118,20 @@ class WebhookResourceTest {
     }
 
     @Test
+    void registerRequiresHttpsForNewUrls() {
+        MockApiHttpClient mock = new MockApiHttpClient();
+        WebhookResource resource = new WebhookResource(mock, "acc");
+
+        assertThatThrownBy(() -> resource.register(RegisterWebhookRequest.builder()
+                .url("http://example.invalid/webhook")
+                .email("ops@example.invalid")
+                .build()))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("HTTPS");
+        assertThat(mock.capturedCount()).isZero();
+    }
+
+    @Test
     void registerRequiresEmail() {
         MockApiHttpClient mock = new MockApiHttpClient();
         WebhookResource resource = new WebhookResource(mock, "acc");

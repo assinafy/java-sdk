@@ -222,8 +222,8 @@ public class AssinafyClient {
      * @param request document, assignment, signer, and polling settings
      * @return the created document, the assignment, and the signer IDs
      * @throws ValidationException if the request is absent, contains no signers, or contains a
-     *                             signer without a name or delivery channel, with an invalid email,
-     *                             or with a duplicate email/WhatsApp-only recipient
+     *                             signer without a name or delivery channel, with an invalid email
+     *                             or WhatsApp number, or with a duplicate email/WhatsApp-only recipient
      */
     public UploadAndRequestSignaturesResult uploadAndRequestSignatures(UploadAndRequestSignaturesRequest request) {
         if (request == null) throw new ValidationException("Workflow request is required");
@@ -242,6 +242,9 @@ public class AssinafyClient {
                 if (!emails.add(signer.getEmail().toLowerCase(Locale.ROOT))) {
                     throw new ValidationException("Every workflow signer must be unique");
                 }
+            }
+            if (signer.getWhatsappPhoneNumber() != null) {
+                BaseResource.requireWhatsappPhoneNumber(signer.getWhatsappPhoneNumber());
             }
             if (signer.getEmail() == null && (signer.getWhatsappPhoneNumber() == null
                     || signer.getWhatsappPhoneNumber().isBlank())) {

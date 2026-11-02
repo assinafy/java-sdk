@@ -54,7 +54,7 @@ public class WebhookEndpointRequest {
     /**
      * Sets the URL that receives the events.
      *
-     * @param url an absolute HTTP(S) URL
+     * @param url an absolute HTTPS URL
      */
     public void setUrl(String url) { this.url = url; }
 
@@ -140,7 +140,7 @@ public class WebhookEndpointRequest {
         /**
          * Sets the URL that receives the events.
          *
-         * @param url an absolute HTTP(S) URL, unique within the workspace
+         * @param url an absolute HTTPS URL, unique within the workspace
          * @return this builder
          */
         public Builder url(String url) { req.setUrl(url); return this; }

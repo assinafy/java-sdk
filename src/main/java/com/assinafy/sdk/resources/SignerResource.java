@@ -194,6 +194,9 @@ public class SignerResource extends BaseResource {
         }
         String email = request.getEmail();
         if (email != null) requireEmail(email);
+        if (request.getWhatsappPhoneNumber() != null) {
+            requireWhatsappPhoneNumber(request.getWhatsappPhoneNumber());
+        }
     }
 
     /**
@@ -380,10 +383,22 @@ public class SignerResource extends BaseResource {
     public Signer update(String signerId, UpdateSignerRequest request, String accountId) {
         String id = pathSegment(accountId(accountId), "Account ID");
         String sid = pathSegment(signerId, "Signer ID");
+        validateUpdateRequest(request);
         String body = serialise(request != null ? request : Map.of());
         return requireSignerId(call("Failed to update signer",
                         () -> http.put("/accounts/" + id + "/signers/" + sid, body), Signer.class),
                 "Signer update");
+    }
+
+    private static void validateUpdateRequest(UpdateSignerRequest request) {
+        if (request == null) return;
+        if (request.getFullName() != null && request.getFullName().isBlank()) {
+            throw new ValidationException("Signer full_name must not be blank");
+        }
+        if (request.getEmail() != null) requireEmail(request.getEmail());
+        if (request.getWhatsappPhoneNumber() != null) {
+            requireWhatsappPhoneNumber(request.getWhatsappPhoneNumber());
+        }
     }
 
     private static Signer requireSignerId(Signer signer, String operation) {
