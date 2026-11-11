@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.models.PushPreferences;
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
@@ -14,17 +15,9 @@ import com.assinafy.sdk.util.ResponseHandler;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /** Authenticated-user settings documented under {@code /users/self}. */
 public class UserResource extends BaseResource {
-
-    private static final Set<String> NOTIFICATION_CODES = Set.of(
-            "DocumentCompleted", "SignerDeclined", "DocumentCancelled",
-            "DocumentAboutToExpire", "DocumentExpired", "DocumentExpirationReset",
-            "DocumentProcessingFailed", "TemplateProcessingFailed", "SignerWhatsappFailed",
-            "ContractRenewalNotice", "ContractExpiring", "ContractExpired", "ContractRenewed"
-    );
 
     /**
      * Create authenticated-user operations with a logger.
@@ -268,14 +261,8 @@ public class UserResource extends BaseResource {
      * @throws ValidationException if the map is null or contains an unknown key or null value
      */
     public NotificationPreferences updateNotificationPreferences(Map<String, Boolean> changes) {
-        if (changes == null) throw new ValidationException("Notification preferences are required");
-        Map<String, Boolean> body = new LinkedHashMap<>();
-        changes.forEach((code, enabled) -> {
-            if (!NOTIFICATION_CODES.contains(code) || enabled == null) {
-                throw new ValidationException("Unknown notification preference or null value: " + code);
-            }
-            body.put(code, enabled);
-        });
+        NotificationRules.validate(changes, NotificationRules.EMAIL_CODES);
+        Map<String, Boolean> body = new LinkedHashMap<>(changes);
         return call("Failed to update notification preferences",
                 () -> http.put("/users/self/notification-preferences", serialise(body)),
                 NotificationPreferences.class);
@@ -446,4 +433,37 @@ public class UserResource extends BaseResource {
                 ? codes.stream().map(String::valueOf).toList()
                 : List.of();
     }
+    /**
+     * Get my push notification preferences.
+     * <p><strong>HTTP:</strong> {@code GET /v1/users/self/push-preferences}.
+     * Which document alerts the authenticated user receives as push notifications on their phones, separate from the e-mail preferences. Every key is always returned; everything defaults to `true`. New keys may be added. Not available to third-party OAuth applications (`403`), whatever their scopes: these are the user&#x27;s personal settings. Assinafy&#x27;s own apps can reach it.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;SignerViewed&quot;: true, &quot;SignerSigned&quot;: true, &quot;DocumentCompleted&quot;: true, &quot;SignerDeclined&quot;: true, &quot;DocumentAboutToExpire&quot;: true, &quot;DocumentExpired&quot;: true, &quot;SignerIdentityReviewRequired&quot;: true, &quot;SignerWhatsappFailed&quot;: true}}</pre>
+     * <p>Statuses: 200 The current preferences; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public PushPreferences getPushPreferences() {
+        return call("Failed to fetch push preferences", () -> http.get("/users/self/push-preferences"), PushPreferences.class);
+    }
+
+    /**
+     * Update my push notification preferences.
+     * <p><strong>HTTP:</strong> {@code PUT /v1/users/self/push-preferences}.
+     * Merges the supplied map into the authenticated user&#x27;s push preferences. Send only the keys you want to change — omitted keys keep their current value. Setting a key to `false` stops that push for this user in every account they belong to; e-mail is not affected. Returns the full map. An unknown code, a non-boolean value, or an empty body is rejected with 400 and nothing is written. Not available to third-party OAuth applications (`403`), whatever their scopes: these are the user&#x27;s personal settings. Assinafy&#x27;s own apps can reach it.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: {&quot;SignerViewed&quot;: true, &quot;SignerSigned&quot;: true, &quot;DocumentCompleted&quot;: true, &quot;SignerDeclined&quot;: true, &quot;DocumentAboutToExpire&quot;: true, &quot;DocumentExpired&quot;: true, &quot;SignerIdentityReviewRequired&quot;: true, &quot;SignerWhatsappFailed&quot;: true}.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;SignerViewed&quot;: true, &quot;SignerSigned&quot;: true, &quot;DocumentCompleted&quot;: true, &quot;SignerDeclined&quot;: true, &quot;DocumentAboutToExpire&quot;: true, &quot;DocumentExpired&quot;: true, &quot;SignerIdentityReviewRequired&quot;: true, &quot;SignerWhatsappFailed&quot;: true}}</pre>
+     * <p>Statuses: 200 The updated preferences; 400 One or more fields failed validation.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param changes nonempty map of known preference codes to booleans
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public PushPreferences updatePushPreferences(Map<String, Boolean> changes) {
+        NotificationRules.validate(changes, NotificationRules.PUSH_CODES);
+        String json = serialise(changes);
+        return call("Failed to update push preferences", () -> http.put("/users/self/push-preferences", json), PushPreferences.class);
+    }
+
 }

@@ -181,6 +181,12 @@ public class TemplateSigner {
      * Builder for {@link TemplateSigner}.
      */
     public static final class Builder {
+        /** Sets embedded.
+         * @param value the embedded value
+         * @return this builder
+         */
+        public Builder embedded(Boolean value) { ts.setEmbedded(value); return this; }
+
         private final TemplateSigner ts = new TemplateSigner();
 
         /** Creates an empty builder. */
@@ -257,4 +263,17 @@ public class TemplateSigner {
          */
         public TemplateSigner build() { return ts; }
     }
+    @JsonProperty("embedded")
+    private Boolean embedded;
+
+    /** Sign inside the registered application iframe; requires Email or Whatsapp verification and the Embed feature.
+     * @return the embedded value, or null when absent
+     */
+    public Boolean getEmbedded() { return embedded; }
+
+    /** Sets embedded.
+     * @param value the embedded value
+     */
+    public void setEmbedded(Boolean value) { embedded = value; }
+
 }

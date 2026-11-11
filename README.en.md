@@ -2,7 +2,7 @@
 
 *[Leia em português](README.md) · English*
 
-A thread-safe Java client for all 118 [Assinafy API](https://api.assinafy.com.br/v1/docs) operations,
+A thread-safe Java client for all 147 [Assinafy API](https://api.assinafy.com.br/v1/docs) operations,
 including documents, signatures, templates, contracts, webhooks, OAuth 2.1, and signer-facing flows.
 The [complete contract](docs/API_REFERENCE.md) documents every route, payload, response, and status.
 
@@ -16,11 +16,11 @@ The [complete contract](docs/API_REFERENCE.md) documents every route, payload, r
 <dependency>
   <groupId>com.assinafy</groupId>
   <artifactId>assinafy-sdk</artifactId>
-  <version>2.3.0</version>
+  <version>2.4.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("com.assinafy:assinafy-sdk:2.3.0")`.
+Gradle: `implementation("com.assinafy:assinafy-sdk:2.4.0")`.
 
 ## Complete signing flow
 
@@ -103,6 +103,20 @@ PKI. Allow one certificate signer per step; the ordinary signing endpoint does n
 method. Confirm `certificated` before download. Complete flows and payloads are in the
 [reference](docs/API_REFERENCE.md#deployed-extensions).
 
+## Envelopes and embedded signing
+
+`envelopes().create(...)` sends up to 20 processed documents to shared signers; every document keeps
+its own signature, status and artifacts. Estimate with `envelopes().estimateCost(...)`, set
+`maxTotalCredits` to cap the charge, and persist an idempotency key for creation.
+The key is also supported by `documents().createFromTemplate(..., accountId, idempotencyKey)`.
+
+For an iframe, register its origin with `embed().addOrigin(...)`, select `embedded(true)` on an
+Email/Whatsapp signer, then call `embed().createSession(documentId, assignmentId, signerId)`.
+Give the URL only to the authorized frontend; it expires and can be exchanged once by the Assinafy
+page. Never log the URL or access code. Biometrics and certificates use the hosted flow.
+The [full operations](docs/API_REFERENCE.md#api-operations) cover reminders, cancellation, ZIP
+downloads, push preferences, notification policy and workspace balances.
+
 ## OAuth 2.1 for marketplace applications
 
 Use Authorization Code + PKCE with an HTTPS redirect. `oauth().createAuthorizationUrl(...)` returns
@@ -120,7 +134,8 @@ result is uncertain; reconnect instead. Revoke the latest token, and never log t
 Create endpoints with a public HTTPS URL. Accounts have one endpoint or up to three on paid plans.
 Enable `signing_enabled` and immediately store `WebhookEndpoint.getSecret()` when creation or an
 update returns it. OAuth cannot read the secret but can rotate it with `webhooks:write`; rotation
-invalidates the previous secret immediately.
+invalidates the previous secret immediately by default. `rotateEndpointSecret(id, true)` keeps it
+valid for 24 hours; store the new secret and honor `previous_secret_expires_at`.
 
 ```java
 byte[] rawBody = requestBodyBytes;
@@ -136,7 +151,7 @@ an endpoint after ten consecutive undelivered events.
 ## Surfaces and errors
 
 The client exposes `documents()`, `signers()`, `assignments()`, `contracts()`, `templates()`,
-`fields()`, `tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`,
+`envelopes()`, `embed()`, `fields()`, `tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`,
 `oauth()`, and `publicDocuments()`. Account operations use the configured `accountId` and offer an
 explicit-account overload.
 

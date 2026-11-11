@@ -303,4 +303,17 @@ public class WebhookDispatch {
      * @param updatedAt the last-update timestamp
      */
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+    @JsonProperty("duration_ms")
+    private Long durationMs;
+
+    /** How long the endpoint took to answer or fail, in milliseconds. `null` when no request was sent (a host that does not resolve, an address that is not public) and on entries recorded before it was measured.
+     * @return the duration_ms value, or null when absent
+     */
+    public Long getDurationMs() { return durationMs; }
+
+    /** Sets duration_ms.
+     * @param value the duration_ms value
+     */
+    public void setDurationMs(Long value) { durationMs = value; }
+
 }

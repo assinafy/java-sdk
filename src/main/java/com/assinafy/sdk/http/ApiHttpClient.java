@@ -36,6 +36,21 @@ public interface ApiHttpClient {
     HttpRawResponse post(String path, String jsonBody) throws IOException;
 
     /**
+     * Posts JSON with an optional idempotency key. Custom transports must override this method
+     * to support keys; the default never silently drops a key.
+     * @param path relative API path
+     * @param jsonBody JSON body
+     * @param idempotencyKey case-sensitive key, or null for an ordinary POST
+     * @return raw response
+     * @throws IOException on transport failure
+     * @throws UnsupportedOperationException if a custom transport does not support keys
+     */
+    default HttpRawResponse post(String path, String jsonBody, String idempotencyKey) throws IOException {
+        if (idempotencyKey != null) throw new UnsupportedOperationException("Transport does not support idempotency keys");
+        return post(path, jsonBody);
+    }
+
+    /**
      * Upload a PDF document as multipart form data.
      *
      * @param path relative request path

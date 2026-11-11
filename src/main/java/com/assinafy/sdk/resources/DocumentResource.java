@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources;
 
+
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.exceptions.AssinafyException;
@@ -327,6 +328,21 @@ public class DocumentResource extends BaseResource {
     public Document details(String documentId) {
         String id = pathSegment(documentId, "Document ID");
         return call("Failed to fetch document details", () -> http.get("/documents/" + id), Document.class);
+    }
+
+    /**
+     * Reads document details with optional envelope membership.
+     * {@code GET /v1/documents/{documentId}?expand=envelope_id,envelope}, no body.
+     * Payload and failures follow {@link #details(String)}; data also contains nullable
+     * {@code envelope_id} and {@code envelope: {id, name}}.
+     * @param documentId document ID
+     * @param includeEnvelope whether to include envelope membership
+     * @return document details
+     */
+    public Document details(String documentId, boolean includeEnvelope) {
+        if (!includeEnvelope) return details(documentId);
+        String path = "/documents/" + pathSegment(documentId, "Document ID");
+        return call("Failed to fetch document details", () -> http.get(path, Map.of("expand", "envelope_id,envelope")), Document.class);
     }
 
     /**
@@ -887,12 +903,30 @@ public class DocumentResource extends BaseResource {
      *         are invalid
      */
     public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request, String accountId) {
+        return createFromTemplate(templateId, request, accountId, null);
+    }
+
+    /**
+     * Creates a template document with a key that makes an explicit retry return the same document.
+     * Wire payloads and failures follow {@link #createFromTemplate(String, CreateDocumentFromTemplateRequest, String)}.
+     * The key is sent as {@code Idempotency-Key}; 409 means the key is in use or the credit ceiling
+     * was exceeded. A deleted keyed document answers 404; a failed one retains the key.
+     * @param templateId template ID
+     * @param request template document payload
+     * @param accountId explicit account ID, or null for the default
+     * @param idempotencyKey new key per intended document, or null to omit it
+     * @return the created document, initially uploaded with a null assignment
+     * @throws ValidationException if the key or payload is invalid
+     */
+    public Document createFromTemplate(String templateId, CreateDocumentFromTemplateRequest request,
+                                       String accountId, String idempotencyKey) {
+        SigningRules.validateIdempotencyKey(idempotencyKey);
         String tmplId = pathSegment(templateId, "Template ID");
         String accId = pathSegment(accountId(accountId), "Account ID");
         String json = serialise(templatePayload(request, false));
         logInfo("Creating document from template", Map.of("templateId", tmplId, "accountId", accId));
         return call("Failed to create document from template",
-                () -> http.post("/accounts/" + accId + "/templates/" + tmplId + "/documents", json),
+                () -> http.post("/accounts/" + accId + "/templates/" + tmplId + "/documents", json, idempotencyKey),
                 Document.class);
     }
 
@@ -1529,11 +1563,12 @@ public class DocumentResource extends BaseResource {
         List<Map<String, Object>> signers = request.getSigners().stream()
                 .map(signer -> templateSignerPayload(signer, estimate))
                 .toList();
-        if (!estimate) validateTemplateSignerSteps(request.getSigners());
         Map<String, Object> body = new HashMap<>();
         body.put("signers", signers);
         if (!estimate) {
             requireExpiration(request.getExpiresAt());
+            SigningRules.validateCreditCeiling(request.getMaxTotalCredits());
+            if (request.getMaxTotalCredits() != null) body.put("max_total_credits", request.getMaxTotalCredits());
             if (request.getName() != null) body.put("name", request.getName());
             if (request.getMessage() != null) body.put("message", request.getMessage());
             if (request.getExpiresAt() != null) body.put("expires_at", request.getExpiresAt());
@@ -1551,6 +1586,8 @@ public class DocumentResource extends BaseResource {
         Map<String, Object> value = new HashMap<>();
         value.put("role_id", signer.getRoleId());
         if (!estimate) {
+            SigningRules.validateEmbedded(signer.getEmbedded(), signer.getVerificationMethod());
+            if (signer.getEmbedded() != null) value.put("embedded", signer.getEmbedded());
             if (signer.getId() != null && !signer.getId().isBlank()) {
                 value.put("id", signer.getId());
             } else {
@@ -1579,12 +1616,6 @@ public class DocumentResource extends BaseResource {
         return value;
     }
 
-    private static void validateTemplateSignerSteps(List<TemplateSigner> signers) {
-        SigningRules.validateSigningOrder(signers.stream()
-                .map(signer -> new SigningRules.Placement(signer.getStep(), signer.getVerificationMethod()))
-                .toList(), "template signer");
-    }
-
     private static void sleep(long nanos) {
         try {
             TimeUnit.NANOSECONDS.sleep(nanos);
@@ -1593,4 +1624,44 @@ public class DocumentResource extends BaseResource {
             throw new NetworkException("Interrupted while waiting for document readiness", e);
         }
     }
+    /**
+     * Download document thumbnail.
+     * <p><strong>HTTP:</strong> {@code GET /v1/documents/{documentId}/thumbnail}.
+     * Download the thumbnail image of a document&#x27;s first page.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (image/*):</p><pre>&quot;(binary bytes)&quot;</pre>
+     * <p>Statuses: 200 The thumbnail image; 404 The requested resource does not exist.; 503 With `artifact=certificated`: another request was still rendering the page after 30 seconds, or the API was already rendering as many pages as it allows at once. Try again after the `Retry-After` seconds.; 304 Not modified: the `If-None-Match` or `If-Modified-Since` sent matches the page. No body.; 403 Authenticated but not allowed to perform this action.; 400 With a signer access code: the signer&#x27;s step has not started yet (sequential signing).; 410 With a signer access code: the code is closed, because its signer finished (for a document of an envelope, every document of it they are on) more than 30 minutes ago. It still shows the signer&#x27;s status and asks for the certified copy (`GET /v1/sign`).; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param documentId document ID
+     * @param certificated true to render the signed artifact; workspace credentials required
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public byte[] thumbnail(String documentId, boolean certificated) {
+        if (!certificated) return thumbnail(documentId);
+        String path = "/documents/" + pathSegment(documentId, "Document ID") + "/thumbnail?artifact=certificated";
+        return callBinary("Failed to download signed thumbnail", () -> http.getBinary(path));
+    }
+
+    /**
+     * Download document page.
+     * <p><strong>HTTP:</strong> {@code GET /v1/documents/{documentId}/pages/{pageId}/download}.
+     * Download the rendered image of a specific document page.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (image/*):</p><pre>&quot;(binary bytes)&quot;</pre>
+     * <p>Statuses: 200 The page image; 404 The requested resource does not exist.; 503 With `artifact=certificated`: another request was still rendering the page after 30 seconds, or the API was already rendering as many pages as it allows at once. Try again after the `Retry-After` seconds.; 304 Not modified: the `If-None-Match` or `If-Modified-Since` sent matches the page. No body.; 403 Authenticated but not allowed to perform this action.; 400 With a signer access code: the signer&#x27;s step has not started yet (sequential signing).; 410 With a signer access code: the code is closed, because its signer finished (for a document of an envelope, every document of it they are on) more than 30 minutes ago. It still shows the signer&#x27;s status and asks for the certified copy (`GET /v1/sign`).; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param documentId document ID
+     * @param pageId document page ID
+     * @param certificated true to render the signed artifact; respect 503 Retry-After while rendering
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public byte[] downloadPage(String documentId, String pageId, boolean certificated) {
+        if (!certificated) return downloadPage(documentId, pageId);
+        String path = "/documents/" + pathSegment(documentId, "Document ID") + "/pages/"
+                + pathSegment(pageId, "Page ID") + "/download?artifact=certificated";
+        return callBinary("Failed to download signed page", () -> http.getBinary(path));
+    }
+
 }

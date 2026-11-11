@@ -848,9 +848,28 @@ public class AssignmentResource extends BaseResource {
      * @return raw document and assignment data
      */
     public Map<String, Object> getForSigner(String signerAccessCode, Boolean hasAcceptedTerms) {
+        return getForSigner(signerAccessCode, hasAcceptedTerms, null, false);
+    }
+
+    /**
+     * Opens a document of the signer's envelope using the original invitation code.
+     * {@code GET /v1/sign?signer-access-code=...&document_id=...&expand=envelope}, no body.
+     * Payload and failures follow {@link #getForSigner(String, Boolean)}; data additionally
+     * includes current_signer, is_signer_access_closed, certified_copy and, when requested,
+     * nullable {@code envelope: {id, name}}. A document outside the envelope returns 404.
+     * @param signerAccessCode original invitation code
+     * @param hasAcceptedTerms optional acceptance flag
+     * @param documentId optional other document of this envelope
+     * @param includeEnvelope whether to include envelope ID and name
+     * @return signer document data, including closed-access and certified-copy availability
+     */
+    public Map<String, Object> getForSigner(String signerAccessCode, Boolean hasAcceptedTerms,
+                                           String documentId, boolean includeEnvelope) {
         requireId(signerAccessCode, "Signer access code");
         String path = withAccessCode("/sign", signerAccessCode);
         if (hasAcceptedTerms != null) path += "&has_accepted_terms=" + hasAcceptedTerms;
+        if (documentId != null) path += "&document_id=" + encode(requireId(documentId, "Document ID"));
+        if (includeEnvelope) path += "&expand=envelope";
         String finalPath = path;
         return callMap("Failed to fetch signer assignment",
                 () -> http.get(finalPath));
@@ -868,6 +887,19 @@ public class AssignmentResource extends BaseResource {
      */
     public Document getForSignerTyped(String signerAccessCode, Boolean hasAcceptedTerms) {
         return ResponseHandler.convert(getForSigner(signerAccessCode, hasAcceptedTerms), Document.class);
+    }
+
+    /**
+     * Typed form of {@link #getForSigner(String, Boolean, String, boolean)} with the same wire contract.
+     * @param signerAccessCode original invitation code
+     * @param hasAcceptedTerms optional acceptance flag
+     * @param documentId optional document of the same envelope
+     * @param includeEnvelope whether to include envelope membership
+     * @return the signer document
+     */
+    public Document getForSignerTyped(String signerAccessCode, Boolean hasAcceptedTerms,
+                                      String documentId, boolean includeEnvelope) {
+        return ResponseHandler.convert(getForSigner(signerAccessCode, hasAcceptedTerms, documentId, includeEnvelope), Document.class);
     }
 
     /**
@@ -1070,6 +1102,8 @@ public class AssignmentResource extends BaseResource {
         if (request.getEntries() != null) body.put("entries", request.getEntries());
         if (!estimate) {
             requireExpiration(request.getExpiresAt());
+            SigningRules.validateCreditCeiling(request.getMaxTotalCredits());
+            if (request.getMaxTotalCredits() != null) body.put("max_total_credits", request.getMaxTotalCredits());
             if (request.getMessage() != null) body.put("message", request.getMessage());
             if (request.getExpiresAt() != null) body.put("expires_at", request.getExpiresAt());
             if (request.getCopyReceivers() != null) body.put("copy_receivers", request.getCopyReceivers());
@@ -1087,6 +1121,10 @@ public class AssignmentResource extends BaseResource {
             map.put("id", ref.getId());
         }
         SigningRules.validateDeliveryMethods(ref.getVerificationMethod(), ref.getNotificationMethods());
+        if (!allowWithoutId) {
+            SigningRules.validateEmbedded(ref.getEmbedded(), ref.getVerificationMethod());
+            if (ref.getEmbedded() != null) map.put("embedded", ref.getEmbedded());
+        }
         if (ref.getVerificationMethod() != null) map.put("verification_method", ref.getVerificationMethod());
         if (ref.getNotificationMethods() != null) map.put("notification_methods", ref.getNotificationMethods());
         if (!allowWithoutId && ref.getStep() != null) {

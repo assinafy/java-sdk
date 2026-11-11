@@ -991,7 +991,7 @@ class LiveApiSmokeIT {
     }
 
     /** Returns a tiny syntactically valid one-page PDF for upload testing. */
-    private static byte[] minimalPdf() {
+    static byte[] minimalPdf() {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeAscii(out, "%PDF-1.4\n");
         List<String> objects = List.of(

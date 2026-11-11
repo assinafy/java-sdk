@@ -380,19 +380,7 @@ class DocumentResourceExtraTest {
     }
 
     @Test
-    void templateCreationValidatesSequentialSignerSteps() {
-        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
-                CreateDocumentFromTemplateRequest.builder().signers(List.of(
-                        TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
-                        TemplateSigner.builder().roleId("r2").id("s2").build())).build()))
-                .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Every template signer");
-        assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
-                CreateDocumentFromTemplateRequest.builder().signers(List.of(
-                        TemplateSigner.builder().roleId("r1").id("s1").step(1).build(),
-                        TemplateSigner.builder().roleId("r2").id("s2").step(3).build())).build()))
-                .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("contiguous");
+    void templateCreationRejectsNonpositiveSteps() {
         assertThatThrownBy(() -> documents.createFromTemplate("tmpl",
                 CreateDocumentFromTemplateRequest.builder().signers(List.of(
                         TemplateSigner.builder().roleId("r1").id("s1").step(0).build())).build()))

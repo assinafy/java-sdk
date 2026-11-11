@@ -1,5 +1,8 @@
 package com.assinafy.sdk.resources;
 
+
+import com.assinafy.sdk.models.AccountTheme;
+import com.assinafy.sdk.models.CertifiedCopy;
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.exceptions.AssinafyException;
@@ -395,8 +398,8 @@ public class SignerResource extends BaseResource {
         if (request.getFullName() != null && request.getFullName().isBlank()) {
             throw new ValidationException("Signer full_name must not be blank");
         }
-        if (request.getEmail() != null) requireEmail(request.getEmail());
-        if (request.getWhatsappPhoneNumber() != null) {
+        if (request.getEmail() != null && !request.getEmail().isEmpty()) requireEmail(request.getEmail());
+        if (request.getWhatsappPhoneNumber() != null && !request.getWhatsappPhoneNumber().isEmpty()) {
             requireWhatsappPhoneNumber(request.getWhatsappPhoneNumber());
         }
     }
@@ -479,13 +482,18 @@ public class SignerResource extends BaseResource {
     public Signer findByEmail(String email, String accountId) {
         requireEmail(email);
         try {
-            ListParams params = ListParams.builder().search(email).perPage(100).build();
-            PaginatedResult<Signer> result = list(params, accountId);
             String lower = email.toLowerCase(Locale.ROOT);
-            return result.getData().stream()
-                    .filter(s -> s.getEmail() != null && s.getEmail().toLowerCase(Locale.ROOT).equals(lower))
-                    .findFirst()
-                    .orElse(null);
+            int page = 1;
+            while (true) {
+                PaginatedResult<Signer> result = list(ListParams.builder().search(email).perPage(50).page(page).build(), accountId);
+                Signer match = result.getData().stream()
+                        .filter(s -> s.getEmail() != null && s.getEmail().toLowerCase(Locale.ROOT).equals(lower))
+                        .findFirst().orElse(null);
+                if (match != null) return match;
+                if (result.getData().isEmpty() || result.getMeta() == null || result.getMeta().getLastPage() == null
+                        || page >= result.getMeta().getLastPage()) return null;
+                page++;
+            }
         } catch (ApiException e) {
             if (e.getStatusCode() == 404) return null;
             throw e;
@@ -617,60 +625,29 @@ public class SignerResource extends BaseResource {
     }
 
     /**
-     * Signer-self confirmation/update of their data before signing, returning the server-normalised
-     * {@link Signer}.
-     *
-     * <p>Maps to {@code PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}}.
-     * The {@code data} map may carry {@code full_name}, {@code email}, and {@code government_id}.
-     * Additional keys are forwarded unchanged.
-     *
-     * <p><strong>HTTP:</strong> <code>PUT /v1/documents/{documentId}/signers/confirm-data</code>.
-     * <strong>Authentication:</strong> <code>signer-access-code</code> query credential.</p>
-     * <p>Wire parameters:</p><ul>
-     * <li><code>documentId</code> (path, required): Document ID.</li>
-     * </ul>
-     * <p>Request body: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
-     * <pre>{
-     *   "full_name": "full_name_example",
-     *   "email": "signer@example.invalid",
-     *   "government_id": "government_id_example"
-     * }</pre>
-     * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
-     * optional fields may be absent or null.</p>
-     * <pre>{
-     *   "status": 200,
-     *   "message": "",
-     *   "data": {
-     *     "resource": "signer",
-     *     "id": "62d6ee35c7741ca4006b9e11",
-     *     "full_name": "John Signer",
-     *     "email": null,
-     *     "whatsapp_phone_number": null,
-     *     "has_accepted_terms": false
-     *   }
-     * }</pre>
-     * <p>The SDK unwraps JSON envelopes to their <code>data</code> value; OAuth responses remain flat.
-     * Void methods discard a success payload. Binary methods return the bytes directly.</p>
-     * <p>Documented HTTP statuses: 200 Data confirmed; 401 Missing or invalid credentials.; 500
-     * Unexpected server error. Non-2xx HTTP or numeric envelope statuses raise
-     * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
-     * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
-     * local arguments raise <code>ValidationException</code> before a request.</p>
-     *
+     * Confirm signer data.
+     * <p><strong>HTTP:</strong> {@code PUT /v1/documents/{documentId}/signers/confirm-data}.
+     * The signer confirms or updates their data before signing. Uses the signer access code. With the code of a document of an envelope, it acts on the signer&#x27;s request on the document the route names, if that document is in the same envelope, carrying the code&#x27;s e-mail or WhatsApp verification there. The code&#x27;s own document, taken out of its envelope, takes the confirmation too while a document of the envelope still awaits signatures: it signs nothing (that document stays cancelled) and opens the reads a certificate or identity-check signer&#x27;s method gates, so the signer reaches the documents left.</p>
+     * <p>Authentication: signer access code only.</p>
+     * <p>Request: {&quot;email&quot;: &quot;signer@example.invalid&quot;, &quot;whatsapp_phone_number&quot;: &quot;value&quot;, &quot;has_accepted_terms&quot;: true}.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: []}</pre>
+     * <p>Statuses: 410 With a signer access code: the code is closed, because its signer finished (for a document of an envelope, every document of it they are on) more than 30 minutes ago. It still shows the signer&#x27;s status and asks for the certified copy (`GET /v1/sign`).; 404 The route names a document the code doesn&#x27;t reach: outside the code&#x27;s envelope, or one the signer is not on.; 200 Data confirmed. `data` is an empty list.; 400 An e-mail or WhatsApp number the signer&#x27;s methods need is missing, invalid or not theirs, or the signer&#x27;s step has not started yet (sequential signing).; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
      * @param documentId document ID
      * @param signerAccessCode signer query credential
-     * @param data fields to confirm; {@code null} sends an empty object
-     * @return the server-normalized signer
+     * @param data email and/or whatsapp_phone_number required by the signing method; optional has_accepted_terms
+     * @return null for the current empty confirmation response; a signer when an older deployment returns one
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
      */
     public Signer confirmSignerData(String documentId, String signerAccessCode, Map<String, Object> data) {
         String docId = pathSegment(documentId, "Document ID");
         requireId(signerAccessCode, "Signer access code");
         Map<String, Object> body = data != null ? new HashMap<>(data) : new HashMap<>();
         String json = serialise(body);
-        return call("Failed to confirm signer data",
+        Object confirmed = call("Failed to confirm signer data",
                 () -> http.put(withAccessCode("/documents/" + docId + "/signers/confirm-data", signerAccessCode), json),
-                Signer.class);
+                Object.class);
+        if (confirmed == null || confirmed instanceof List<?> values && values.isEmpty()) return null;
+        return ResponseHandler.convert(confirmed, Signer.class);
     }
 
     /**
@@ -959,6 +936,23 @@ public class SignerResource extends BaseResource {
     }
 
     /**
+     * Reads the signer's document with optional envelope membership.
+     * {@code GET /v1/signers/{signerId}/document?signer-access-code=...&expand=envelope}, no body.
+     * Payload and failures follow {@link #getCurrentDocument(String, String)}; data additionally
+     * includes nullable {@code envelope: {id, name}} when expanded.
+     * @param signerId signer ID
+     * @param signerAccessCode invitation code
+     * @param includeEnvelope whether to include envelope ID and name
+     * @return the document
+     */
+    public Document getCurrentDocumentTyped(String signerId, String signerAccessCode, boolean includeEnvelope) {
+        if (!includeEnvelope) return getCurrentDocumentTyped(signerId, signerAccessCode);
+        String path = withAccessCode("/signers/" + pathSegment(signerId, "Signer ID") + "/document",
+                requireId(signerAccessCode, "Signer access code")) + "&expand=envelope";
+        return call("Failed to fetch signer's current document", () -> http.get(path), Document.class);
+    }
+
+    /**
      * Fetch the signer's current document as a typed model.
      *
      * <p>Wire contract, payloads and failures: {@link #getCurrentDocument(String, String)}.
@@ -1132,14 +1126,7 @@ public class SignerResource extends BaseResource {
      * @return paginated matching documents
      */
     public PaginatedResult<Document> searchDocuments(String signerId, String signerAccessCode, String search) {
-        String sid = pathSegment(signerId, "Signer ID");
-        requireId(signerAccessCode, "Signer access code");
-        Map<String, Object> query = new HashMap<>();
-        query.put("signer-access-code", signerAccessCode);
-        if (search != null && !search.isBlank()) query.put("search", search);
-        return callList("Failed to search signer's documents",
-                () -> http.get("/signers/" + sid + "/documents/search", query),
-                Document.class);
+        return searchDocuments(signerId, signerAccessCode, search, null);
     }
 
     /**
@@ -1202,11 +1189,7 @@ public class SignerResource extends BaseResource {
      * @throws ValidationException if the signer ID is blank
      */
     public PaginatedResult<Document> searchDocumentsAsWorkspace(String signerId, String search) {
-        String sid = pathSegment(signerId, "Signer ID");
-        Map<String, Object> query = search != null && !search.isBlank() ? Map.of("search", search) : Map.of();
-        return callList("Failed to search signer's documents",
-                () -> http.get("/signers/" + sid + "/documents/search", query),
-                Document.class);
+        return searchDocumentsAsWorkspace(signerId, search, null);
     }
 
     /**
@@ -1362,4 +1345,139 @@ public class SignerResource extends BaseResource {
             throw new ValidationException("Document IDs must not be null");
         }
     }
+    /**
+     * Workspace brand for the signing page.
+     * <p><strong>HTTP:</strong> {@code GET /v1/sign/theme}.
+     * The brand of the workspace that sent the document: its name, its colors (`primary_color` is the button background, `secondary_color` the button text, 6-digit hex without `#`) and the address of its logo, or `null` when it has none. The logo address carries no access code: append `signer-access-code` to it, as to every signer call. Available before verification and after the document is deleted, so every screen of the signing page can carry the brand. Uses the signer access code.</p>
+     * <p>Authentication: signer access code only.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;account_name&quot;: &quot;value&quot;, &quot;primary_color&quot;: &quot;value&quot;, &quot;secondary_color&quot;: &quot;value&quot;, &quot;logo&quot;: &quot;value&quot;}}</pre>
+     * <p>Statuses: 200 The brand; 400 With a signer access code: the signer&#x27;s step has not started yet (sequential signing).; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param signerAccessCode signer invitation access code
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public AccountTheme getTheme(String signerAccessCode) {
+        requireId(signerAccessCode, "Signer access code");
+        return call("Failed to fetch signing theme", () -> http.get(withAccessCode("/sign/theme", signerAccessCode)), AccountTheme.class);
+    }
+
+    /**
+     * Workspace logo for the signing page.
+     * <p><strong>HTTP:</strong> {@code GET /v1/sign/logo}.
+     * The logo image of the workspace that sent the document. Available before verification and after the document is deleted. Uses the signer access code.</p>
+     * <p>Authentication: signer access code only.</p>
+     * <p>Request: none.</p>
+     * <p>Success (image/*):</p><pre>&quot;(binary bytes)&quot;</pre>
+     * <p>Statuses: 200 The logo image; 400 With a signer access code: the signer&#x27;s step has not started yet (sequential signing).; 401 Missing or invalid credentials.; 404 The workspace has no logo.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param signerAccessCode signer invitation access code
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public byte[] downloadLogo(String signerAccessCode) {
+        requireId(signerAccessCode, "Signer access code");
+        return callBinary("Failed to download signing logo", () -> http.getBinary(withAccessCode("/sign/logo", signerAccessCode), "*/*"));
+    }
+
+    /**
+     * Send the certified copy again.
+     * <p><strong>HTTP:</strong> {@code POST /v1/sign/certified-copy}.
+     * Sends the signer their certified document again, with a download link valid for 30 minutes. It goes on the channel of the signature request (e-mail when the request used e-mail, otherwise WhatsApp) and only to the e-mail or number the signing messages went to, never to a changed signer record. Works with the signer&#x27;s access code after they signed, including once the code is closed and after the workspace is deleted. E-mail: once every 2 minutes and 10 times in 24 hours. WhatsApp: once per signature request; after that the signer must ask the sender. `certified_copy` on `GET /v1/sign` says whether it is available.</p>
+     * <p>Authentication: signer access code only.</p>
+     * <p>Request: {&quot;document_id&quot;: &quot;value&quot;}.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;available&quot;: true, &quot;notification_method&quot;: &quot;Email&quot;, &quot;resends_left&quot;: 1, &quot;sent_to&quot;: &quot;value&quot;}}</pre>
+     * <p>Statuses: 200 Sent; 404 `document_id` names a document outside the code&#x27;s envelope, or one the signer is not on.; 409 The signer has not signed, the document is not certified yet, or the request has no e-mail or WhatsApp to send to (ask the sender).; 429 E-mail: asked again within 2 minutes or more than 10 times in 24 hours. WhatsApp: already re-sent once (ask the sender).; 500 The message could not be sent; nothing was used up, so it can be asked again.; 400 The signer&#x27;s step has not started yet (sequential signing), or, with the code of a document of an envelope, `document_id` is no document id.; 401 Missing or invalid credentials.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param signerAccessCode signer invitation access code, including a closed code
+     * @param documentId optional other document of the same envelope
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public CertifiedCopy resendCertifiedCopy(String signerAccessCode, String documentId) {
+        requireId(signerAccessCode, "Signer access code");
+        if (documentId != null) requireId(documentId, "Document ID");
+        String json = serialise(documentId == null ? Map.of() : Map.of("document_id", documentId));
+        return call("Failed to resend certified copy", () -> http.post(withAccessCode("/sign/certified-copy", signerAccessCode), json), CertifiedCopy.class);
+    }
+
+    /**
+     * Download the certified copy from a sent link.
+     * <p><strong>HTTP:</strong> {@code GET /v1/signers/downloads/{token}}.
+     * The link in the completion and re-send messages. Valid 7 days in the completion message and 30 minutes when re-sent. Add `/pades` for the PAdES version on documents that have one. An expired or unknown link is redirected (`302`) to the expired-link page; for a known link the redirect carries `?token=`, with which the page can ask for a new one (`POST /v1/signers/downloads/{token}/resend`).</p>
+     * <p>Authentication: public token only.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/pdf):</p><pre>&quot;(binary bytes)&quot;</pre>
+     * <p>Statuses: 200 The certified PDF; 302 Expired or unknown link: redirected to the expired-link page.; 404 `/pades` on a document that has no PAdES version.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param token download-link token
+     * @param pades true for the original PAdES signature artifact
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public byte[] downloadCertifiedCopy(String token, boolean pades) {
+        String path = "/signers/downloads/" + pathSegment(token, "Download token") + (pades ? "/pades" : "");
+        return callBinary("Failed to download certified copy", () -> http.getBinary(path, "*/*"));
+    }
+
+    /**
+     * Send the certified copy again from an expired link.
+     * <p><strong>HTTP:</strong> {@code POST /v1/signers/downloads/{token}/resend}.
+     * Used by the page an expired download link leads to. Works with the link&#x27;s token even after it expired, and on the same terms as `POST /v1/sign/certified-copy`: the request&#x27;s channel, only the e-mail or number of the signing, the same limits. Copy receivers&#x27; links have no signature request (`409`).</p>
+     * <p>Authentication: public token only.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;available&quot;: true, &quot;notification_method&quot;: &quot;Email&quot;, &quot;resends_left&quot;: 1, &quot;sent_to&quot;: &quot;value&quot;}}</pre>
+     * <p>Statuses: 200 Sent; 404 Unknown link.; 409 Nothing can be sent from here (copy receiver, Bypass signer, no recorded contact, or the document is not certified): ask the sender.; 429 E-mail: asked again within 2 minutes or more than 10 times in 24 hours. WhatsApp: already re-sent once.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param token known download-link token, including an expired token
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public CertifiedCopy resendCertifiedCopyFromToken(String token) {
+        String path = "/signers/downloads/" + pathSegment(token, "Download token") + "/resend";
+        return call("Failed to resend certified copy", () -> http.post(path, null), CertifiedCopy.class);
+    }
+
+    /**
+     * Search signer's documents.
+     * <p><strong>HTTP:</strong> {@code GET /v1/signers/{signerId}/documents/search}.
+     * Search the documents a signer is party to (compact representation). Accepts either the signer access code or the account&#x27;s own credentials (API key or bearer token) — with account credentials, the signer must belong to that account&#x27;s workspace. With the signer access code, `signerId` must be the code&#x27;s own signer (otherwise `403`), only documents whose signing step has been reached are listed (for the code of a document of an envelope, only that envelope&#x27;s documents), and each assignment leaves out `signing_urls`.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: [{&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;account_id&quot;: &quot;value&quot;, &quot;template_id&quot;: &quot;value&quot;, &quot;name&quot;: &quot;value&quot;, &quot;status&quot;: &quot;value&quot;, &quot;artifacts&quot;: {}, &quot;is_closed&quot;: true, &quot;signing_url&quot;: &quot;value&quot;, &quot;verification_code&quot;: &quot;value&quot;, &quot;verification_url&quot;: &quot;value&quot;, &quot;decline_reason&quot;: &quot;value&quot;, &quot;declined_by&quot;: {&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;full_name&quot;: &quot;value&quot;, &quot;email&quot;: &quot;signer@example.invalid&quot;, &quot;whatsapp_phone_number&quot;: &quot;value&quot;, &quot;government_id&quot;: &quot;value&quot;, &quot;has_accepted_terms&quot;: true}, &quot;assignment&quot;: {&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;document_id&quot;: &quot;value&quot;, &quot;created_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;sender_email&quot;: &quot;signer@example.invalid&quot;, &quot;method&quot;: &quot;virtual&quot;, &quot;expires_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;message&quot;: &quot;value&quot;, &quot;signers&quot;: [{&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;full_name&quot;: &quot;value&quot;, &quot;email&quot;: &quot;signer@example.invalid&quot;, &quot;whatsapp_phone_number&quot;: &quot;value&quot;, &quot;government_id&quot;: &quot;value&quot;, &quot;has_accepted_terms&quot;: true, &quot;verification_method&quot;: &quot;value&quot;, &quot;notification_methods&quot;: [&quot;value&quot;], &quot;step&quot;: 1, &quot;notified&quot;: true, &quot;identity_verification_status&quot;: &quot;Pending&quot;, &quot;completed&quot;: true, &quot;notification_history&quot;: [{&quot;event&quot;: &quot;value&quot;, &quot;status&quot;: &quot;sent&quot;, &quot;error_code&quot;: &quot;MailboxFull&quot;, &quot;error_message&quot;: &quot;value&quot;, &quot;sent_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;failed_at&quot;: &quot;2026-12-31T12:00:00Z&quot;}]}], &quot;copy_receivers&quot;: [{}], &quot;items&quot;: [{&quot;id&quot;: &quot;value&quot;, &quot;page&quot;: {&quot;id&quot;: &quot;value&quot;, &quot;number&quot;: 1, &quot;height&quot;: 1, &quot;width&quot;: 1, &quot;download_url&quot;: &quot;value&quot;}, &quot;signer&quot;: {}, &quot;field&quot;: {}, &quot;display_settings&quot;: &quot;value&quot;, &quot;value&quot;: &quot;value&quot;, &quot;completed&quot;: true}], &quot;summary&quot;: {&quot;signer_count&quot;: 1, &quot;completed_count&quot;: 1, &quot;signers&quot;: [{}]}, &quot;signing_urls&quot;: [{&quot;signer_id&quot;: &quot;value&quot;, &quot;url&quot;: &quot;value&quot;, &quot;embedded&quot;: true}]}, &quot;pages&quot;: [{&quot;id&quot;: &quot;value&quot;, &quot;number&quot;: 1, &quot;height&quot;: 1, &quot;width&quot;: 1, &quot;download_url&quot;: &quot;value&quot;}], &quot;envelope_id&quot;: &quot;value&quot;, &quot;envelope&quot;: {&quot;id&quot;: &quot;value&quot;, &quot;name&quot;: &quot;value&quot;}, &quot;has_contract&quot;: true, &quot;created_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;updated_at&quot;: &quot;2026-12-31T12:00:00Z&quot;}]}</pre>
+     * <p>Statuses: 410 With a signer access code: the code is closed, because its signer finished (for a document of an envelope, every document of it they are on) more than 30 minutes ago. It still shows the signer&#x27;s status and asks for the certified copy (`GET /v1/sign`).; 200 Matching documents; 403 The access code belongs to another signer; or, with a user&#x27;s token or key, a role, a membership or an OAuth scope refuses it.; 404 The signer is not in the caller&#x27;s workspace.; 400 With a signer access code, the signer&#x27;s step has not started yet (sequential signing); or `envelope_id` is not text, an entry of `errors`.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param signerId signer ID
+     * @param signerAccessCode signer invitation code
+     * @param search optional search text
+     * @param envelopeId envelope to filter, or null for all
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public PaginatedResult<Document> searchDocuments(String signerId, String signerAccessCode, String search, String envelopeId) {
+        String path = "/signers/" + pathSegment(signerId, "Signer ID") + "/documents/search";
+        Map<String, Object> query = new HashMap<>();
+        query.put("signer-access-code", requireId(signerAccessCode, "Signer access code"));
+        if (search != null && !search.isBlank()) query.put("search", search);
+        if (envelopeId != null) query.put("envelope_id", requireId(envelopeId, "Envelope ID"));
+        return callList("Failed to search signer's documents", () -> http.get(path, query), Document.class);
+    }
+
+    /**
+     * Search signer's documents.
+     * <p><strong>HTTP:</strong> {@code GET /v1/signers/{signerId}/documents/search}.
+     * Search the documents a signer is party to (compact representation). Accepts either the signer access code or the account&#x27;s own credentials (API key or bearer token) — with account credentials, the signer must belong to that account&#x27;s workspace. With the signer access code, `signerId` must be the code&#x27;s own signer (otherwise `403`), only documents whose signing step has been reached are listed (for the code of a document of an envelope, only that envelope&#x27;s documents), and each assignment leaves out `signing_urls`.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: [{&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;account_id&quot;: &quot;value&quot;, &quot;template_id&quot;: &quot;value&quot;, &quot;name&quot;: &quot;value&quot;, &quot;status&quot;: &quot;value&quot;, &quot;artifacts&quot;: {}, &quot;is_closed&quot;: true, &quot;signing_url&quot;: &quot;value&quot;, &quot;verification_code&quot;: &quot;value&quot;, &quot;verification_url&quot;: &quot;value&quot;, &quot;decline_reason&quot;: &quot;value&quot;, &quot;declined_by&quot;: {&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;full_name&quot;: &quot;value&quot;, &quot;email&quot;: &quot;signer@example.invalid&quot;, &quot;whatsapp_phone_number&quot;: &quot;value&quot;, &quot;government_id&quot;: &quot;value&quot;, &quot;has_accepted_terms&quot;: true}, &quot;assignment&quot;: {&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;document_id&quot;: &quot;value&quot;, &quot;created_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;sender_email&quot;: &quot;signer@example.invalid&quot;, &quot;method&quot;: &quot;virtual&quot;, &quot;expires_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;message&quot;: &quot;value&quot;, &quot;signers&quot;: [{&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;full_name&quot;: &quot;value&quot;, &quot;email&quot;: &quot;signer@example.invalid&quot;, &quot;whatsapp_phone_number&quot;: &quot;value&quot;, &quot;government_id&quot;: &quot;value&quot;, &quot;has_accepted_terms&quot;: true, &quot;verification_method&quot;: &quot;value&quot;, &quot;notification_methods&quot;: [&quot;value&quot;], &quot;step&quot;: 1, &quot;notified&quot;: true, &quot;identity_verification_status&quot;: &quot;Pending&quot;, &quot;completed&quot;: true, &quot;notification_history&quot;: [{&quot;event&quot;: &quot;value&quot;, &quot;status&quot;: &quot;sent&quot;, &quot;error_code&quot;: &quot;MailboxFull&quot;, &quot;error_message&quot;: &quot;value&quot;, &quot;sent_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;failed_at&quot;: &quot;2026-12-31T12:00:00Z&quot;}]}], &quot;copy_receivers&quot;: [{}], &quot;items&quot;: [{&quot;id&quot;: &quot;value&quot;, &quot;page&quot;: {&quot;id&quot;: &quot;value&quot;, &quot;number&quot;: 1, &quot;height&quot;: 1, &quot;width&quot;: 1, &quot;download_url&quot;: &quot;value&quot;}, &quot;signer&quot;: {}, &quot;field&quot;: {}, &quot;display_settings&quot;: &quot;value&quot;, &quot;value&quot;: &quot;value&quot;, &quot;completed&quot;: true}], &quot;summary&quot;: {&quot;signer_count&quot;: 1, &quot;completed_count&quot;: 1, &quot;signers&quot;: [{}]}, &quot;signing_urls&quot;: [{&quot;signer_id&quot;: &quot;value&quot;, &quot;url&quot;: &quot;value&quot;, &quot;embedded&quot;: true}]}, &quot;pages&quot;: [{&quot;id&quot;: &quot;value&quot;, &quot;number&quot;: 1, &quot;height&quot;: 1, &quot;width&quot;: 1, &quot;download_url&quot;: &quot;value&quot;}], &quot;envelope_id&quot;: &quot;value&quot;, &quot;envelope&quot;: {&quot;id&quot;: &quot;value&quot;, &quot;name&quot;: &quot;value&quot;}, &quot;has_contract&quot;: true, &quot;created_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;updated_at&quot;: &quot;2026-12-31T12:00:00Z&quot;}]}</pre>
+     * <p>Statuses: 410 With a signer access code: the code is closed, because its signer finished (for a document of an envelope, every document of it they are on) more than 30 minutes ago. It still shows the signer&#x27;s status and asks for the certified copy (`GET /v1/sign`).; 200 Matching documents; 403 The access code belongs to another signer; or, with a user&#x27;s token or key, a role, a membership or an OAuth scope refuses it.; 404 The signer is not in the caller&#x27;s workspace.; 400 With a signer access code, the signer&#x27;s step has not started yet (sequential signing); or `envelope_id` is not text, an entry of `errors`.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param signerId signer ID
+     * @param search optional search text
+     * @param envelopeId envelope to filter, or null for all
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public PaginatedResult<Document> searchDocumentsAsWorkspace(String signerId, String search, String envelopeId) {
+        String path = "/signers/" + pathSegment(signerId, "Signer ID") + "/documents/search";
+        Map<String, Object> query = new HashMap<>();
+        if (search != null && !search.isBlank()) query.put("search", search);
+        if (envelopeId != null) query.put("envelope_id", requireId(envelopeId, "Envelope ID"));
+        return callList("Failed to search signer's documents", () -> http.get(path, query), Document.class);
+    }
+
 }

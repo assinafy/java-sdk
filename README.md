@@ -2,7 +2,7 @@
 
 *Português · [Read in English](README.en.md)*
 
-Cliente Java thread-safe para as 118 operações da [API Assinafy](https://api.assinafy.com.br/v1/docs),
+Cliente Java thread-safe para as 147 operações da [API Assinafy](https://api.assinafy.com.br/v1/docs),
 incluindo documentos, assinaturas, templates, contratos, webhooks, OAuth 2.1 e os fluxos públicos do
 signatário. O [contrato completo](docs/API_REFERENCE.md) documenta cada rota, payload, resposta e status.
 
@@ -16,11 +16,11 @@ signatário. O [contrato completo](docs/API_REFERENCE.md) documenta cada rota, p
 <dependency>
   <groupId>com.assinafy</groupId>
   <artifactId>assinafy-sdk</artifactId>
-  <version>2.3.0</version>
+  <version>2.4.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("com.assinafy:assinafy-sdk:2.3.0")`.
+Gradle: `implementation("com.assinafy:assinafy-sdk:2.4.0")`.
 
 ## Fluxo completo de assinatura
 
@@ -103,6 +103,20 @@ PKI. Um certificado por passo; o endpoint comum de assinatura não conclui esse 
 status `certificated` antes do download. Os fluxos completos e payloads estão na
 [referência](docs/API_REFERENCE.md#deployed-extensions).
 
+## Envelopes e assinatura incorporada
+
+`envelopes().create(...)` envia até 20 documentos processados aos mesmos signatários; cada documento
+mantém assinatura, status e artefatos próprios. Estime com `envelopes().estimateCost(...)`, use
+`maxTotalCredits` para limitar a cobrança e persista uma chave de idempotência para a criação.
+A mesma chave também é aceita em `documents().createFromTemplate(..., accountId, idempotencyKey)`.
+
+Para iframe, registre a origem com `embed().addOrigin(...)`, selecione `embedded(true)` no signatário
+Email/Whatsapp e crie uma sessão com `embed().createSession(documentId, assignmentId, signerId)`.
+Entregue a URL somente ao frontend autorizado; ela expira e só pode ser trocada uma vez pela página
+Assinafy. Não registre a URL ou o código de acesso. Biometria e certificados usam o fluxo hospedado.
+As [operações completas](docs/API_REFERENCE.md#api-operations) incluem reenvio, cancelamento,
+download ZIP, preferências push, política de notificações e saldo do workspace.
+
 ## OAuth 2.1 para aplicativos de marketplace
 
 Use Authorization Code + PKCE com redirect HTTPS. `oauth().createAuthorizationUrl(...)` devolve
@@ -119,7 +133,8 @@ refreshes por conexão e salve o novo conjunto atomicamente. Nunca reenvie um re
 Crie endpoints com URL HTTPS pública. Há um por conta e até três em planos pagos. Ative
 `signing_enabled` e salve imediatamente o `WebhookEndpoint.getSecret()` retornado na criação ou ao
 habilitar assinatura. OAuth não lê o segredo, mas pode girá-lo com `webhooks:write`; a rotação invalida
-o anterior imediatamente.
+o anterior imediatamente por padrão. `rotateEndpointSecret(id, true)` mantém o anterior por
+24 horas; armazene o novo segredo e respeite `previous_secret_expires_at`.
 
 ```java
 byte[] rawBody = requestBodyBytes;
@@ -135,7 +150,7 @@ entre elas, e pausa o endpoint após dez eventos consecutivos sem entrega.
 ## Superfícies e erros
 
 O cliente expõe `documents()`, `signers()`, `assignments()`, `contracts()`, `templates()`, `fields()`,
-`tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`, `oauth()` e
+`envelopes()`, `embed()`, `tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`, `oauth()` e
 `publicDocuments()`. Operações de conta usam o `accountId` padrão e oferecem overload explícito.
 
 Sucessos retornam o `data` do envelope; OAuth retorna JSON plano e downloads retornam `byte[]`.

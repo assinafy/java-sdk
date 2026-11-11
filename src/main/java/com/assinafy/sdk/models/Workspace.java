@@ -190,4 +190,17 @@ public class Workspace {
      * @param createdAt the creation timestamp
      */
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    @JsonProperty("signing_features")
+    private Map<String, Boolean> signingFeatures;
+
+    /** Only with `?expand=signing_features` on `GET /v1/accounts/{accountId}`: which signing features the workspace&#x27;s subscription includes now (its plan&#x27;s and any granted to it), so a client offers only the identity checks and notices it can use. `DigitalCertificate` and `VerificationIdDocumentFaceMatchBasic` gate the `DigitalCertificate` and `IdDocumentFaceMatchBasic` verification methods, `WhatsappNotification` the `Whatsapp` notification method (and so the `Whatsapp` verification method), and `VerificationBypass` the `Bypass` verification method. `false` means creating an assignment, or a document from a template, with that method (or estimating its cost) answers `403`. `Embed` gates embedded signing: with `false`, the embed origins endpoints, `&quot;embedded&quot;: true` on a signer and minting an embed session answer `403` with code `PlanRestricted`. `true` is not a promise: credits, the assignment&#x27;s own rules (a `DigitalCertificate` signer needs a `virtual` assignment) and a change of plan still apply. Requires the `account:read` OAuth scope.
+     * @return the signing_features value, or null when absent
+     */
+    public Map<String, Boolean> getSigningFeatures() { return signingFeatures; }
+
+    /** Sets signing_features.
+     * @param value the signing_features value
+     */
+    public void setSigningFeatures(Map<String, Boolean> value) { signingFeatures = value; }
+
 }

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-11
+
+### Added
+
+- Document envelopes with cost estimation, idempotent creation, document management, reminders,
+  cancellation, activity history and ZIP downloads.
+- Embedded signing origins and single-use sessions, signer branding and certified-copy delivery.
+- Workspace usage and notification policy, user push preferences, webhook test deliveries and
+  secret rotation with an optional 24-hour overlap.
+- Credit ceilings and embedded signers for assignments and template documents; optional envelope
+  and related-document expansions, envelope search and certificated page renders.
+
+### Fixed
+
+- Signer data confirmation accepts the current empty success payload and older signer responses.
+- Signer updates accept empty email and WhatsApp strings to clear contact fields.
+- Signer lookup follows pagination before creating a contact with an existing email.
+- Template copy-receiver roles no longer cause false signing-order validation failures.
+- Empty notification-preference updates fail locally, matching the API's required changes.
+
+### Changed
+
+- Okio is 3.18.2 and Maven Enforcer is 3.7.0.
+
 ## [2.3.0] - 2026-11-02
 
 ### Added

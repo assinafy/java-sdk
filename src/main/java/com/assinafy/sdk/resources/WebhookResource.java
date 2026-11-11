@@ -1,5 +1,7 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.models.WebhookEndpointSecret;
+
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
@@ -805,4 +807,56 @@ public class WebhookResource extends BaseResource {
         }
         throw new ValidationException("Webhook URL must be an absolute HTTPS URL");
     }
+    /**
+     * Send a test delivery.
+     * <p><strong>HTTP:</strong> {@code POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/test}.
+     * Sends the endpoint one `webhook_test` event now, signed and sent like any delivery, and returns the entry of that attempt (`kind: manual`, also listed in the delivery history). It goes to this endpoint only, whatever events it subscribes to, and also while the endpoint is paused or inactive; it neither lifts a pause nor counts toward one. The endpoint has 10 seconds to answer. Its `payload` and `origin` are `null`; the endpoint object carries its id, name, url, events and status, never its secret. No endpoint can subscribe to `webhook_test`, and it is not listed in `GET /webhooks/event-types`. Its `payload` and `origin` are `null`; the endpoint object carries its id, name, url, events and status, never its secret. No endpoint can subscribe to `webhook_test`, and it is not listed in `GET /webhooks/event-types`. The event names the endpoint as its `subject` and `object` and carries nothing about the workspace beyond `account_id`: no billing and no members. Up to 10 tests per user every 10 minutes. Requires the `webhooks:write` OAuth scope.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;resource&quot;: &quot;value&quot;, &quot;id&quot;: &quot;value&quot;, &quot;event&quot;: &quot;value&quot;, &quot;activity_id&quot;: 1, &quot;endpoint_id&quot;: &quot;value&quot;, &quot;endpoint&quot;: &quot;value&quot;, &quot;payload&quot;: {}, &quot;delivered&quot;: true, &quot;webhook_id&quot;: &quot;value&quot;, &quot;attempt&quot;: 1, &quot;kind&quot;: &quot;scheduled&quot;, &quot;will_retry&quot;: true, &quot;duration_ms&quot;: 1, &quot;http_status&quot;: 1, &quot;response_body&quot;: &quot;value&quot;, &quot;error&quot;: &quot;value&quot;, &quot;created_at&quot;: &quot;2026-12-31T12:00:00Z&quot;, &quot;updated_at&quot;: &quot;2026-12-31T12:00:00Z&quot;}}</pre>
+     * <p>Statuses: 200 The entry of the test delivery; 404 The requested resource does not exist.; 429 Rate limit exceeded.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param endpointId endpoint that receives one test delivery
+     * @param accountId explicit workspace ID, or null for the default
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public WebhookDispatch testEndpoint(String endpointId, String accountId) {
+        String path = "/accounts/" + pathSegment(accountId(accountId), "Account ID")
+                + "/webhooks/endpoints/" + pathSegment(endpointId, "Endpoint ID") + "/test";
+        return call("Failed to test webhook endpoint", () -> http.post(path, null), WebhookDispatch.class);
+    }
+
+    /** Uses the default account. See {@link testEndpoint(String, String)}.
+     * @param endpointId endpoint that receives one test delivery
+     * @return the unwrapped result
+     */
+    public WebhookDispatch testEndpoint(String endpointId) { return testEndpoint(endpointId, null); }
+
+    /**
+     * Rotate webhook endpoint signing secret.
+     * <p><strong>HTTP:</strong> {@code POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate}.
+     * Replace the endpoint&#x27;s signing secret and return the new one. The old secret stops working immediately, so update your receiver right away; or send `keep_previous: true` to keep it signing deliveries beside the new one for 24 hours (`previous_secret_expires_at`): during that time `webhook-signature` carries both signatures, so your receiver can switch to the new secret without failing verification. Only the secret just replaced is kept: rotating again within those 24 hours stops the one kept before. Two rotations sent at once take effect one after the other, each answering the secret it set. Returns `400` when signing is disabled or `keep_previous` is not a boolean. Requires the `webhooks:write` OAuth scope.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: {&quot;keep_previous&quot;: true}.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;secret&quot;: &quot;value&quot;, &quot;previous_secret_expires_at&quot;: &quot;2026-12-31T12:00:00Z&quot;}}</pre>
+     * <p>Statuses: 200 The new secret; 400 One or more fields failed validation.; 404 The requested resource does not exist.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param endpointId webhook endpoint ID
+     * @param keepPrevious keep the just-replaced secret signing for 24 hours
+     * @param accountId explicit workspace ID, or null for the default
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public WebhookEndpointSecret rotateEndpointSecret(String endpointId, boolean keepPrevious, String accountId) {
+        String path = endpointPath(endpointId, accountId) + "/secret/rotate";
+        String json = serialise(Map.of("keep_previous", keepPrevious));
+        return call("Failed to rotate webhook endpoint secret", () -> http.post(path, json), WebhookEndpointSecret.class);
+    }
+
+    /** Uses the default account. See {@link rotateEndpointSecret(String, boolean, String)}.
+     * @param endpointId endpoint ID
+     * @param keepPrevious keep the previous secret signing for 24 hours
+     * @return the unwrapped result
+     */
+    public WebhookEndpointSecret rotateEndpointSecret(String endpointId, boolean keepPrevious) { return rotateEndpointSecret(endpointId, keepPrevious, null); }
+
 }

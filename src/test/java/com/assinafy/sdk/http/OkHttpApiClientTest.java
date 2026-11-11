@@ -57,6 +57,9 @@ class OkHttpApiClientTest {
             "/public/documents/doc/send-token", "/documents/hash/verify", "/oauth/token", "/oauth/revoke",
             "/signers/self?signer-access-code=code", "/sign?signer-access-code=code",
             "/signers/identity-verification?signer-access-code=code",
+            "/embed/sessions/token/exchange", "/signers/downloads/token", "/signers/downloads/token/pades",
+            "/signers/downloads/token/resend", "/sign/theme?signer-access-code=code",
+            "/sign/logo?signer-access-code=code", "/sign/certified-copy?signer-access-code=code",
             "/signers/signer/documents/doc/download/bundle"})
     void publicAndSignerEndpointsNeverReceiveWorkspaceCredentials(String path) throws Exception {
         for (boolean apiKey : new boolean[]{true, false}) {
@@ -74,6 +77,24 @@ class OkHttpApiClientTest {
         server.enqueue(response(200).body("{}").build());
         withApiKey().get("/signers/signer/documents", Map.of("signer-access-code", "code"));
         assertThat(server.takeRequest().getHeaders().get("X-Api-Key")).isNull();
+    }
+
+    @Test
+    void sendsIdempotencyKeyAsHeaderWithoutChangingBody() throws Exception {
+        server.enqueue(response(200).body("{}").build());
+        withApiKey().post("/accounts/account/envelopes", "{\"name\":\"Agreement\"}", "case-sensitive-Key");
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeaders().get("Idempotency-Key")).isEqualTo("case-sensitive-Key");
+        assertThat(request.getHeaders().get("X-Api-Key")).isEqualTo("secret-key");
+        assertThat(request.getBody().utf8()).isEqualTo("{\"name\":\"Agreement\"}");
+    }
+
+    @Test
+    void neverReplaysAnEmbedExchangeAfter503() throws Exception {
+        server.enqueue(response(503).addHeader("Retry-After", "0").body("{}").build());
+        server.enqueue(response(200).body("{}").build());
+        assertThat(withApiKey().post("/embed/sessions/token/exchange", "{}").getStatusCode()).isEqualTo(503);
+        assertThat(server.getRequestCount()).isEqualTo(1);
     }
 
     @Test

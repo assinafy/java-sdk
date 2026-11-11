@@ -1,5 +1,6 @@
 package com.assinafy.sdk.models;
 
+import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -221,4 +222,43 @@ public class Signer {
      * @param isSignatureReusable the signature-reuse flag
      */
     public void setIsSignatureReusable(Boolean isSignatureReusable) { this.isSignatureReusable = isSignatureReusable; }
+    @JsonProperty("notification_methods")
+    private List<String> notificationMethods;
+
+    /** Notification channels on the current signature request.
+     * @return the notification_methods value, or null when absent
+     */
+    public List<String> getNotificationMethods() { return notificationMethods; }
+
+    /** Sets notification_methods.
+     * @param value the notification_methods value
+     */
+    public void setNotificationMethods(List<String> value) { notificationMethods = value; }
+
+    @JsonProperty("completed")
+    private Boolean completed;
+
+    /** Whether this signer has signed the document.
+     * @return the completed value, or null when absent
+     */
+    public Boolean getCompleted() { return completed; }
+
+    /** Sets completed.
+     * @param value the completed value
+     */
+    public void setCompleted(Boolean value) { completed = value; }
+
+    @JsonProperty("signed_at")
+    private String signedAt;
+
+    /** ISO 8601 signing timestamp, or null until signed.
+     * @return the signed_at value, or null when absent
+     */
+    public String getSignedAt() { return signedAt; }
+
+    /** Sets signed_at.
+     * @param value the signed_at value
+     */
+    public void setSignedAt(String value) { signedAt = value; }
+
 }

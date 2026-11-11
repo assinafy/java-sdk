@@ -1,5 +1,6 @@
 package com.assinafy.sdk.request;
 
+import java.math.BigDecimal;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -132,6 +133,12 @@ public class CreateDocumentFromTemplateRequest {
      * Builder for {@link CreateDocumentFromTemplateRequest}.
      */
     public static final class Builder {
+        /** Sets max_total_credits.
+         * @param value the max_total_credits value
+         * @return this builder
+         */
+        public Builder maxTotalCredits(BigDecimal value) { req.setMaxTotalCredits(value); return this; }
+
         private final CreateDocumentFromTemplateRequest req = new CreateDocumentFromTemplateRequest();
 
         /** Creates an empty builder. */
@@ -192,4 +199,17 @@ public class CreateDocumentFromTemplateRequest {
          */
         public CreateDocumentFromTemplateRequest build() { return req; }
     }
+    @JsonProperty("max_total_credits")
+    private BigDecimal maxTotalCredits;
+
+    /** Nonnegative credit ceiling; the API refuses higher cost with 409 CreditCeilingExceeded. Estimates ignore this field.
+     * @return the max_total_credits value, or null when absent
+     */
+    public BigDecimal getMaxTotalCredits() { return maxTotalCredits; }
+
+    /** Sets max_total_credits.
+     * @param value the max_total_credits value
+     */
+    public void setMaxTotalCredits(BigDecimal value) { maxTotalCredits = value; }
+
 }

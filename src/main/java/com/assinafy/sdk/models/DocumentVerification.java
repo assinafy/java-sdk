@@ -198,4 +198,17 @@ public class DocumentVerification {
      * @param message the message
      */
     public void setMessage(String message) { this.message = message; }
+    @JsonProperty("certificated_at")
+    private String certificatedAt;
+
+    /** When certification was first recorded by the document_ready event. Null when no certification event is available, including some historical documents.
+     * @return the certificated_at value, or null when absent
+     */
+    public String getCertificatedAt() { return certificatedAt; }
+
+    /** Sets certificated_at.
+     * @param value the certificated_at value
+     */
+    public void setCertificatedAt(String value) { certificatedAt = value; }
+
 }

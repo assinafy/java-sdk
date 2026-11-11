@@ -117,4 +117,30 @@ public class DocumentActivity {
      * @param createdAt the creation timestamp
      */
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    @JsonProperty("document_id")
+    private String documentId;
+
+    /** Document ID on envelope activity results.
+     * @return the document_id value, or null when absent
+     */
+    public String getDocumentId() { return documentId; }
+
+    /** Sets document_id.
+     * @param value the document_id value
+     */
+    public void setDocumentId(String value) { documentId = value; }
+
+    @JsonProperty("document_name")
+    private String documentName;
+
+    /** Document name on envelope activity results.
+     * @return the document_name value, or null when absent
+     */
+    public String getDocumentName() { return documentName; }
+
+    /** Sets document_name.
+     * @param value the document_name value
+     */
+    public void setDocumentName(String value) { documentName = value; }
+
 }

@@ -77,6 +77,14 @@ public class MockApiHttpClient implements ApiHttpClient {
     }
 
     @Override
+    public HttpRawResponse post(String path, String jsonBody, String idempotencyKey) throws IOException {
+        CapturedRequest request = new CapturedRequest("POST", path, null, jsonBody, null);
+        request.idempotencyKey = idempotencyKey;
+        captured.add(request);
+        return next();
+    }
+
+    @Override
     public HttpRawResponse postMultipart(String path, String fileName, byte[] fileData, String name, String metadata) throws IOException {
         captured.add(new CapturedRequest("POST_MULTIPART", path, null, null, new MultipartData(fileName, fileData, name, metadata)));
         return next();
@@ -126,7 +134,8 @@ public class MockApiHttpClient implements ApiHttpClient {
             throw ApiException.fromResponse(response.getStatusCode(), parseError(response.getBody()), response.getHeaders());
         }
         String contentType = response.getHeader("Content-Type");
-        Object parsed = contentType != null && contentType.toLowerCase(java.util.Locale.ROOT).contains("json")
+        Object parsed = (contentType != null && contentType.toLowerCase(java.util.Locale.ROOT).contains("json"))
+                || (response.getBody() != null && response.getBody().stripLeading().startsWith("{"))
                 ? parseError(response.getBody()) : null;
         if (parsed instanceof Map<?, ?> map && map.get("status") instanceof Number status
                 && (status.intValue() < 200 || status.intValue() >= 300)) {
@@ -161,6 +170,9 @@ public class MockApiHttpClient implements ApiHttpClient {
     }
 
     public static class CapturedRequest {
+        private String idempotencyKey;
+
+        public String getIdempotencyKey() { return idempotencyKey; }
         private final String method;
         private final String path;
         private final Map<String, Object> queryParams;

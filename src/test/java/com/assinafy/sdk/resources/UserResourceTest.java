@@ -46,15 +46,15 @@ class UserResourceTest {
     }
 
     @Test
-    void passesThroughEmptyUpdateAndRejectsUnknownKeys() {
+    void rejectsEmptyUpdateAndUnknownKeysBeforeSending() {
         MockApiHttpClient http = new MockApiHttpClient().enqueue(200, RESPONSE);
         UserResource users = new UserResource(http);
 
-        users.updateNotificationPreferences(Map.of());
-        assertThat(http.lastCaptured().getJsonBody()).isEqualTo("{}");
+        assertThatThrownBy(() -> users.updateNotificationPreferences(Map.of()))
+                .isInstanceOf(ValidationException.class);
         assertThatThrownBy(() -> users.updateNotificationPreferences(Map.of("Unknown", true)))
                 .isInstanceOf(ValidationException.class);
-        assertThat(http.capturedCount()).isEqualTo(1);
+        assertThat(http.capturedCount()).isZero();
     }
 
     @Test

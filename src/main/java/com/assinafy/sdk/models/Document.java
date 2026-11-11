@@ -412,4 +412,95 @@ public class Document {
      * @param activities the activities
      */
     public void setActivities(List<DocumentActivity> activities) { this.activities = activities; }
+    @JsonProperty("envelope_id")
+    private String envelopeId;
+
+    /** Only on `GET /v1/documents/{documentId}?expand=envelope_id` read by the workspace, not in document lists or webhooks, so their payloads keep their shape: the envelope this document is in, or `null` for a document sent on its own, taken out of its envelope, or whose envelope was deleted.
+     * @return the envelope_id value, or null when absent
+     */
+    public String getEnvelopeId() { return envelopeId; }
+
+    /** Sets envelope_id.
+     * @param value the envelope_id value
+     */
+    public void setEnvelopeId(String value) { envelopeId = value; }
+
+    @JsonProperty("envelope")
+    private DocumentEnvelope envelope;
+
+    /** Envelope ID and name when explicitly expanded.
+     * @return the envelope value, or null when absent
+     */
+    public DocumentEnvelope getEnvelope() { return envelope; }
+
+    /** Sets envelope.
+     * @param value the envelope value
+     */
+    public void setEnvelope(DocumentEnvelope value) { envelope = value; }
+
+    @JsonProperty("position")
+    private Integer position;
+
+    /** One-based position in an envelope response.
+     * @return the position value, or null when absent
+     */
+    public Integer getPosition() { return position; }
+
+    /** Sets position.
+     * @param value the position value
+     */
+    public void setPosition(Integer value) { position = value; }
+
+    @JsonProperty("signers")
+    private List<Signer> signers;
+
+    /** Signers returned in an envelope document.
+     * @return the signers value, or null when absent
+     */
+    public List<Signer> getSigners() { return signers; }
+
+    /** Sets signers.
+     * @param value the signers value
+     */
+    public void setSigners(List<Signer> value) { signers = value; }
+
+    @JsonProperty("current_signer")
+    private Signer currentSigner;
+
+    /** Current signer from the signer-facing document response.
+     * @return the current_signer value, or null when absent
+     */
+    public Signer getCurrentSigner() { return currentSigner; }
+
+    /** Sets current_signer.
+     * @param value the current_signer value
+     */
+    public void setCurrentSigner(Signer value) { currentSigner = value; }
+
+    @JsonProperty("is_signer_access_closed")
+    private Boolean isSignerAccessClosed;
+
+    /** Whether signer access has closed.
+     * @return the is_signer_access_closed value, or null when absent
+     */
+    public Boolean getIsSignerAccessClosed() { return isSignerAccessClosed; }
+
+    /** Sets is_signer_access_closed.
+     * @param value the is_signer_access_closed value
+     */
+    public void setIsSignerAccessClosed(Boolean value) { isSignerAccessClosed = value; }
+
+    @JsonProperty("certified_copy")
+    private CertifiedCopy certifiedCopy;
+
+    /** Whether the signer can request the certified copy again.
+     * @return the certified_copy value, or null when absent
+     */
+    public CertifiedCopy getCertifiedCopy() { return certifiedCopy; }
+
+    /** Sets certified_copy.
+     * @param value the certified_copy value
+     */
+    public void setCertifiedCopy(CertifiedCopy value) { certifiedCopy = value; }
+
 }

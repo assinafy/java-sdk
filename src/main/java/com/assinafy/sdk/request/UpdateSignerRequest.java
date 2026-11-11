@@ -6,7 +6,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
- * Request payload for updating a signer.
+ * Request payload for updating a signer. An empty email or WhatsApp number clears that field;
+ * null leaves it unchanged.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UpdateSignerRequest {
@@ -62,7 +63,7 @@ public class UpdateSignerRequest {
     /**
      * Sets the email address.
      *
-     * @param email the email address
+     * @param email the email address, empty to clear, or null to leave unchanged
      */
     public void setEmail(String email) { this.email = email; }
 
@@ -76,7 +77,7 @@ public class UpdateSignerRequest {
     /**
      * Sets the WhatsApp phone number.
      *
-     * @param whatsappPhoneNumber the WhatsApp phone number in E.164 form
+     * @param whatsappPhoneNumber E.164 phone number, empty to clear, or null to leave unchanged
      */
     public void setWhatsappPhoneNumber(String whatsappPhoneNumber) { this.whatsappPhoneNumber = whatsappPhoneNumber; }
 
@@ -132,7 +133,7 @@ public class UpdateSignerRequest {
         /**
          * Sets the email address for the object being built.
          *
-         * @param email the email address
+         * @param email the email address, empty to clear, or null to leave unchanged
          * @return this builder
          */
         public Builder email(String email) { req.setEmail(email); return this; }
@@ -140,7 +141,7 @@ public class UpdateSignerRequest {
         /**
          * Sets the WhatsApp phone number for the object being built.
          *
-         * @param phone the WhatsApp phone number in E.164 form
+         * @param phone E.164 phone number, empty to clear, or null to leave unchanged
          * @return this builder
          */
         public Builder whatsappPhoneNumber(String phone) { req.setWhatsappPhoneNumber(phone); return this; }

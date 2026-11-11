@@ -1,5 +1,7 @@
 package com.assinafy.sdk.resources;
 
+import com.assinafy.sdk.models.AccountUsage;
+import com.assinafy.sdk.models.NotificationPolicy;
 import com.assinafy.sdk.Logger;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
@@ -177,6 +179,23 @@ public class WorkspaceResource extends BaseResource {
     public Workspace get(String accountId) {
         String id = pathSegment(accountId, "Account ID");
         return call("Failed to fetch workspace", () -> http.get("/accounts/" + id), Workspace.class);
+    }
+
+    /**
+     * Reads a workspace, optionally including its current signing-feature flags.
+     * {@code GET /v1/accounts/{accountId}?expand=signing_features}, no body.
+     * Payload and failures follow {@link #get(String)}; data additionally contains
+     * {@code signing_features: {DigitalCertificate, VerificationIdDocumentFaceMatchBasic,
+     * WhatsappNotification, VerificationBypass, Embed}}, all boolean. A true flag does not
+     * guarantee sufficient credits. Third-party OAuth needs account:read.
+     * @param accountId workspace ID
+     * @param includeSigningFeatures whether to request signing_features
+     * @return workspace with optional feature flags
+     */
+    public Workspace get(String accountId, boolean includeSigningFeatures) {
+        if (!includeSigningFeatures) return get(accountId);
+        String path = "/accounts/" + pathSegment(accountId, "Account ID");
+        return call("Failed to fetch workspace", () -> http.get(path, Map.of("expand", "signing_features")), Workspace.class);
     }
 
     /**
@@ -523,4 +542,67 @@ public class WorkspaceResource extends BaseResource {
             throw new ValidationException("Notification sender type must be User or Account");
         }
     }
+    /**
+     * Get account usage.
+     * <p><strong>HTTP:</strong> {@code GET /v1/accounts/{accountId}/usage}.
+     * The workspace&#x27;s plan and what is left of it, for a plan and credit meter. Nothing about prices or payments: those stay in **Get current subscription**. Not available to third-party OAuth applications (`403`), whatever their scopes: this is billing data. Assinafy&#x27;s own apps can read it with the `account:read` scope.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;plan&quot;: &quot;value&quot;, &quot;documents_renewal_date&quot;: &quot;value&quot;, &quot;balances&quot;: {&quot;documents&quot;: {&quot;balance&quot;: 1, &quot;limit&quot;: 1, &quot;spent&quot;: 1}, &quot;credits&quot;: {&quot;balance&quot;: 1, &quot;limit&quot;: 1, &quot;spent&quot;: 1}}}}</pre>
+     * <p>Statuses: 200 The usage; 403 Authenticated but not allowed to perform this action.; 404 The requested resource does not exist.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param accountId workspace ID
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public AccountUsage getUsage(String accountId) {
+        String path = "/accounts/" + pathSegment(accountId, "Account ID") + "/usage";
+        return call("Failed to fetch account usage", () -> http.get(path), AccountUsage.class);
+    }
+
+    /**
+     * Get the workspace notification policy.
+     * <p><strong>HTTP:</strong> {@code GET /v1/accounts/{accountId}/notification-policy}.
+     * Which document alerts this workspace sends, set by its owners. Every member can read it; `editable` says whether the requesting user can change it. Not available to third-party OAuth applications (`403`), whatever their scopes. Assinafy&#x27;s own apps can reach it.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: none.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;editable&quot;: true, &quot;owners_receive_all&quot;: true, &quot;events&quot;: {&quot;DocumentCompleted&quot;: true, &quot;SignerDeclined&quot;: true, &quot;DocumentCancelled&quot;: true, &quot;DocumentAboutToExpire&quot;: true, &quot;DocumentExpired&quot;: true, &quot;DocumentExpirationReset&quot;: true, &quot;DocumentProcessingFailed&quot;: true, &quot;TemplateProcessingFailed&quot;: true, &quot;SignerWhatsappFailed&quot;: true, &quot;ContractRenewalNotice&quot;: true, &quot;ContractExpiring&quot;: true, &quot;ContractExpired&quot;: true, &quot;ContractRenewed&quot;: true, &quot;SignerViewed&quot;: true, &quot;SignerSigned&quot;: true, &quot;SignerIdentityReviewRequired&quot;: true}}}</pre>
+     * <p>Statuses: 200 The policy; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param accountId workspace ID
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public NotificationPolicy getNotificationPolicy(String accountId) {
+        String path = "/accounts/" + pathSegment(accountId, "Account ID") + "/notification-policy";
+        return call("Failed to fetch notification policy", () -> http.get(path), NotificationPolicy.class);
+    }
+
+    /**
+     * Update the workspace notification policy.
+     * <p><strong>HTTP:</strong> {@code PUT /v1/accounts/{accountId}/notification-policy}.
+     * Owners only (`403` for other members). Merges the supplied fields: send only `events` keys you want to change, and/or `owners_receive_all`. An event set to `false` reaches nobody in this workspace, on any channel, whatever each member&#x27;s own preferences; the identity review e-mail is the exception and is always sent, because the signer cannot continue without it. An unknown field or code, a non-boolean value or an empty body is rejected with `400` and nothing is written. Returns the full policy.</p>
+     * <p>Authentication: configured API key or bearer token.</p>
+     * <p>Request: {&quot;events&quot;: {&quot;DocumentCompleted&quot;: true, &quot;SignerDeclined&quot;: true, &quot;DocumentCancelled&quot;: true, &quot;DocumentAboutToExpire&quot;: true, &quot;DocumentExpired&quot;: true, &quot;DocumentExpirationReset&quot;: true, &quot;DocumentProcessingFailed&quot;: true, &quot;TemplateProcessingFailed&quot;: true, &quot;SignerWhatsappFailed&quot;: true, &quot;ContractRenewalNotice&quot;: true, &quot;ContractExpiring&quot;: true, &quot;ContractExpired&quot;: true, &quot;ContractRenewed&quot;: true, &quot;SignerViewed&quot;: true, &quot;SignerSigned&quot;: true, &quot;SignerIdentityReviewRequired&quot;: true}, &quot;owners_receive_all&quot;: true}.</p>
+     * <p>Success (application/json):</p><pre>{&quot;status&quot;: 200, &quot;message&quot;: &quot;&quot;, &quot;data&quot;: {&quot;editable&quot;: true, &quot;owners_receive_all&quot;: true, &quot;events&quot;: {&quot;DocumentCompleted&quot;: true, &quot;SignerDeclined&quot;: true, &quot;DocumentCancelled&quot;: true, &quot;DocumentAboutToExpire&quot;: true, &quot;DocumentExpired&quot;: true, &quot;DocumentExpirationReset&quot;: true, &quot;DocumentProcessingFailed&quot;: true, &quot;TemplateProcessingFailed&quot;: true, &quot;SignerWhatsappFailed&quot;: true, &quot;ContractRenewalNotice&quot;: true, &quot;ContractExpiring&quot;: true, &quot;ContractExpired&quot;: true, &quot;ContractRenewed&quot;: true, &quot;SignerViewed&quot;: true, &quot;SignerSigned&quot;: true, &quot;SignerIdentityReviewRequired&quot;: true}}}</pre>
+     * <p>Statuses: 200 The updated policy; 400 One or more fields failed validation.; 401 Missing or invalid credentials.; 500 Unexpected server error.. Non-2xx HTTP/envelope responses raise ApiException; 401/403 use AuthenticationException, 429 uses RateLimitException, and I/O failures use NetworkException.</p>
+     * @param accountId workspace ID
+     * @param changes events map and/or owners_receive_all; only supplied values change
+     * @return the unwrapped response; binary operations return raw bytes
+     * @throws com.assinafy.sdk.exceptions.ValidationException if local arguments are invalid
+     */
+    public NotificationPolicy updateNotificationPolicy(String accountId, Map<String, Object> changes) {
+        String path = "/accounts/" + pathSegment(accountId, "Account ID") + "/notification-policy";
+        if (changes == null || changes.isEmpty()) throw new ValidationException("Notification policy changes are required");
+        Map<String, Object> body = new java.util.LinkedHashMap<>(changes);
+        for (Map.Entry<String, Object> entry : body.entrySet()) {
+            if ("events".equals(entry.getKey())) {
+                if (!(entry.getValue() instanceof Map<?, ?> events)) throw new ValidationException("Events must be a boolean map");
+                NotificationRules.validate(events, NotificationRules.POLICY_CODES);
+            } else if (!"owners_receive_all".equals(entry.getKey()) || !(entry.getValue() instanceof Boolean)) {
+                throw new ValidationException("Unknown policy field or nonboolean value");
+            }
+        }
+        String json = serialise(body);
+        return call("Failed to update notification policy", () -> http.put(path, json), NotificationPolicy.class);
+    }
+
 }

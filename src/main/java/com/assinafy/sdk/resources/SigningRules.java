@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.math.BigDecimal;
 
 /**
  * Signer-placement rules shared by assignment creation and document-from-template creation. Both
@@ -38,6 +39,55 @@ final class SigningRules {
             "digital_certificate_requires_virtual_method";
 
     private SigningRules() {}
+
+    static void validateCreditCeiling(BigDecimal value) {
+        if (value != null && value.signum() < 0) {
+            throw new ValidationException("Credit ceiling must be nonnegative");
+        }
+    }
+
+    static void validateEmbedded(Boolean embedded, String verificationMethod) {
+        if (Boolean.TRUE.equals(embedded) && verificationMethod != null
+                && !"Email".equals(verificationMethod) && !"Whatsapp".equals(verificationMethod)) {
+            throw new ValidationException("Embedded signers require Email or Whatsapp verification");
+        }
+    }
+
+    static void validateIdempotencyKey(String value) {
+        if (value != null && (value.isBlank() || value.chars().anyMatch(c -> c < 32 || c > 126))) {
+            throw new ValidationException("Idempotency key must be nonblank printable ASCII");
+        }
+    }
+
+    static int validateEntries(List<Object> entries, Set<String> signerIds) {
+        if (entries == null || entries.isEmpty()) throw new ValidationException("Collect assignments require entries");
+        Set<String> placed = new HashSet<>();
+        int count = 0;
+        for (Object entry : entries) {
+            if (!(entry instanceof Map<?, ?> page) || !(page.get("page_id") instanceof String pageId)
+                    || pageId.isBlank() || !(page.get("fields") instanceof List<?> fields) || fields.isEmpty()) {
+                throw new ValidationException("Each entry requires page_id and nonempty fields");
+            }
+            for (Object item : fields) {
+                if (!(item instanceof Map<?, ?> field) || !(field.get("signer_id") instanceof String signerId)
+                        || signerId.isBlank() || !(field.get("field_id") instanceof String fieldId) || fieldId.isBlank()
+                        || !(field.get("display_settings") instanceof Map<?, ?> geometry)) {
+                    throw new ValidationException("Each field requires signer_id, field_id and display_settings");
+                }
+                for (String key : List.of("left", "top", "width", "height", "fontSize")) {
+                    if (!(geometry.get(key) instanceof Number number) || !Double.isFinite(number.doubleValue())
+                            || number.doubleValue() < 0
+                            || (number.doubleValue() == 0 && !key.equals("left") && !key.equals("top"))) {
+                        throw new ValidationException("Invalid field geometry: " + key);
+                    }
+                }
+                placed.add(signerId);
+                count++;
+            }
+        }
+        if (!placed.equals(signerIds)) throw new ValidationException("Field signers must match the document signers");
+        return count;
+    }
 
     /**
      * One signer's ordering inputs, decoupled from the request DTO that supplied them.

@@ -125,6 +125,12 @@ public class SignerReference {
      * Builder for {@link SignerReference}.
      */
     public static final class Builder {
+        /** Sets embedded.
+         * @param value the embedded value
+         * @return this builder
+         */
+        public Builder embedded(Boolean value) { ref.setEmbedded(value); return this; }
+
         private final SignerReference ref = new SignerReference();
 
         /** Creates an empty builder. */
@@ -169,4 +175,17 @@ public class SignerReference {
          */
         public SignerReference build() { return ref; }
     }
+    @JsonProperty("embedded")
+    private Boolean embedded;
+
+    /** Sign inside the registered application iframe; requires Email or Whatsapp verification and the Embed feature.
+     * @return the embedded value, or null when absent
+     */
+    public Boolean getEmbedded() { return embedded; }
+
+    /** Sets embedded.
+     * @param value the embedded value
+     */
+    public void setEmbedded(Boolean value) { embedded = value; }
+
 }

@@ -116,6 +116,8 @@ public class OkHttpApiClient implements ApiHttpClient {
                     boolean credentialFree = request.url().queryParameterNames().contains("signer-access-code")
                             || PUBLIC_PATHS.contains(path) || path.startsWith("/public/")
                             || path.matches("/documents/[^/]+/verify")
+                            || path.matches("/embed/sessions/[^/]+/exchange")
+                            || path.matches("/signers/downloads/[^/]+(?:/pades|/resend)?")
                             || path.matches("/signers/[^/]+/documents/[^/]+/download/[^/]+");
                     if (!credentialFree && apiKey != null && !apiKey.isBlank()) {
                         builder.header("X-Api-Key", apiKey);
@@ -124,7 +126,7 @@ public class OkHttpApiClient implements ApiHttpClient {
                     }
                     // retryOnConnectionFailure(false) does not stop OkHttp repeating a request
                     // answered 503 with Retry-After: 0; a one-shot body is never sent twice.
-                    if (!allowRetries && request.body() != null) {
+                    if ((!allowRetries || path.matches("/embed/sessions/[^/]+/exchange")) && request.body() != null) {
                         builder.method(request.method(), oneShot(request.body()));
                     }
                     return chain.proceed(builder.build());
@@ -171,12 +173,17 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse post(String path, String jsonBody) throws IOException {
+        return post(path, jsonBody, null);
+    }
+
+    @Override
+    public HttpRawResponse post(String path, String jsonBody, String idempotencyKey) throws IOException {
         RequestBody body = RequestBody.create(jsonBody != null ? jsonBody : "", JSON);
-        Request request = new Request.Builder()
+        Request.Builder request = new Request.Builder()
                 .url(baseUrl + path)
-                .post(body)
-                .build();
-        return execute(request);
+                .post(body);
+        if (idempotencyKey != null) request.header("Idempotency-Key", idempotencyKey);
+        return execute(request.build());
     }
 
     @Override

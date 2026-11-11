@@ -48,4 +48,17 @@ public class SigningUrl {
      * @param url the URL
      */
     public void setUrl(String url) { this.url = url; }
+    @JsonProperty("embedded")
+    private Boolean embedded;
+
+    /** Whether the signer uses an embed session; url is null when true.
+     * @return the embedded value, or null when absent
+     */
+    public Boolean getEmbedded() { return embedded; }
+
+    /** Sets embedded.
+     * @param value the embedded value
+     */
+    public void setEmbedded(Boolean value) { embedded = value; }
+
 }

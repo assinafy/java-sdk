@@ -21,6 +21,8 @@ import com.assinafy.sdk.resources.AuthenticationResource;
 import com.assinafy.sdk.resources.BaseResource;
 import com.assinafy.sdk.resources.ContractResource;
 import com.assinafy.sdk.resources.DocumentResource;
+import com.assinafy.sdk.resources.EnvelopeResource;
+import com.assinafy.sdk.resources.EmbedResource;
 import com.assinafy.sdk.resources.FieldResource;
 import com.assinafy.sdk.resources.OAuthResource;
 import com.assinafy.sdk.resources.PublicDocumentResource;
@@ -54,6 +56,8 @@ public class AssinafyClient {
     private static final long RETRY_DELAY_MS = 500;
 
     private final DocumentResource documents;
+    private final EnvelopeResource envelopes;
+    private final EmbedResource embed;
     private final SignerResource signers;
     private final WorkspaceResource workspaces;
     private final AssignmentResource assignments;
@@ -104,6 +108,8 @@ public class AssinafyClient {
         this.logger = options.getLogger() != null ? options.getLogger() : NoOpLogger.INSTANCE;
 
         this.documents = new DocumentResource(http, defaultAccountId, this.logger);
+        this.envelopes = new EnvelopeResource(http, defaultAccountId, this.logger);
+        this.embed = new EmbedResource(http, defaultAccountId, this.logger);
         this.signers = new SignerResource(http, defaultAccountId, this.logger);
         // Workspace operations take an explicit account ID, so no default is bound.
         this.workspaces = new WorkspaceResource(http, null, this.logger);
@@ -167,6 +173,12 @@ public class AssinafyClient {
         String baseUrl = options.getBaseUrl() != null ? options.getBaseUrl() : AssinafyClientOptions.DEFAULT_BASE_URL;
         return new OkHttpApiClient(baseUrl, options.getApiKey(), options.getToken(), options.getTimeoutMs());
     }
+
+    /** {@return operations for sending and managing document envelopes} */
+    public EnvelopeResource envelopes() { return envelopes; }
+
+    /** {@return origin registration and single-use embedded signing sessions} */
+    public EmbedResource embed() { return embed; }
 
     /**
      * Transport for endpoints that must not receive an SDK credential: the OAuth token and
