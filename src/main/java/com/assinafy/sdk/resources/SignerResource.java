@@ -799,7 +799,7 @@ public class SignerResource extends BaseResource {
      * <li><code>type</code> (query, optional): Image type, e.g. <code>signature</code> or <code>initial</code>.</li>
      * <li><code>reuse</code> (query, optional): Whether the signer opted to reuse this signature in future processes. When set, updates the signer's <code>is_signature_reusable</code> flag; when omitted, the flag is left unchanged.</li>
      * </ul>
-     * <p>Request body: <code>image/png</code>, raw artifact bytes.</p>
+     * <p>Request body: <code>image/png</code> or <code>image/jpeg</code>, raw artifact bytes.</p>
      * <p>Success 200: <code>application/json</code>. Illustrative payload with the documented fields;
      * optional fields may be absent or null.</p>
      * <pre>{

@@ -89,7 +89,8 @@ public class ContractResource extends BaseResource {
      * Lists tracked contract terms ({@code GET /v1/accounts/{accountId}/contracts}).
      *
      * <p>The response data is an array of {@link DocumentContract}; pagination is returned in the
-     * standard {@code X-Pagination-*} headers. Results default to descending {@code updated_at}.
+     * standard {@code X-Pagination-*} headers. List entries may omit {@code resource};
+     * the concrete return type identifies them as root contracts. Results default to descending {@code updated_at}.
      * OAuth callers need {@code documents:read}. Authentication is Bearer JWT or
      * {@code X-Api-Key}; there is no request body.</p>
      * <pre>{

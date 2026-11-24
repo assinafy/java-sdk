@@ -383,8 +383,8 @@ public class AuthenticationResource extends BaseResource {
      * raise <code>NetworkException</code>. Invalid local arguments raise
      * <code>ValidationException</code> before a request.</p>
      *
-     * <p>An email that does not identify a registered user returns HTTP 404. A signer contact
-     * alone does not create a user identity.</p>
+     * <p>Registered and unknown addresses receive the same HTTP 200 response; success does not
+     * establish account existence or email delivery. Invalid email input returns HTTP 400.</p>
      *
      * @param email account email address
      * @return response data containing the affected {@code email}
@@ -430,6 +430,9 @@ public class AuthenticationResource extends BaseResource {
      * <code>ApiException</code>; 401/403 raise <code>AuthenticationException</code>, 429 raises
      * <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>. Invalid
      * local arguments raise <code>ValidationException</code> before a request.</p>
+     * <p>A successful reset ends existing login sessions and revokes connected OAuth apps;
+     * the user's API key keeps working. Invalid, expired or non-text tokens and unknown addresses
+     * return HTTP 400. The new password must contain at least six characters.</p>
      *
      * @param email account email address
      * @param token optional reset token delivered by email

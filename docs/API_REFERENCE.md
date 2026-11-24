@@ -1,6 +1,6 @@
 # Assinafy Java SDK API reference
 
-This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **147** documented operations, plus the routes listed under [Deployed extensions](#deployed-extensions).
+This is the Java mapping of the official production OpenAPI document published at <https://api.assinafy.com.br/v1/docs/openapi.json>. It covers all **147** production operations, the **10 additional staging operations** below, and the routes listed under [Deployed extensions](#deployed-extensions).
 
 ## Conventions
 
@@ -339,6 +339,7 @@ Request body: **required**.
 |---|---|---:|---:|---|
 | `method` | string enum[virtual, collect] | yes | no | `virtual` signs without input fields; `collect` places input fields on pages. Signers with `DigitalCertificate` verification need `virtual` (`collect` returns `400`). |
 | `signers` | array<object{`id!`: string; `verification_method`: string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]; `notification_methods`: array<string enum[Email, Whatsapp]>; `embedded`: boolean; `step`: integer}> | yes | no |  |
+| `signers[].sign_as` | string | no | yes | Staging only: [signing capacity](#signing-behavior-on-staging), such as `Witness`; omitted/null means `Sign`. |
 | `entries` | array<object{`page_id`: string; `fields`: array<object{`signer_id`: string; `field_id`: string; `display_settings`: [DisplaySettings](#schema-displaysettings)}>}> | no | no | Required for `collect`: field placements per page. In `collect`, every signer listed in `signers` must appear once and own at least one field here; otherwise `400`. |
 | `message` | string | no | no | Text included in the invitation email. |
 | `expires_at` | string (date-time) | no | no | ISO 8601; default is no expiration. Must be at least one hour in the future. A UTC offset in the value is honored (`2026-12-31T23:59:59-03:00` is `2027-01-01T02:59:59Z`); a value without one is read as UTC, and a date alone (`2026-12-31`) means 23:59 UTC that day. |
@@ -360,7 +361,7 @@ Documented statuses: `200` The created assignment; `400` The request was rejecte
 - **Java:** `client.assignments()` — `AssignmentResource: public Map<String, Object> estimateCost(String documentId, CreateAssignmentRequest request)`; `client.assignments()` — `AssignmentResource: public CostEstimate estimateCostTyped(String documentId, CreateAssignmentRequest request)`
 - **HTTP:** `POST /v1/documents/{documentId}/assignments/estimate-cost`
 - **Auth:** Bearer token or `X-Api-Key`
-- **Contract notes:** Estimate the cost of creating an assignment without creating it, returning a cost breakdown and the current account balances. Signer IDs are not required — only the verification/notification method affects cost. Each assignment consumes 1 document from the plan allowance; if exhausted, an extra document is charged from credits (`needs_extra_document` = true). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments` or `InsufficientCredits`.  ### Pricing  Per-unit costs (in credits) used to build the estimate:  &#124; Item &#124; Cost &#124; &#124;------&#124;------&#124; &#124; Extra document &#124; 1 credit &#124; &#124; Email notification &#124; 0 credits &#124; &#124; WhatsApp notification &#124; 0.45 credits &#124; &#124; Digital certificate signature (per signer) &#124; 0.5 credits &#124; &#124; Identity document verification (per signer) &#124; depends on the plan, see the table below &#124;  &#124; Plan &#124; Price per signer &#124; &#124;------&#124;------------------&#124; &#124; Free &#124; 1.5 credits &#124; &#124; Standard &#124; 1 credit &#124; &#124; Pro &#124; 0.5 credits &#124; &#124; Other plans and enterprise contracts &#124; 0.25 credits &#124;  `Email` and `Whatsapp` verification are not priced separately — their only line in the `breakdown` is their notification. A `Whatsapp`-verified signer therefore shows up as a WhatsApp notification, because that channel is mandatory for that verification method. A `DigitalCertificate` signer adds the digital-certificate signature cost **on top of** its notification cost; it appears in the `breakdown` under the `SignatureDigitalCertificate` code. An `IdDocumentFaceMatchBasic` signer likewise adds your plan's verification price on top of its notification, under the `VerificationIdDocumentFaceMatchBasic` code.
+- **Contract notes:** Estimate the cost of creating an assignment without creating it, returning a cost breakdown and the current account balances. Signer IDs are not required — only the verification/notification method affects cost. Each assignment consumes 1 document from the plan allowance; if exhausted, an extra document is charged from credits (`needs_extra_document` = true). `blocking_reason` may be `PendingPayment`, `InsufficientDocuments` or `InsufficientCredits`. ### Pricing Per-unit costs (in credits) used to build the estimate: &#124; Item &#124; Cost &#124; &#124;------&#124;------&#124; &#124; Extra document &#124; 1 credit &#124; &#124; Email notification &#124; 0 credits &#124; &#124; WhatsApp notification &#124; depends on the plan, see the table below &#124; &#124; Digital certificate signature (per signer) &#124; 0.45 credits &#124; &#124; Identity document verification (per signer) &#124; depends on the plan, see the table below &#124; WhatsApp notification, per plan: &#124; Plan &#124; Price per signer &#124; &#124;------&#124;------------------&#124; &#124; Pro &#124; 0.4 credits &#124; &#124; Other plans and enterprise contracts &#124; 0.45 credits &#124; Identity document verification, per plan: &#124; Plan &#124; Price per signer &#124; &#124;------&#124;------------------&#124; &#124; Free &#124; 1.5 credits &#124; &#124; Standard &#124; 1 credit &#124; &#124; Pro &#124; 0.5 credits &#124; &#124; Other plans and enterprise contracts &#124; 0.25 credits &#124; `Email` and `Whatsapp` verification are not priced separately — their only line in the `breakdown` is their notification. A `Whatsapp`-verified signer therefore shows up as a WhatsApp notification, because that channel is mandatory for that verification method. A `DigitalCertificate` signer adds the digital-certificate signature cost **on top of** its notification cost; it appears in the `breakdown` under the `SignatureDigitalCertificate` code. An `IdDocumentFaceMatchBasic` signer likewise adds your plan's verification price on top of its notification, under the `VerificationIdDocumentFaceMatchBasic` code.
 
 | Parameter | In | Type | Required | Notes |
 |---|---|---|---:|---|
@@ -374,6 +375,7 @@ Request body: **required**.
 |---|---|---:|---:|---|
 | `method` | string enum[virtual, collect] | no | no | Send the method you will create the assignment with. With `collect`, a `DigitalCertificate` signer returns `400`, because certificate signing works only on `virtual` assignments. |
 | `signers` | array<object{`verification_method`: string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic]; `notification_methods`: array<string enum[Email, Whatsapp]>}> | no | no | Required for `virtual`; each entry may be `{}` to default to Email. |
+| `signers[].sign_as` | string | no | yes | Staging only: [signing capacity](#signing-behavior-on-staging), such as `Witness`; omitted/null means `Sign`. |
 | `entries` | array<object> | no | no | Required for `collect`. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{`data`: [CostEstimate](#schema-costestimate)}.
@@ -583,7 +585,7 @@ Documented statuses: `200` Access token, user and accounts; `400` One or more fi
 - **Java:** `client.authentication()` — `AuthenticationResource: public void requestPasswordReset(String email)`; `client.authentication()` — `AuthenticationResource: public Map<String, Object> requestPasswordResetResult(String email)`
 - **HTTP:** `PUT /v1/authentication/request-password-reset`
 - **Auth:** Public; any path/body token is still required
-- **Contract notes:** Send the user an email with instructions to reset their password. Used when the password was forgotten or never set.
+- **Contract notes:** Send the user an email with instructions to reset their password. Used when the password was forgotten or never set. An address with no account gets the same `200` and no email, so the answer never tells whether an address has an account. An `email` that is not text answers `400`.
 
 Parameters: none.
 
@@ -603,14 +605,14 @@ Success `200` `application/json`: [Envelope](#schema-envelope) + object{`data`: 
 | `message` | string | no | no | Human-readable message; empty on success. |
 | `data` | object{`email`: string (email)} | no | no |  |
 
-Documented statuses: `200` Reset email sent; `500` Unexpected server error..
+Documented statuses: `200` Request accepted without revealing account existence; `400` Invalid email input; `500` Unexpected server error..
 
 ### 23. Reset password
 
 - **Java:** `client.authentication()` — `AuthenticationResource: public void resetPassword(String email, String token, String newPassword)`; `client.authentication()` — `AuthenticationResource: public Map<String, Object> resetPasswordResult(String email, String token, String newPassword)`
 - **HTTP:** `PUT /v1/authentication/reset-password`
 - **Auth:** Public; any path/body token is still required
-- **Contract notes:** Reset the user's password using the token received by email.
+- **Contract notes:** Reset the user's password using the token received by email. A wrong, expired or non-text token, and an address with no account, answer `400`. The new password needs at least 6 characters. A reset ends every session of the user (login tokens issued before it answer `401`) and revokes every connected OAuth app; the user's API key keeps working.
 
 Parameters: none.
 
@@ -697,6 +699,10 @@ Documented statuses: `200` Access token, user and accounts; `400` One or more fi
 - **HTTP:** `GET /v1/accounts/{accountId}/contracts`
 - **Auth:** Bearer token or `X-Api-Key`
 - **Contract notes:** List the contract terms tracked on the workspace's documents, most recently updated first. Every filter is optional and only narrows the list. To catch up after a webhook that never arrived, page this list until the contracts are older than your last sync: every change to the terms, by a user or by the hourly run, moves `updated_at`. Each document's history of contract events is at `GET /v1/documents/{documentId}/activities`.
+
+Contract list entries may omit `resource`; their concrete Java type is `DocumentContract`.
+Nested amendments also decode without a discriminator. Single-document union responses still
+use `resource` to distinguish root terms from amendments.
 
 | Parameter | In | Type | Required | Notes |
 |---|---|---|---:|---|
@@ -920,7 +926,7 @@ Documented statuses: `200` A page of documents; `400` `envelope_id` refused as s
 - **Java:** `client.documents()` — `DocumentResource: public Document upload(byte[] fileData, String fileName)`; `client.documents()` — `DocumentResource: public Document upload(byte[] fileData, String fileName, Map<String, Object> metadata, String accountId)`
 - **HTTP:** `POST /v1/accounts/{accountId}/documents`
 - **Auth:** Bearer token or `X-Api-Key`
-- **Contract notes:** Create a document from an uploaded file. Maximum file size 25MB; maximum 2000 pages.
+- **Contract notes:** Create a document from an uploaded file: PDF, or a Word or OpenDocument text file (`.doc`, `.docx`, `.odt`), which is converted to PDF. Maximum file size 25MB; maximum 2000 pages.
 
 | Parameter | In | Type | Required | Notes |
 |---|---|---|---:|---|
@@ -932,7 +938,7 @@ Request body: **required**.
 
 | JSON field | Type | Required | Nullable | Notes |
 |---|---|---:|---:|---|
-| `file` | string (binary) | yes | no | The PDF file to upload. |
+| `file` | string (binary) | yes | no | The file to upload: PDF, DOC, DOCX or ODT. |
 
 Success `200` `application/json`: [Envelope](#schema-envelope) + object{`data`: [Document](#schema-document)}.
 
@@ -4939,7 +4945,7 @@ Statuses: `200` Signature completed; `400` Invalid signed token or signing state
   one hour ahead. A date ends at 23:59 UTC, a date-time without an offset is UTC, and an explicit
   offset is honored. Estimates ignore expiration. Rename and decline enforce 255 and 2,000 Unicode
   character limits.
-- A password-reset request for an unknown user returns `404`, with no user found; a signer contact does not establish a registered user identity.
+- Password-reset requests return the same `200` for registered and unknown addresses. Success does not establish account existence or email delivery.
 - `AssignmentResource.resetExpiration(..., null)` sends `{"expires_at": null}`, which removes the expiration.
 - `AssignmentResource.list(..., accountId)` adds an `accountId` query parameter that the published document does not list. The sandbox answers `400` ("account context is required") to an API-key request without it, so the SDK sends the explicit or default account.
 - `CreateFieldRequest` exposes optional deployment fields `is_active`, `is_read_only`, and `is_visible`. `UpdateFieldRequest` also exposes `type`, `is_required`, `is_read_only`, and `is_visible` for deployments that accept them.
@@ -5055,3 +5061,320 @@ Document payloads expose available artifact URLs through `Document.getArtifacts(
 | `certificate-page` | `getCertificatePage()` | Certificate page artifact. |
 | `pades` | `getPades()` | PAdES PDF for digital-certificate signing processes. |
 | `bundle` | `getBundle()` | ZIP bundle of available final artifacts. |
+
+## Staging operations
+
+These ten operations are documented at <https://api.angry-pisco.stage.assinafy.com.br/v1/docs>. Configure that HTTPS base URL explicitly; production currently documents 147 operations and staging 157. Availability follows the selected deployment. No existing production operation is replaced.
+
+Account-scoped methods accept null for the configured account and offer a default-account overload. Scheduled sends use `Instant` (use `Instant.ofEpochSecond(...)` for Unix seconds); the SDK sends an ISO timestamp. They reuse the complete assignment/envelope payloads documented above, enforce a send time one hour to 90 days ahead and expiration at least two hours later, and preserve credit ceilings. Scheduling does not charge. Do not retry a mutation after an uncertain response: scheduling has no idempotency key. The default transport prevents body replay on these routes.
+
+### Get signer capacities
+
+- **Java:** `List<SignerCapacity> client.assignments().signerCapacities(String documentId)`
+- **HTTP:** `GET /v1/documents/{documentId}/signer-capacities`
+- **Auth:** API key or user-session bearer; OAuth `documents:read`.
+
+The capacity each signer of the document's assignment signs in, as the sender gave it with `sign_as` on **Create assignment**: `Sign` for a signer given none. In the order **Get document** lists the assignment's signers; an empty list for a document not sent yet. Reachable with the `documents:read` OAuth scope.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `documentId` | path | string | yes | Document ID. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | array&lt;object&gt; | no | no |  |
+| `data[].signer_id` | string | yes | no |  |
+| `data[].sign_as` | string enum[Sign, Approve, Acknowledge, Party, Witness, Intervening, Receipt, IssuerEndorserGuarantor, IssuerEndorserGuarantorSurety, Surety, PartySurety, JointDebtor, PartyJointDebtor, ContractingParty, ContractedParty, Landlord, Tenant, Buyer, Seller, AttorneyInFact, LegalRepresentative, Employer, Employee] | yes | no |  |
+
+Documented statuses: `200` The signers' capacities; `403` Authenticated but not allowed to perform this action.; `404` The document is not in the workspace.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Get notification history with delivery times
+
+- **Java:** `List<SignerNotificationHistory> client.assignments().notificationHistory(String documentId)`
+- **HTTP:** `GET /v1/documents/{documentId}/notification-history`
+- **Auth:** API key or user-session bearer; OAuth `documents:read`.
+
+Each signer of the document's assignment, in the order **Get document** lists them, with its `notification_history` as **Get document** gives it, each entry adding `delivered_at` and `opened_at`, `null` until then: an e-mail's first delivery and its first open or click; a WhatsApp message's delivery and read as WhatsApp last reported them. `opened_at` is a hint, not proof: a mail app or a link scanner can open a message before anyone reads it, and blocked images or WhatsApp read receipts turned off hide an open. An empty list for a document not sent yet. Reachable with the `documents:read` OAuth scope.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `documentId` | path | string | yes | Document ID. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | array&lt;object&gt; | no | no |  |
+| `data[].signer_id` | string | yes | no |  |
+| `data[].notification_history` | array&lt;[NotificationHistoryEntry](#schema-notificationhistoryentry) + object&gt; | yes | no |  |
+| `data[].notification_history[].event` | string | no | no |  |
+| `data[].notification_history[].status` | string enum[sent, delivered, opened, failed] | no | no | Furthest delivery stage reached. `opened` means the email was opened/clicked or the WhatsApp message was read. |
+| `data[].notification_history[].error_code` | string/null enum[MailboxFull, AddressNotFound, AddressSuppressed, ContentRejected, MarkedAsSpam, NotOnWhatsapp, RecipientRestricted, NotSent, Unknown] | no | yes | Why the notification failed. Only set when `status` is `failed`. |
+| `data[].notification_history[].error_message` | string/null | no | yes | Human-readable, localized explanation of `error_code`. Only set when `status` is `failed`. |
+| `data[].notification_history[].sent_at` | string/null | no | yes |  |
+| `data[].notification_history[].failed_at` | string/null | no | yes |  |
+| `data[].notification_history[].delivered_at` | string/null | yes | yes |  |
+| `data[].notification_history[].opened_at` | string/null | yes | yes |  |
+
+Documented statuses: `200` The signers' notification history; `403` Authenticated but not allowed to perform this action.; `404` The document is not in the workspace.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### List a document's watchers
+
+- **Java:** `List<Signer> client.documents().listWatchers(String documentId)`
+- **HTTP:** `GET /v1/documents/{documentId}/watchers`
+- **Auth:** API key or user-session bearer; OAuth unavailable.
+
+The contacts set with **Set a document's watchers**, in the order they were set. A deleted contact is left out.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `documentId` | path | string | yes | Document ID. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | array&lt;[Signer](#schema-signer)&gt; | no | no |  |
+
+Documented statuses: `200` The document's watchers; `403` An OAuth application token, a deactivated membership or a role refuses it.; `404` The document is not in the workspace.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Set a document's watchers
+
+- **Java:** `List<Signer> client.documents().setWatchers(String documentId, List<String> watcherIds)`
+- **HTTP:** `PUT /v1/documents/{documentId}/watchers`
+- **Auth:** API key or user-session bearer; OAuth unavailable.
+
+Replaces the document's watchers: up to 10 contacts of the workspace, each with an e-mail address, who follow the document without signing it. Each is e-mailed once the document ends: declined (naming who declined), expired or signed by all. The e-mail names the document and its sender, and nothing else of it: no link, no file. It is queued, so it goes out shortly after. Naming a contact here is what lets them receive it; the workspace's notification settings don't apply to them. A signer named as a watcher gets this e-mail besides their own. They can be set before the document is sent and changed until it ends; an empty list removes them all.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `documentId` | path | string | yes | Document ID. |
+
+Request body: **required**, `application/json`.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `watcher_ids` | array&lt;string&gt; | yes | no | Contact ids, as **Create signer** answers them; one given twice counts once. |
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | array&lt;[Signer](#schema-signer)&gt; | no | no |  |
+
+Documented statuses: `200` The document's watchers; `400` `watcher_ids` missing or not a list of ids; more than 10; an id that is not a contact of the workspace or a contact without an e-mail address; or the document has ended (expired, signed by all, declined, cancelled or failed).; `403` An OAuth application token, a deactivated membership or a role refuses it.; `404` The document is not in the workspace.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Estimate envelope reminder cost
+
+- **Java:** `ResendCostEstimate client.envelopes().estimateResendCost(String envelopeId, String signerId, String accountId)`
+- **HTTP:** `POST /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/estimate-resend-cost`
+- **Auth:** API key or user-session bearer; OAuth `documents:write`.
+
+What reminding a signer of the whole envelope would cost, sending and charging nothing. The reminder is one message per notification method for all of the envelope's documents, so it costs what one document's reminder costs, whatever the number of documents, at the workspace's reminder prices: nothing by e-mail and the WhatsApp resend price by WhatsApp, unless its plan prices them otherwise. Answers as a document's reminder estimate. It does not check whether a reminder would be accepted now: the reminder itself refuses a closed envelope (`409`), and a signer with nothing left to sign or one reminded too recently or too often (`400`).
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `accountId` | path | string | yes | Workspace account ID. |
+| `envelopeId` | path | string | yes | The envelope ID. |
+| `signerId` | path | string | yes | The signer ID. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | [ResendCostEstimate](#schema-resendcostestimate) | no | no |  |
+
+Documented statuses: `200` Cost estimate; `403` An OAuth app's token lacks `documents:write` (`InsufficientScope`). Also a member deactivated in the workspace, a workspace scheduled for deletion, or an OAuth token of another workspace.; `404` The envelope was not found, or the signer is not one of its signers.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Schedule an assignment
+
+- **Java:** `ScheduledSend client.scheduledSends().createAssignment(String documentId, CreateAssignmentRequest request, Instant sendAt)`
+- **HTTP:** `POST /v1/documents/{documentId}/scheduled-sends`
+- **Auth:** API key or user-session bearer; OAuth `documents:write`.
+
+Keeps a **Create assignment** request and makes it at `send_at`, as the member who scheduled it, through the same checks and charges as **Create assignment** then. Nothing is sent or charged now, and nothing changes for the document: it can still be sent at once, and the scheduled send then fails when it goes. A document takes one pending scheduled send at a time, counting one being sent. The request is checked now as **Estimate assignment cost** checks it (the method, each signer's methods, the plan's features), and each signer named must be a contact of the workspace; the balance is checked when it is sent. A job checks every five minutes and makes the sends that are due. A send that can't be made then becomes `failed` with the reason, nothing is charged, and the member who scheduled it is e-mailed; if that member has left the workspace, it is not made as anyone else: it fails and the workspace's active owners are e-mailed. **List scheduled sends**, **Cancel a scheduled send** and **Send a scheduled send now** follow it.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `documentId` | path | string | yes | Document ID. |
+
+Request body: **required**, `application/json`. A [Create assignment](#13-create-assignment-request-signatures) body (`method`, `signers`, `entries`, `message`, `expires_at` and the rest, as that route takes them) plus `send_at`.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `send_at` | string or integer | yes | no | When to send: ISO 8601 with its offset (none means UTC), or a Unix time. From one hour to 90 days ahead. |
+| `method` | string enum[virtual, collect] | no | no | As in **Create assignment**; `virtual` when left out. |
+| `signers` | array&lt;object&gt; | yes | no | As in **Create assignment**; each must be a contact of the workspace. |
+| `expires_at` | string or integer or null | no | yes | As in **Create assignment**, an absolute time (ISO 8601 or a Unix time), or null for none; at least two hours after `send_at`, since the request must still have an hour left when it is made. |
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | [ScheduledSend](#schema-scheduledsend) | no | no |  |
+
+Documented statuses: `200` The scheduled send; `400` `send_at` missing, unreadable, less than an hour or more than 90 days ahead; an `expires_at` less than two hours after it; the document already has an assignment, or a scheduled send pending or being sent; or the request refused as **Estimate assignment cost** refuses it.; `403` The workspace's plan lacks a verification or notification method sent (`PlanRestricted`), or an OAuth app's token lacks `documents:write` (`InsufficientScope`); also a deactivated membership or a role.; `404` The document is not in the workspace, or a signer named is not a contact of it.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Schedule an envelope
+
+- **Java:** `ScheduledSend client.scheduledSends().createEnvelope(CreateEnvelopeRequest request, Instant sendAt, String accountId)`
+- **HTTP:** `POST /v1/accounts/{accountId}/scheduled-sends`
+- **Auth:** API key or user-session bearer; OAuth `documents:write`.
+
+Keeps a **Create envelope** request and makes it at `send_at`, as the member who scheduled it, through the same checks and charges as **Create envelope** then. Nothing is created, sent or charged now, and nothing changes for its documents: each can still be sent at once, and the scheduled send then fails when it goes. A document takes one pending scheduled send at a time, counting one being sent. The request is checked now as **Estimate envelope cost** checks it (`403` with code `PlanRestricted` without the Envelopes feature, `400` with `errors` on the same fields); the balance is checked when it is sent. A job checks every five minutes and makes the sends that are due; failures go as for **Schedule an assignment**: `failed` with the reason, nothing charged, the member who scheduled it e-mailed, or the workspace's active owners if that member has left. An `Idempotency-Key` is not read here: each call keeps one send. An assignment is scheduled on its document (**Schedule an assignment**).
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `accountId` | path | string | yes | Workspace account ID. |
+
+Request body: **required**, `application/json`. A [Create envelope](#52-create-envelope) body plus `send_at`; each document's `expires_at` at least two hours after `send_at`.
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `name` | string | yes | no | What the invitation calls what is being signed, in place of a document's name. `<` is refused (`400`). |
+| `message` | string/null | no | yes | Optional message sent to every signer; their invitation adds the names of the documents they are on. |
+| `max_total_credits` | number | no | no | Optional ceiling on what this request may spend, as on an assignment: refused with `409` and code `CreditCeilingExceeded`, nothing created or charged, when the envelope's total credits are above it. A value that is not a number of credits, zero or more, answers `400`; numeric text counts, as a form-encoded body sends it. The estimate ignores it. |
+| `signers` | array&lt;object&gt; | yes | no | Every signer of the envelope, once, by id: up to 20. They all sign at once: an envelope takes no `step`. |
+| `signers[].id` | string | yes | no | An existing signer's ID. |
+| `signers[].verification_method` | string enum[Email, Whatsapp, DigitalCertificate, IdDocumentFaceMatchBasic] | no | no | As on an assignment. A `DigitalCertificate` signer signs only virtual documents, alone on each, each with their certificate, and is charged on each. An `IdDocumentFaceMatchBasic` signer checks their identity once for the whole envelope, and is charged for it once. |
+| `signers[].notification_methods` | array&lt;string enum[Email, Whatsapp]&gt; | no | no | As on an assignment: one method, inferred from `verification_method` when left out. |
+| `signers[].embedded` | boolean | no | no | As on an assignment: the signer signs inside your app, through an embed session, on every document of the envelope, the ones added later too. Their `signing_urls` entry has no link (`url` is `null`). An embed session minted on any of their documents still waiting for them lists the documents of the envelope they still have to sign, and the code their invitation carries verifies them there. |
+| `documents` | array&lt;[EnvelopeDocumentRequest](#schema-envelopedocumentrequest)&gt; | yes | no | The documents, in the order the envelope lists them: up to 20. |
+| `send_at` | string or integer | yes | no | When to send: ISO 8601 with its offset (none means UTC), or a Unix time. From one hour to 90 days ahead. |
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | [ScheduledSend](#schema-scheduledsend) | no | no |  |
+
+Documented statuses: `200` The scheduled send; `400` `send_at` missing, unreadable, less than an hour or more than 90 days ahead; a document's `expires_at` less than two hours after it; a document already assigned or in a scheduled send pending or being sent; or the request refused as **Estimate envelope cost** refuses it, in `errors`.; `403` The workspace's plan lacks the Envelopes feature, or a signer's method or embedded signing the plan lacks (`PlanRestricted`); or an OAuth app's token lacks `documents:write` (`InsufficientScope`). Also a member deactivated in the workspace, a workspace scheduled for deletion, or an OAuth token of another workspace.; `404` The requested resource does not exist.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### List scheduled sends
+
+- **Java:** `PaginatedResult<ScheduledSend> client.scheduledSends().list(ListParams params, String documentId, String accountId)`
+- **HTTP:** `GET /v1/accounts/{accountId}/scheduled-sends`
+- **Auth:** API key or user-session bearer; OAuth `documents:write`.
+
+The workspace's scheduled sends, assignments and envelopes, newest first, whatever their status. Paged: 20 per page by default; the `X-Pagination-Total-Count`, `X-Pagination-Page-Count`, `X-Pagination-Current-Page` and `X-Pagination-Per-Page` headers describe the full list. An OAuth app needs `documents:write` here, not only `documents:read`: a failed send's `failure_reason` can say the workspace's balance ran out or a member left, which an app learns only from a request it can make.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `accountId` | path | string | yes | Workspace account ID. |
+| `page` | query | integer | no | Page number. |
+| `per-page` | query | integer | no | Records per page: 20 by default, at most 50; a larger value answers 50 a page. |
+| `document_id` | query | string | no | Only the sends of this document. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | array&lt;[ScheduledSend](#schema-scheduledsend)&gt; | no | no |  |
+
+Documented statuses: `200` The workspace's scheduled sends; `400` `document_id` not text.; `403` An OAuth app's token lacks `documents:write` (`InsufficientScope`). Also a member deactivated in the workspace, a workspace scheduled for deletion, or an OAuth token of another workspace.; `404` The workspace does not exist.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Cancel a scheduled send
+
+- **Java:** `ScheduledSend client.scheduledSends().cancel(String scheduledSendId, String accountId)`
+- **HTTP:** `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/cancel`
+- **Auth:** API key or user-session bearer; OAuth `documents:write`.
+
+Cancels a `pending` scheduled send; nothing is sent or charged. A send already being sent, sent, failed or cancelled answers `409`.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `accountId` | path | string | yes | Workspace account ID. |
+| `scheduledSendId` | path | string | yes | The scheduled send ID. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | [ScheduledSend](#schema-scheduledsend) | no | no |  |
+
+Documented statuses: `200` The cancelled scheduled send; `403` An OAuth app's token lacks `documents:write` (`InsufficientScope`). Also a member deactivated in the workspace, a workspace scheduled for deletion, or an OAuth token of another workspace.; `404` The workspace does not exist, or the scheduled send is not the workspace's.; `409` Only a `pending` scheduled send can be cancelled.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### Send a scheduled send now
+
+- **Java:** `ScheduledSend client.scheduledSends().sendNow(String scheduledSendId, String accountId)`
+- **HTTP:** `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/send`
+- **Auth:** API key or user-session bearer; OAuth `documents:write`.
+
+Makes a `pending` scheduled send's request now rather than at `send_at`: as **Create assignment** or **Create envelope** would make it then, as the member who scheduled it, with the same checks and charges. A refusal answers as that route would answer the member who scheduled it: no documents or credits left, a signer removed, the document already sent, the plan without Envelopes, a `max_total_credits` below the cost now (`409` `CreditCeilingExceeded`), that member gone from the workspace (`400`) or the workspace's deletion pending (`403`); the send then stays `pending`, to go at `send_at` unless cancelled, and no one is e-mailed. A send already being sent, sent, failed or cancelled answers `409`.
+
+| Parameter | In | Type | Required | Notes |
+|---|---|---|---:|---|
+| `accountId` | path | string | yes | Workspace account ID. |
+| `scheduledSendId` | path | string | yes | The scheduled send ID. |
+
+Request body: none.
+
+Success `200`, `application/json`:
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `status` | integer | no | no | HTTP status code, mirrored in the body. |
+| `message` | string | no | no | Human-readable message; empty on success. |
+| `data` | [ScheduledSend](#schema-scheduledsend) | no | no |  |
+
+Documented statuses: `200` The scheduled send, `sent`, with the assignment or envelope it created; `400` The request refused as **Create assignment** or **Create envelope** refuses it, or the member who scheduled it has left the workspace. The send stays `pending`.; `403` The workspace's plan lacks a feature the request uses (`PlanRestricted`), or an OAuth app's token lacks `documents:write` (`InsufficientScope`); also a deactivated membership, a role, or the workspace's deletion pending. The send stays `pending`.; `404` The workspace does not exist, or the scheduled send is not the workspace's; or the document an assignment sends no longer exists (`Document not found.`), and the send stays `pending`.; `409` Only a `pending` scheduled send can be sent now; or the request's `max_total_credits` is below what it costs now (`CreditCeilingExceeded`, nothing charged), and the send stays `pending`.; `401` Missing or invalid credentials.; `500` Unexpected server error.
+
+### ScheduledSend
+
+<a id="schema-scheduledsend"></a>
+
+| JSON field | Type | Required | Nullable | Notes |
+|---|---|---:|---:|---|
+| `resource` | string | no | no |  |
+| `id` | string | yes | no |  |
+| `type` | string enum[assignment, envelope] | yes | no | What it creates. |
+| `document_ids` | array&lt;string&gt; | yes | no | The documents it sends: one for an assignment, the envelope's for an envelope. A deleted document is left out. |
+| `status` | string enum[pending, processing, sent, cancelled, failed] | yes | no | `pending` until `send_at` (or **Send a scheduled send now**); `processing` while its request is being made; then `sent` (the request was made; its invitations go out right after), `failed` or, if cancelled while pending, `cancelled`. A send whose run was interrupted while `processing` made nothing, and fails within about an hour. |
+| `send_at` | string | yes | no |  |
+| `assignment_id` | string/null | yes | yes | The assignment it created, once an `assignment` is `sent`. |
+| `envelope_id` | string/null | yes | yes | The envelope it created, once an `envelope` is `sent`; `null` again once the envelope is deleted. |
+| `failure_reason` | string/null | yes | yes | Why it was not sent, once `failed`: the refusal the create route answered then (no documents or credits left, a signer removed, the document already sent, the plan without Envelopes), that the workspace is being deleted, or that the member who scheduled it left the workspace. Written in Portuguese. |
+| `created_at` | string | yes | no |  |
+| `processed_at` | string/null | yes | yes | When it was sent, failed or cancelled. |
+
+### Signing behavior on staging
+
+- `sign_as` is accepted by assignment creation, estimates and scheduled assignments. `SignerReference.builder().signAs("Witness")` sets it. Omitted/null means `Sign`; the value is printed only on the certificate page and read through `signerCapacities`. Envelopes and templates do not expose this option.
+- Supported capacities: `Sign`, `Approve`, `Acknowledge`, `Party`, `Witness`, `Intervening`, `Receipt`, `IssuerEndorserGuarantor`, `IssuerEndorserGuarantorSurety`, `Surety`, `PartySurety`, `JointDebtor`, `PartyJointDebtor`, `ContractingParty`, `ContractedParty`, `Landlord`, `Tenant`, `Buyer`, `Seller`, `AttorneyInFact`, `LegalRepresentative`, `Employer`, `Employee`.
+- Confirm the signer's required contact data before signing. For DigitalCertificate, call `confirmSignerData(documentId, accessCode, Map.of("email", "signer@example.invalid", "has_accepted_terms", true))` before reading `/sign`; the terms query parameter cannot bypass this prerequisite. `acceptTerms` remains available before the document read.
+- `sendToken` resends the existing email invitation and verification code, without renewing either. It requires a pending, unexpired request in the signer's active step. A 200 means accepted, not delivered. The route permits one request per signer per two minutes (shared across an envelope); 429 carries `Retry-After`. An uncertain send can still count against this interval.
+- Five incorrect OTPs within 15 minutes lock verification until the interval expires; envelope requests share this limit. Do not replay a code speculatively.
+- Signature images accept PNG and JPEG. Upload type is `signature` or `initial`.
+- `notificationHistory` adds nullable `delivered_at` and `opened_at` to each notification attempt. Email opens may come from scanners and do not prove that a person read the message.

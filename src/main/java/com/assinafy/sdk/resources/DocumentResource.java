@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources;
 
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.models.Signer;
 import com.assinafy.sdk.exceptions.ApiException;
 import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.NetworkException;
@@ -67,23 +68,23 @@ public class DocumentResource extends BaseResource {
     }
 
     /**
-     * Upload a PDF and create a document ({@code POST /accounts/{accountId}/documents}). The file
-     * must have a PDF file name, be non-empty, and be at most 25 MB. The API validates the document
+     * Upload a PDF, DOC, DOCX or ODT and create a document ({@code POST /accounts/{accountId}/documents}). The file
+     * must have a supported file extension, be non-empty, and be at most 25 MB. The API validates the document
      * content.
      *
      * <p>Wire contract, payloads and failures: {@link #upload(byte[], String, Map, String)}.</p>
      *
-     * @param fileData PDF bytes
-     * @param fileName PDF file name
+     * @param fileData document bytes
+     * @param fileName PDF, DOC, DOCX or ODT file name
      * @return the uploaded document summary
-     * @throws com.assinafy.sdk.exceptions.ValidationException if the file is missing, not a PDF, or too large
+     * @throws com.assinafy.sdk.exceptions.ValidationException if the file is missing, unsupported, or too large
      */
     public Document upload(byte[] fileData, String fileName) {
         return upload(fileData, fileName, null, null);
     }
 
     /**
-     * Upload a PDF and create a document, with optional document metadata and an explicit account.
+     * Upload a PDF, DOC, DOCX or ODT and create a document, with optional document metadata and an explicit account.
      *
      * <p><strong>HTTP:</strong> <code>POST /v1/accounts/{accountId}/documents</code>.
      * <strong>Authentication:</strong> Bearer JWT or <code>X-Api-Key</code>.</p>
@@ -142,8 +143,8 @@ public class DocumentResource extends BaseResource {
      * raises <code>RateLimitException</code>, and I/O failures raise <code>NetworkException</code>.
      * Invalid local arguments raise <code>ValidationException</code> before a request.</p>
      *
-     * @param fileData  the PDF bytes (non-empty, ≤ 25 MB)
-     * @param fileName  the file name (must end in {@code .pdf})
+     * @param fileData  the document bytes (non-empty, ≤ 25 MB)
+     * @param fileName  the file name (PDF, DOC, DOCX or ODT)
      * @param metadata  optional metadata sent as a multipart field, or {@code null}
      * @param accountId workspace/account ID; falls back to the client default when {@code null}
      * @return the uploaded document summary
@@ -1547,8 +1548,9 @@ public class DocumentResource extends BaseResource {
         if (fileData == null || fileData.length == 0) {
             throw new ValidationException("File data is empty", Map.of("fileName", fileName != null ? fileName : ""));
         }
-        if (fileName == null || !fileName.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-            throw new ValidationException("Only PDF files are supported", Map.of("fileName", fileName != null ? fileName : ""));
+        if (fileName == null || fileName.lastIndexOf('.') < 0 || !java.util.Set.of("pdf", "doc", "docx", "odt")
+                .contains(fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT))) {
+            throw new ValidationException("Only PDF, DOC, DOCX and ODT files are supported", Map.of("fileName", fileName != null ? fileName : ""));
         }
         if (fileData.length > MAX_UPLOAD_BYTES) {
             throw new ValidationException("File size exceeds maximum allowed (25MB)",
@@ -1662,6 +1664,39 @@ public class DocumentResource extends BaseResource {
         String path = "/documents/" + pathSegment(documentId, "Document ID") + "/pages/"
                 + pathSegment(pageId, "Page ID") + "/download?artifact=certificated";
         return callBinary("Failed to download signed page", () -> http.getBinary(path));
+    }
+
+    /** List a document&#x27;s watchers. Available on staging.
+     * <p><strong>HTTP:</strong> {@code GET /v1/documents/{documentId}/watchers}. The contacts set with <strong>Set a document&#x27;s watchers</strong>, in the order they were set. A deleted contact is left out.</p>
+     * <p>Request:</p><pre>none</pre>
+     * <p>Success:</p><pre>{&quot;status&quot;:200,&quot;data&quot;:[{&quot;id&quot;:&quot;signer-id&quot;,&quot;full_name&quot;:&quot;Example Signer&quot;,&quot;email&quot;:&quot;signer@example.invalid&quot;}]}</pre>
+     * <p>200: The document&#x27;s watchers; 403: Authenticated but not allowed to perform this action.; 404: The document is not in the workspace.; 401: Missing or invalid credentials.; 500: Unexpected server error. HTTP/envelope errors raise ApiException; I/O errors raise NetworkException.</p>
+     * @param documentId document ID
+     * @return unwrapped response data
+     * @throws ValidationException if local arguments are invalid
+     */
+    public List<Signer> listWatchers(String documentId) {
+        String path = "/documents/" + pathSegment(documentId, "Document ID") + "/watchers";
+        return callList("Failed to list watchers", () -> http.get(path), Signer.class).getData();
+    }
+    /** Set a document&#x27;s watchers. Available on staging.
+     * <p><strong>HTTP:</strong> {@code PUT /v1/documents/{documentId}/watchers}. Replaces the document&#x27;s watchers: up to 10 contacts of the workspace, each with an e-mail address, who follow the document without signing it. Each is e-mailed once the document ends: declined (naming who declined), expired or signed by all. The e-mail names the document and its sender, and nothing else of it: no link, no file. It is queued, so it goes out shortly after. Naming a contact here is what lets them receive it; the workspace&#x27;s notification settings don&#x27;t apply to them. A signer named as a watcher gets this e-mail besides their own. They can be set before the document is sent and changed until it ends; an empty list removes them all.</p>
+     * <p>Request:</p><pre>{&quot;watcher_ids&quot;:[&quot;signer-id&quot;]}</pre>
+     * <p>Success:</p><pre>{&quot;status&quot;:200,&quot;data&quot;:[{&quot;id&quot;:&quot;signer-id&quot;,&quot;full_name&quot;:&quot;Example Signer&quot;,&quot;email&quot;:&quot;signer@example.invalid&quot;}]}</pre>
+     * <p>200: The document&#x27;s watchers; 400: <code>watcher_ids</code> missing or not a list of ids; more than 10; an id that is not a contact of the workspace or a contact without an e-mail address; or the document has ended (expired, signed by all, declined, cancelled or failed).; 403: Authenticated but not allowed to perform this action.; 404: The document is not in the workspace.; 401: Missing or invalid credentials.; 500: Unexpected server error. HTTP/envelope errors raise ApiException; I/O errors raise NetworkException.</p>
+     * @param documentId document ID
+     * @param watcherIds up to ten distinct contact IDs; empty clears all watchers
+     * @return unwrapped response data
+     * @throws ValidationException if local arguments are invalid
+     */
+    public List<Signer> setWatchers(String documentId, List<String> watcherIds) {
+        String path = "/documents/" + pathSegment(documentId, "Document ID") + "/watchers";
+        if (watcherIds == null) throw new ValidationException("Watcher IDs are required");
+        java.util.Set<String> unique = new java.util.LinkedHashSet<>();
+        for (String id : watcherIds) unique.add(requireId(id, "Watcher ID"));
+        if (unique.size() > 10) throw new ValidationException("A document takes at most 10 watchers");
+        String json = serialise(Map.of("watcher_ids", unique));
+        return callList("Failed to set watchers", () -> http.put(path, json), Signer.class).getData();
     }
 
 }

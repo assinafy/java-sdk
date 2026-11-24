@@ -35,7 +35,6 @@ import java.util.concurrent.TimeUnit;
 public class OkHttpApiClient implements ApiHttpClient {
 
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-    private static final MediaType PDF = MediaType.parse("application/pdf");
     private static final MediaType PNG = MediaType.parse("image/png");
     private static final MediaType JPEG = MediaType.parse("image/jpeg");
     private static final byte[] JPEG_MAGIC = new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
@@ -126,7 +125,8 @@ public class OkHttpApiClient implements ApiHttpClient {
                     }
                     // retryOnConnectionFailure(false) does not stop OkHttp repeating a request
                     // answered 503 with Retry-After: 0; a one-shot body is never sent twice.
-                    if ((!allowRetries || path.matches("/embed/sessions/[^/]+/exchange")) && request.body() != null) {
+                    if ((!allowRetries || path.matches("/embed/sessions/[^/]+/exchange")
+                            || path.matches("/(?:documents/[^/]+/scheduled-sends|accounts/[^/]+/scheduled-sends(?:/[^/]+/(?:cancel|send))?)")) && request.body() != null) {
                         builder.method(request.method(), oneShot(request.body()));
                     }
                     return chain.proceed(builder.build());
@@ -188,9 +188,16 @@ public class OkHttpApiClient implements ApiHttpClient {
 
     @Override
     public HttpRawResponse postMultipart(String path, String fileName, byte[] fileData, String name, String metadata) throws IOException {
+        String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+        MediaType mediaType = MediaType.parse(switch (extension) {
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "odt" -> "application/vnd.oasis.opendocument.text";
+            default -> "application/pdf";
+        });
         MultipartBody.Builder formBuilder = new MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
-                .addFormDataPart("file", fileName, RequestBody.create(fileData, PDF))
+                .addFormDataPart("file", fileName, RequestBody.create(fileData, mediaType))
                 .addFormDataPart("name", name != null ? name : fileName);
         if (metadata != null) {
             formBuilder.addFormDataPart("metadata", metadata);

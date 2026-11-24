@@ -9,18 +9,18 @@ The [complete contract](docs/API_REFERENCE.md) documents every route, payload, r
 ## Requirements and installation
 
 - JDK 25 LTS (`>=25,<26`) and TLS 1.2 or later.
-- Maven Wrapper 3.10.0 to build the project.
+- Maven Wrapper 3.10.1 to build the project.
 - OkHttp and Jackson as runtime dependencies.
 
 ```xml
 <dependency>
   <groupId>com.assinafy</groupId>
   <artifactId>assinafy-sdk</artifactId>
-  <version>2.4.0</version>
+  <version>2.5.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("com.assinafy:assinafy-sdk:2.4.0")`.
+Gradle: `implementation("com.assinafy:assinafy-sdk:2.5.0")`.
 
 ## Complete signing flow
 
@@ -82,6 +82,10 @@ creation was confirmed. Create a `collect` assignment directly for positioned fi
 Deadlines accept an ISO 8601 date or date-time at least one hour ahead. A date ends at 23:59 UTC; a
 date-time without an offset is UTC; an explicit offset is preserved.
 
+Uploads accept PDF, DOC, DOCX and ODT; Word/OpenDocument files are converted to PDF by the API.
+The helper waits up to 30 seconds for metadata. For longer processing use `waitForReady(false)`
+and track readiness through webhooks or `documents().waitUntilReady(id, maxWaitMs, pollIntervalMs)`.
+
 ## Verification and notifications
 
 | Verification | Requirement | Notification |
@@ -116,6 +120,20 @@ Give the URL only to the authorized frontend; it expires and can be exchanged on
 page. Never log the URL or access code. Biometrics and certificates use the hosted flow.
 The [full operations](docs/API_REFERENCE.md#api-operations) cover reminders, cancellation, ZIP
 downloads, push preferences, notification policy and workspace balances.
+
+## Scheduled sends and delivery tracking
+
+Staging adds ten operations at `https://api.angry-pisco.stage.assinafy.com.br/v1` (157 total;
+production has 147). `scheduledSends().createAssignment(documentId, request, sendAt)` and
+`createEnvelope(request, sendAt)` accept a `java.time.Instant` one hour to 90 days ahead. Set any
+expiration at least two hours later. List, cancel, or send now through the same resource;
+OAuth requires `documents:write`, including listing. Reconcile uncertain outcomes before retrying.
+
+Use `documents().listWatchers(...)` / `setWatchers(...)` for up to ten email contacts (no OAuth).
+`assignments().notificationHistory(...)` returns delivery/open times; opens are not proof of reading.
+`SignerReference.builder().signAs("Witness")` sets an assignment capacity on the certificate;
+read it with `assignments().signerCapacities(...)`. Envelope reminders have
+`envelopes().estimateResendCost(...)`. Full payloads are in the [reference](docs/API_REFERENCE.md#staging-operations).
 
 ## OAuth 2.1 for marketplace applications
 
@@ -152,7 +170,7 @@ an endpoint after ten consecutive undelivered events.
 
 The client exposes `documents()`, `signers()`, `assignments()`, `contracts()`, `templates()`,
 `envelopes()`, `embed()`, `fields()`, `tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`,
-`oauth()`, and `publicDocuments()`. Account operations use the configured `accountId` and offer an
+`oauth()`, `scheduledSends()`, and `publicDocuments()`. Account operations use the configured `accountId` and offer an
 explicit-account overload.
 
 Success methods return envelope `data`; OAuth returns flat JSON and downloads return `byte[]`.

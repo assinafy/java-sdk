@@ -38,6 +38,12 @@ final class SigningRules {
     static final String DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_METHOD =
             "digital_certificate_requires_virtual_method";
 
+    static final Set<String> SIGNER_CAPACITIES = Set.of(
+            "Sign", "Approve", "Acknowledge", "Party", "Witness", "Intervening", "Receipt",
+            "IssuerEndorserGuarantor", "IssuerEndorserGuarantorSurety", "Surety", "PartySurety",
+            "JointDebtor", "PartyJointDebtor", "ContractingParty", "ContractedParty", "Landlord",
+            "Tenant", "Buyer", "Seller", "AttorneyInFact", "LegalRepresentative", "Employer", "Employee");
+
     private SigningRules() {}
 
     static void validateCreditCeiling(BigDecimal value) {

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Signer selection for assignment or template-document requests.
+ * Signer selection for assignment or envelope requests.
  *
  * <p>{@code verification_method} accepts {@code Email}, {@code Whatsapp},
  * {@code DigitalCertificate} or {@code IdDocumentFaceMatchBasic}. A nonempty
@@ -14,10 +14,10 @@ import java.util.List;
  * DigitalCertificate and IdDocumentFaceMatchBasic permit either. Null lets the API infer delivery
  * defaults; an empty array requests no notification. Signing steps are all-or-none and
  * contiguous from 1. A digital-certificate signer requires {@code method: virtual} and is alone
- * in its step.
+ * in its step. Envelopes do not accept steps or signing capacities.
  *
  * @see com.assinafy.sdk.resources.AssignmentResource#create(String, CreateAssignmentRequest)
- * @see com.assinafy.sdk.resources.DocumentResource#createFromTemplate(String, CreateDocumentFromTemplateRequest, String)
+ * @see com.assinafy.sdk.resources.EnvelopeResource#create(CreateEnvelopeRequest)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SignerReference {
@@ -131,6 +131,12 @@ public class SignerReference {
          */
         public Builder embedded(Boolean value) { ref.setEmbedded(value); return this; }
 
+        /** Sets the assignment capacity (for example Witness); staging only.
+         * @param value capacity or null for Sign
+         * @return this builder
+         */
+        public Builder signAs(String value) { ref.setSignAs(value); return this; }
+
         private final SignerReference ref = new SignerReference();
 
         /** Creates an empty builder. */
@@ -188,4 +194,16 @@ public class SignerReference {
      */
     public void setEmbedded(Boolean value) { embedded = value; }
 
+    @JsonProperty("sign_as")
+    private String signAs;
+
+    /** Assignment signing capacity printed on the certificate. Staging only; null means Sign. Envelopes do not accept this field.
+     * @return the sign_as value, or null when absent
+     */
+    public String getSignAs() { return signAs; }
+
+    /** Sets sign_as.
+     * @param value the sign_as value
+     */
+    public void setSignAs(String value) { signAs = value; }
 }

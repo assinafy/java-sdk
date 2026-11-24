@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-24
+
+### Added
+
+- PDF, DOC, DOCX and ODT uploads use their matching multipart media types.
+- Staging scheduled assignments and envelopes, including listing, cancellation and immediate sending.
+- Document watchers, signer capacities through `sign_as`, notification delivery/open timestamps,
+  and envelope reminder cost estimates on staging.
+
+### Fixed
+
+- Scheduled-send mutations cannot replay request bodies after transient HTTP responses.
+- OAuth callbacks reject malformed UTF-8 percent escapes instead of replacing their bytes.
+- Contract lists and nested amendments decode when the API omits the optional resource discriminator.
+
+### Changed
+
+- Jackson uses the maintained 2.21.8 LTS line; Maven Wrapper is 3.10.1 and setup-java is 6.2.0.
+
 ## [2.4.0] - 2026-11-11
 
 ### Added

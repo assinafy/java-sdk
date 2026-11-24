@@ -16,6 +16,7 @@ import com.assinafy.sdk.request.SignerReference;
 import com.assinafy.sdk.request.UpdateSignerRequest;
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest;
 import com.assinafy.sdk.resources.ApiKeyResource;
+import com.assinafy.sdk.resources.ScheduledSendResource;
 import com.assinafy.sdk.resources.AssignmentResource;
 import com.assinafy.sdk.resources.AuthenticationResource;
 import com.assinafy.sdk.resources.BaseResource;
@@ -55,6 +56,7 @@ public class AssinafyClient {
     private static final int RECONCILIATION_ATTEMPTS = 5;
     private static final long RETRY_DELAY_MS = 500;
 
+    private final ScheduledSendResource scheduledSends;
     private final DocumentResource documents;
     private final EnvelopeResource envelopes;
     private final EmbedResource embed;
@@ -107,6 +109,7 @@ public class AssinafyClient {
         this.defaultAccountId = options.getAccountId();
         this.logger = options.getLogger() != null ? options.getLogger() : NoOpLogger.INSTANCE;
 
+        this.scheduledSends = new ScheduledSendResource(http, defaultAccountId, this.logger);
         this.documents = new DocumentResource(http, defaultAccountId, this.logger);
         this.envelopes = new EnvelopeResource(http, defaultAccountId, this.logger);
         this.embed = new EmbedResource(http, defaultAccountId, this.logger);
@@ -200,9 +203,9 @@ public class AssinafyClient {
     /**
      * High-level convenience flow that uploads a document and requests signatures in one call.
      *
-     * <p>Performs, in order: (1) upload the PDF ({@code documents().upload}); (2) unless
+     * <p>Performs, in order: (1) upload the PDF, DOC, DOCX or ODT ({@code documents().upload}); (2) unless
      * {@link UploadAndRequestSignaturesRequest#isWaitForReady()} is false, block polling until the
-     * document is ready (default; may take seconds); (3) create one persistent {@code Signer}
+     * document is ready (default; 30-second polling budget); (3) create one persistent {@code Signer}
      * resource per {@link UploadAndRequestSignaturesRequest.SignerEntry} (existing signers are
      * reused by email); (4) persist a supplied CPF/CNPJ through the signer's documented
      * {@code government_id} update; (5) create a {@code virtual} assignment for those signers,
@@ -229,7 +232,9 @@ public class AssinafyClient {
      * {@link SignerResource#create(com.assinafy.sdk.request.CreateSignerRequest, String)} and
      * {@link AssignmentResource#create(String, CreateAssignmentRequest)}. The returned composite
      * contains those typed document/assignment payloads and the resolved signer IDs; it creates no
-     * additional HTTP endpoint. Expiration is validated before uploading.
+     * additional HTTP endpoint. Expiration is validated before uploading. For longer processing,
+     * set {@code waitForReady(false)} and observe readiness with webhooks or call
+     * {@link DocumentResource#waitUntilReady(String, long, long)} with an explicit polling budget.
      *
      * @param request document, assignment, signer, and polling settings
      * @return the created document, the assignment, and the signer IDs
@@ -578,4 +583,9 @@ public class AssinafyClient {
 
     /** {@return OAuth 2.1 and OpenID Connect operations for apps acting in other people's workspaces} */
     public OAuthResource oauth() { return oauth; }
+    /** Deferred assignment and envelope requests; available on staging.
+     * @return scheduled-send operations
+     */
+    public ScheduledSendResource scheduledSends() { return scheduledSends; }
+
 }

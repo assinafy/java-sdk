@@ -97,6 +97,20 @@ class OkHttpApiClientTest {
         assertThat(server.getRequestCount()).isEqualTo(1);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "/documents/d/scheduled-sends", "/accounts/a/scheduled-sends",
+            "/accounts/a/scheduled-sends/s/cancel", "/accounts/a/scheduled-sends/s/send"})
+    void neverReplaysScheduledMutationsAfter503(String path) throws Exception {
+        server.enqueue(response(503).addHeader("Retry-After", "0").body("{}").build());
+        server.enqueue(response(200).body("{}").build());
+        var transport = withApiKey();
+        var result = path.endsWith("scheduled-sends") ? transport.post(path, "{}") : transport.put(path, null);
+        assertThat(result.getStatusCode()).isEqualTo(503);
+        assertThat(server.getRequestCount()).isEqualTo(1);
+        assertThat(server.takeRequest().getHeaders().get("X-Api-Key")).isEqualTo("secret-key");
+    }
+
     @Test
     void httpsRequiresTls12OrLater() {
         assertThat(withApiKey().client.connectionSpecs().stream().filter(ConnectionSpec::isTls).toList())
@@ -215,6 +229,19 @@ class OkHttpApiClientTest {
         withApiKey().postMultipart("/accounts/acc/documents", "c.pdf", "%PDF".getBytes(), "c.pdf", "{\"k\":\"v\"}");
         String body2 = server.takeRequest().getBody().utf8();
         assertThat(body2).contains("name=\"metadata\"");
+    }
+
+    @Test
+    void multipartUsesEachSupportedDocumentMediaType() throws Exception {
+        for (var format : Map.of("PDF", "application/pdf", "doc", "application/msword",
+                "DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "odt", "application/vnd.oasis.opendocument.text").entrySet()) {
+            server.enqueue(response(200).body("{}").build());
+            String name = "contract." + format.getKey();
+            withApiKey().postMultipart("/accounts/acc/documents", name, new byte[]{1}, name, null);
+            assertThat(server.takeRequest().getBody().utf8())
+                    .contains("filename=\"" + name + "\"").contains("Content-Type: " + format.getValue());
+        }
     }
 
     @Test

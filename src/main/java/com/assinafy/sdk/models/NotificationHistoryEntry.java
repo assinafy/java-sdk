@@ -113,4 +113,31 @@ public class NotificationHistoryEntry {
      * @param failedAt the failure timestamp
      */
     public void setFailedAt(String failedAt) { this.failedAt = failedAt; }
+    @JsonProperty("delivered_at")
+    private String deliveredAt;
+
+    /** First email delivery or last reported WhatsApp delivery, or null.
+     * @return the delivered_at value, or null when absent
+     */
+    public String getDeliveredAt() { return deliveredAt; }
+
+    /** Sets delivered_at.
+     * @param value the delivered_at value
+     */
+    public void setDeliveredAt(String value) { deliveredAt = value; }
+
+    @JsonProperty("opened_at")
+    private String openedAt;
+
+    /** First email open/click or WhatsApp read time; scanners can trigger opens.
+     * @return the opened_at value, or null when absent
+     */
+    public String getOpenedAt() { return openedAt; }
+
+    /** Sets opened_at.
+     * @param value the opened_at value
+     */
+    public void setOpenedAt(String value) { openedAt = value; }
+
+
 }

@@ -67,6 +67,24 @@ class ContractResourceTest {
     }
 
     @Test
+    void decodesConcreteContractsWithoutResourceWhileKeepingPolymorphicReads() {
+        http.enqueue(200, """
+                {"status":200,"data":[{"document_id":"root","status":"active","value":100.25}]}
+                """).enqueue(200, """
+                {"status":200,"data":{"resource":"document_contract","document_id":"root",
+                "amendments":[{"document_id":"amend","parent_document_id":"root","relation_type":"amendment"}]}}
+                """);
+        assertThat(contracts.list().getData()).singleElement().satisfies(value -> {
+            assertThat(value.getDocumentId()).isEqualTo("root");
+            assertThat(value.getResource()).isNull();
+            assertThat(value.getValue()).isEqualByComparingTo("100.25");
+        });
+        assertThat(contracts.get("root")).isInstanceOfSatisfying(DocumentContract.class,
+                value -> assertThat(value.getAmendments()).singleElement()
+                        .satisfies(amendment -> assertThat(amendment.getParentDocumentId()).isEqualTo("root")));
+    }
+
+    @Test
     void defaultListOverloadUsesConfiguredAccountWithoutQueryParameters() {
         http.enqueue(200, "{\"status\":200,\"data\":[]}");
 

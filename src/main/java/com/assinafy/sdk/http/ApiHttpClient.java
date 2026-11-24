@@ -51,11 +51,11 @@ public interface ApiHttpClient {
     }
 
     /**
-     * Upload a PDF document as multipart form data.
+     * Upload a PDF, DOC, DOCX or ODT document as multipart form data; infer its media type from the file name.
      *
      * @param path relative request path
      * @param fileName file name reported in the multipart upload
-     * @param fileData PDF bytes
+     * @param fileData document bytes
      * @param name document name; {@code null} uses {@code fileName}
      * @param metadata optional serialized metadata field
      * @return raw status, body, and headers

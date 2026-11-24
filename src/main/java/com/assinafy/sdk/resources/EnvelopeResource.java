@@ -1,6 +1,7 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.models.ResendCostEstimate;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
 import com.assinafy.sdk.models.CostEstimate;
@@ -384,6 +385,33 @@ public class EnvelopeResource extends BaseResource {
      */
     public DocumentEnvelope removeDocument(String envelopeId, String documentId) { return removeDocument(envelopeId, documentId, null); }
 
+    /** Estimate envelope reminder cost. Available on staging.
+     * <p><strong>HTTP:</strong> {@code POST /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/estimate-resend-cost}. What reminding a signer of the whole envelope would cost, sending and charging nothing. The reminder is one message per notification method for all of the envelope&#x27;s documents, so it costs what one document&#x27;s reminder costs, whatever the number of documents, at the workspace&#x27;s reminder prices: nothing by e-mail and the WhatsApp resend price by WhatsApp, unless its plan prices them otherwise. Answers as a document&#x27;s reminder estimate. It does not check whether a reminder would be accepted now: the reminder itself refuses a closed envelope (<code>409</code>), and a signer with nothing left to sign or one reminded too recently or too often (<code>400</code>).</p>
+     * <p>Request:</p><pre>none</pre>
+     * <p>Success:</p><pre>{&quot;status&quot;:200,&quot;data&quot;:{&quot;total&quot;:0,&quot;credit_balance&quot;:null,&quot;has_sufficient_credits&quot;:true,&quot;breakdown&quot;:[]}}</pre>
+     * <p>200: Cost estimate; 403: An OAuth app&#x27;s token lacks <code>documents:write</code> (<code>InsufficientScope</code>). Also a member deactivated in the workspace, a workspace scheduled for deletion, or an OAuth token of another workspace.; 404: The envelope was not found, or the signer is not one of its signers.; 401: Missing or invalid credentials.; 500: Unexpected server error. HTTP/envelope errors raise ApiException; I/O errors raise NetworkException.</p>
+     * @param envelopeId envelope ID
+     * @param signerId signer ID
+     * @param accountId explicit account ID, or null for default
+     * @return unwrapped response data
+     * @throws ValidationException if local arguments are invalid
+     */
+    public ResendCostEstimate estimateResendCost(String envelopeId, String signerId, String accountId) {
+        String path = envelopePath(envelopeId, accountId) + "/signers/"
+                + pathSegment(signerId, "Signer ID") + "/estimate-resend-cost";
+        return call("Failed to estimate envelope reminder", () -> http.post(path, null), ResendCostEstimate.class);
+    }
+
+    /** Uses the default account. See {@link #estimateResendCost(String, String, String)}.
+     * @param envelopeId envelope ID
+     * @param signerId signer ID
+     * @return reminder cost and balances
+     */
+    public ResendCostEstimate estimateResendCost(String envelopeId, String signerId) {
+        return estimateResendCost(envelopeId, signerId, null);
+    }
+
+
     private String envelopesPath(String account) {
         return "/accounts/" + pathSegment(accountId(account), "Account ID") + "/envelopes";
     }
@@ -392,7 +420,7 @@ public class EnvelopeResource extends BaseResource {
         return envelopesPath(account) + "/" + pathSegment(envelopeId, "Envelope ID");
     }
 
-    private Map<String, Object> envelopePayload(CreateEnvelopeRequest request, boolean estimate) {
+    Map<String, Object> envelopePayload(CreateEnvelopeRequest request, boolean estimate) {
         if (request == null) throw new ValidationException("Envelope request is required");
         validateName(request.getName());
         if (request.getSigners() == null || request.getSigners().isEmpty() || request.getSigners().size() > 20
@@ -404,6 +432,7 @@ public class EnvelopeResource extends BaseResource {
             if (signer == null) throw new ValidationException("Signer is required");
             requireId(signer.getId(), "Signer ID");
             if (signers.putIfAbsent(signer.getId(), signer) != null) throw new ValidationException("Duplicate signer ID");
+            if (signer.getSignAs() != null) throw new ValidationException("Envelope signers cannot specify sign_as");
             if (signer.getStep() != null) throw new ValidationException("Envelope signers cannot have steps");
             SigningRules.validateDeliveryMethods(signer.getVerificationMethod(), signer.getNotificationMethods());
             SigningRules.validateEmbedded(signer.getEmbedded(), signer.getVerificationMethod());

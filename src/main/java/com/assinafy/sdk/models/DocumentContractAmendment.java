@@ -3,11 +3,13 @@ package com.assinafy.sdk.models;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeName;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.util.Map;
 
 /** A document linked to amend, renew, or terminate a parent contract. */
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NONE)
 @JsonTypeName("document_contract_amendment")
 public final class DocumentContractAmendment implements ContractRecord {
 

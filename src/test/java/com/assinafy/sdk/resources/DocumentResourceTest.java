@@ -37,9 +37,21 @@ class DocumentResourceTest {
     }
 
     @Test
-    void uploadRejectsNonPdf() {
-        assertThatThrownBy(() -> resource.upload("data".getBytes(), "image.png"))
-                .isInstanceOf(ValidationException.class);
+    void uploadAcceptsEveryDocumentFormatCaseInsensitively() {
+        for (String extension : List.of("PDF", "doc", "DOCX", "odt")) {
+            mock.enqueue(200, "{\"status\":200,\"data\":{\"id\":\"document\"}}");
+            assertThat(resource.upload(new byte[]{1}, "contract." + extension).getId()).isEqualTo("document");
+        }
+        assertThat(mock.capturedCount()).isEqualTo(4);
+    }
+
+    @Test
+    void uploadRejectsUnsupportedFiles() {
+        for (String name : List.of("image.png", "contract.exe", "docx")) {
+            assertThatThrownBy(() -> resource.upload("data".getBytes(), name))
+                    .isInstanceOf(ValidationException.class);
+        }
+        assertThat(mock.capturedCount()).isZero();
     }
 
     @Test

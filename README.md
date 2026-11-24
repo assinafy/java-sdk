@@ -9,18 +9,18 @@ signatário. O [contrato completo](docs/API_REFERENCE.md) documenta cada rota, p
 ## Requisitos e instalação
 
 - JDK 25 LTS (`>=25,<26`) e TLS 1.2 ou superior.
-- Maven Wrapper 3.10.0 para compilar o projeto.
+- Maven Wrapper 3.10.1 para compilar o projeto.
 - OkHttp e Jackson como dependências de runtime.
 
 ```xml
 <dependency>
   <groupId>com.assinafy</groupId>
   <artifactId>assinafy-sdk</artifactId>
-  <version>2.4.0</version>
+  <version>2.5.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("com.assinafy:assinafy-sdk:2.4.0")`.
+Gradle: `implementation("com.assinafy:assinafy-sdk:2.5.0")`.
 
 ## Fluxo completo de assinatura
 
@@ -82,6 +82,10 @@ confirmada. Para campos posicionados, crie uma atribuição `collect` diretament
 Prazos aceitam data ou data/hora ISO 8601 pelo menos uma hora à frente. Uma data termina às 23:59
 UTC; data/hora sem offset usa UTC; offset explícito é preservado.
 
+Uploads aceitam PDF, DOC, DOCX e ODT; a API converte Word/OpenDocument para PDF.
+O helper espera até 30 segundos pelos metadados. Para processos mais longos, use `waitForReady(false)`
+e acompanhe por webhook ou `documents().waitUntilReady(id, maxWaitMs, pollIntervalMs)`.
+
 ## Verificação e notificações
 
 | Verificação | Requisito | Notificação |
@@ -117,6 +121,20 @@ Assinafy. Não registre a URL ou o código de acesso. Biometria e certificados u
 As [operações completas](docs/API_REFERENCE.md#api-operations) incluem reenvio, cancelamento,
 download ZIP, preferências push, política de notificações e saldo do workspace.
 
+## Envios agendados e acompanhamento
+
+O staging adiciona dez operações em `https://api.angry-pisco.stage.assinafy.com.br/v1` (157 no total;
+a produção tem 147). `scheduledSends().createAssignment(documentId, request, sendAt)` e
+`createEnvelope(request, sendAt)` recebem um `java.time.Instant` entre uma hora e 90 dias no futuro.
+A expiração deve ficar pelo menos duas horas depois. O mesmo recurso lista, cancela e envia agora;
+OAuth exige `documents:write`, inclusive para listar. Confira o resultado de uma falha incerta antes de repetir.
+
+Use `documents().listWatchers(...)` / `setWatchers(...)` para até dez contatos com email (sem OAuth).
+`assignments().notificationHistory(...)` retorna horários de entrega/abertura; abertura não comprova leitura.
+`SignerReference.builder().signAs("Witness")` define a capacidade de assinatura no certificado;
+consulte com `assignments().signerCapacities(...)`. Lembretes de envelope têm
+`envelopes().estimateResendCost(...)`. Payloads completos na [referência](docs/API_REFERENCE.md#staging-operations).
+
 ## OAuth 2.1 para aplicativos de marketplace
 
 Use Authorization Code + PKCE com redirect HTTPS. `oauth().createAuthorizationUrl(...)` devolve
@@ -150,7 +168,7 @@ entre elas, e pausa o endpoint após dez eventos consecutivos sem entrega.
 ## Superfícies e erros
 
 O cliente expõe `documents()`, `signers()`, `assignments()`, `contracts()`, `templates()`, `fields()`,
-`envelopes()`, `embed()`, `tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`, `oauth()` e
+`envelopes()`, `embed()`, `tags()`, `webhooks()`, `workspaces()`, `users()`, `apiKeys()`, `authentication()`, `oauth()`, `scheduledSends()` e
 `publicDocuments()`. Operações de conta usam o `accountId` padrão e oferecem overload explícito.
 
 Sucessos retornam o `data` do envelope; OAuth retorna JSON plano e downloads retornam `byte[]`.

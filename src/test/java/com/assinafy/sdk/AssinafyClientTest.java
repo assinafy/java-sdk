@@ -33,6 +33,7 @@ class AssinafyClientTest {
                 .accountId("acc")
                 .build());
         assertThat(client.documents()).isNotNull();
+        assertThat(client.scheduledSends()).isNotNull();
         assertThat(client.signers()).isNotNull();
         assertThat(client.workspaces()).isNotNull();
         assertThat(client.assignments()).isNotNull();
@@ -88,6 +89,7 @@ class AssinafyClientTest {
         assertThat(client.documents()).isNotNull();
         assertThat(client.signers()).isNotNull();
         assertThat(client.templates()).isNotNull();
+        assertThat(client.scheduledSends()).isNotNull();
     }
 
     @Test

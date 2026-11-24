@@ -18,6 +18,9 @@ import com.assinafy.sdk.request.OAuthClient;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.CharacterCodingException;
+import java.nio.ByteBuffer;
+import java.util.HexFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -125,6 +128,8 @@ public class OAuthResource extends BaseResource {
 
     /** RFC 7636 code-verifier grammar: 43-128 unreserved characters. */
     private static final Pattern CODE_VERIFIER = Pattern.compile("^[A-Za-z0-9\\-._~]{43,128}$");
+
+    private static final Pattern ENCODED_BYTES = Pattern.compile("(?:%[0-9a-fA-F]{2})+");
 
     private static final Set<String> TOKEN_TYPE_HINTS = Set.of("access_token", "refresh_token");
 
@@ -348,7 +353,7 @@ public class OAuthResource extends BaseResource {
      * @return the validated single-use authorization code
      * @throws ValidationException if the stored request has no {@code state} or issuer,
      *         {@code state} is missing or does not match, {@code iss} is absent or disagrees with
-     *         the stored issuer, query parameters repeat or contain malformed percent encoding,
+     *         the stored issuer, query parameters repeat or contain malformed percent encoding or invalid UTF-8,
      *         or a successful response carries no {@code code}. In every case
      *         the response is not yours — stop, do not exchange.
      * @throws OAuthException if the server reported an {@code error}, such as
@@ -842,7 +847,15 @@ public class OAuthResource extends BaseResource {
 
     private static String decode(String value) {
         try {
-            return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+            String decoded = java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+            var bytes = ENCODED_BYTES.matcher(value);
+            while (bytes.find()) {
+                StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(
+                        HexFormat.of().parseHex(bytes.group().replace("%", ""))));
+            }
+            return decoded;
+        } catch (CharacterCodingException e) {
+            throw new ValidationException("OAuth callback contains invalid UTF-8 encoding");
         } catch (IllegalArgumentException e) {
             throw new ValidationException("OAuth callback contains invalid percent encoding");
         }

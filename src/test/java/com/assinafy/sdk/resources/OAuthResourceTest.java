@@ -252,6 +252,20 @@ class OAuthResourceTest {
     }
 
     @Test
+    void rejectsMalformedUtf8WithoutCorruptingValidUnicodeCallbacks() {
+        var http = new MockApiHttpClient();
+        var oauth = resource(http);
+        var stored = oauth.createAuthorizationUrl(offlineRequest().scopes(OAuthScope.DOCUMENTS_READ).build());
+        String query = "state=" + stored.state() + "&iss=" + ISSUER + "&code=";
+        for (String invalid : List.of("%FF", "%C3%28", "%ED%A0%80", "%F0%9F")) {
+            assertThatThrownBy(() -> oauth.readAuthorizationCallback(query + invalid, stored))
+                    .isInstanceOf(ValidationException.class).hasMessageContaining("UTF-8");
+        }
+        assertThat(oauth.readAuthorizationCallback(query + "%C3%A9+%EF%BF%BD", stored)).isEqualTo("é �");
+        assertThat(http.capturedCount()).isZero();
+    }
+
+    @Test
     void exchangesCodeForTokens() {
         MockApiHttpClient http = new MockApiHttpClient().enqueue(200, TOKENS);
         String verifier = OAuthResource.createCodeVerifier();

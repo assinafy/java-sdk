@@ -163,24 +163,26 @@ public abstract class BaseResource {
      */
     public static String requireExpiration(String value) {
         if (value == null) return null;
-        Instant expiration;
+        if (parseExpiration(value).isBefore(Instant.now().plusSeconds(3600))) {
+            throw new ValidationException("Expiration must be at least one hour in the future");
+        }
+        return value;
+    }
+
+    static Instant parseExpiration(String value) {
         try {
-            expiration = OffsetDateTime.parse(value).toInstant();
+            return OffsetDateTime.parse(value).toInstant();
         } catch (DateTimeParseException offsetFailure) {
             try {
-                expiration = LocalDateTime.parse(value).toInstant(ZoneOffset.UTC);
+                return LocalDateTime.parse(value).toInstant(ZoneOffset.UTC);
             } catch (DateTimeParseException dateTimeFailure) {
                 try {
-                    expiration = LocalDate.parse(value).atTime(23, 59).toInstant(ZoneOffset.UTC);
+                    return LocalDate.parse(value).atTime(23, 59).toInstant(ZoneOffset.UTC);
                 } catch (DateTimeParseException dateFailure) {
                     throw new ValidationException("Expiration must be an ISO-8601 date or date-time");
                 }
             }
         }
-        if (expiration.isBefore(Instant.now().plusSeconds(3600))) {
-            throw new ValidationException("Expiration must be at least one hour in the future");
-        }
-        return value;
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.assinafy.sdk.resources;
 
 import com.assinafy.sdk.Logger;
+import com.assinafy.sdk.models.SignerNotificationHistory;
+import com.assinafy.sdk.models.SignerCapacity;
 import com.assinafy.sdk.exceptions.AssinafyException;
 import com.assinafy.sdk.exceptions.ValidationException;
 import com.assinafy.sdk.http.ApiHttpClient;
@@ -305,6 +307,10 @@ public class AssignmentResource extends BaseResource {
      * raise <code>NetworkException</code>. Invalid local arguments raise
      * <code>ValidationException</code> before a request.</p>
      *
+     * <p>On staging, each signer also accepts optional {@code sign_as}, for example
+     * {@code "Witness"}; omission defaults to {@code "Sign"}. The capacity appears on the
+     * certificate page. See {@link SignerReference#getSignAs()} and {@link #signerCapacities(String)}.</p>
+     *
      * @param documentId document receiving the assignment
      * @param request assignment method, signers, entries, and notification settings
      * @return the created assignment
@@ -385,6 +391,10 @@ public class AssignmentResource extends BaseResource {
      * <code>AuthenticationException</code>, 429 raises <code>RateLimitException</code>, and I/O failures
      * raise <code>NetworkException</code>. Invalid local arguments raise
      * <code>ValidationException</code> before a request.</p>
+     *
+     * <p>On staging, each signer also accepts optional {@code sign_as}, for example
+     * {@code "Witness"}; omission defaults to {@code "Sign"}. The capacity appears on the
+     * certificate page. See {@link SignerReference#getSignAs()} and {@link #signerCapacities(String)}.</p>
      *
      * @param documentId document to estimate
      * @param request estimate inputs
@@ -1060,6 +1070,34 @@ public class AssignmentResource extends BaseResource {
                 () -> http.post(path, json), SignerIdentityReview.class);
     }
 
+    /** Get signer capacities. Available on staging.
+     * <p><strong>HTTP:</strong> {@code GET /v1/documents/{documentId}/signer-capacities}. The capacity each signer of the document&#x27;s assignment signs in, as the sender gave it with <code>sign_as</code> on <strong>Create assignment</strong>: <code>Sign</code> for a signer given none. In the order <strong>Get document</strong> lists the assignment&#x27;s signers; an empty list for a document not sent yet. Reachable with the <code>documents:read</code> OAuth scope.</p>
+     * <p>Request:</p><pre>none</pre>
+     * <p>Success:</p><pre>{&quot;status&quot;:200,&quot;data&quot;:[{&quot;signer_id&quot;:&quot;signer-id&quot;,&quot;sign_as&quot;:&quot;Witness&quot;}]}</pre>
+     * <p>200: The signers&#x27; capacities; 403: Authenticated but not allowed to perform this action.; 404: The document is not in the workspace.; 401: Missing or invalid credentials.; 500: Unexpected server error. HTTP/envelope errors raise ApiException; I/O errors raise NetworkException.</p>
+     * @param documentId document ID
+     * @return unwrapped response data
+     * @throws ValidationException if local arguments are invalid
+     */
+    public List<SignerCapacity> signerCapacities(String documentId) {
+        String path = "/documents/" + pathSegment(documentId, "Document ID") + "/signer-capacities";
+        return callList("Failed to fetch signer capacities", () -> http.get(path), SignerCapacity.class).getData();
+    }
+
+    /** Get notification history with delivery times. Available on staging.
+     * <p><strong>HTTP:</strong> {@code GET /v1/documents/{documentId}/notification-history}. Each signer of the document&#x27;s assignment, in the order <strong>Get document</strong> lists them, with its <code>notification_history</code> as <strong>Get document</strong> gives it, each entry adding <code>delivered_at</code> and <code>opened_at</code>, <code>null</code> until then: an e-mail&#x27;s first delivery and its first open or click; a WhatsApp message&#x27;s delivery and read as WhatsApp last reported them. <code>opened_at</code> is a hint, not proof: a mail app or a link scanner can open a message before anyone reads it, and blocked images or WhatsApp read receipts turned off hide an open. An empty list for a document not sent yet. Reachable with the <code>documents:read</code> OAuth scope.</p>
+     * <p>Request:</p><pre>none</pre>
+     * <p>Success:</p><pre>{&quot;status&quot;:200,&quot;data&quot;:[{&quot;signer_id&quot;:&quot;signer-id&quot;,&quot;notification_history&quot;:[{&quot;event&quot;:&quot;signature_request&quot;,&quot;status&quot;:&quot;sent&quot;,&quot;error_code&quot;:null,&quot;error_message&quot;:null,&quot;sent_at&quot;:&quot;2026-12-01T12:00:00Z&quot;,&quot;failed_at&quot;:null,&quot;delivered_at&quot;:null,&quot;opened_at&quot;:null}]}]}</pre>
+     * <p>200: The signers&#x27; notification history; 403: Authenticated but not allowed to perform this action.; 404: The document is not in the workspace.; 401: Missing or invalid credentials.; 500: Unexpected server error. HTTP/envelope errors raise ApiException; I/O errors raise NetworkException.</p>
+     * @param documentId document ID
+     * @return unwrapped response data
+     * @throws ValidationException if local arguments are invalid
+     */
+    public List<SignerNotificationHistory> notificationHistory(String documentId) {
+        String path = "/documents/" + pathSegment(documentId, "Document ID") + "/notification-history";
+        return callList("Failed to fetch notification history", () -> http.get(path), SignerNotificationHistory.class).getData();
+    }
+
     private String identityVerificationPath(String documentId, String assignmentId, String signerId) {
         return "/documents/" + pathSegment(documentId, "Document ID")
                 + "/assignments/" + pathSegment(assignmentId, "Assignment ID")
@@ -1121,6 +1159,12 @@ public class AssignmentResource extends BaseResource {
             map.put("id", ref.getId());
         }
         SigningRules.validateDeliveryMethods(ref.getVerificationMethod(), ref.getNotificationMethods());
+        if (ref.getSignAs() != null) {
+            if (!SigningRules.SIGNER_CAPACITIES.contains(ref.getSignAs())) {
+                throw new ValidationException("Unsupported signer capacity");
+            }
+            map.put("sign_as", ref.getSignAs());
+        }
         if (!allowWithoutId) {
             SigningRules.validateEmbedded(ref.getEmbedded(), ref.getVerificationMethod());
             if (ref.getEmbedded() != null) map.put("embedded", ref.getEmbedded());

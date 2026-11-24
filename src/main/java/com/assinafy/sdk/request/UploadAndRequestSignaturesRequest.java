@@ -33,30 +33,30 @@ public class UploadAndRequestSignaturesRequest {
     }
 
     /**
-     * Returns the PDF file data.
+     * Returns the document file data.
      *
-     * @return the PDF file data
+     * @return the document file data
      */
     public byte[] getFileData() { return fileData; }
 
     /**
-     * Sets the PDF file data.
+     * Sets the document file data.
      *
-     * @param fileData the PDF file data
+     * @param fileData the document file data
      */
     public void setFileData(byte[] fileData) { this.fileData = fileData; }
 
     /**
-     * Returns the PDF file name.
+     * Returns the document file name.
      *
-     * @return the PDF file name
+     * @return the document file name
      */
     public String getFileName() { return fileName; }
 
     /**
-     * Sets the PDF file name.
+     * Sets the document file name.
      *
-     * @param fileName the PDF file name
+     * @param fileName the document file name
      */
     public void setFileName(String fileName) { this.fileName = fileName; }
 
@@ -295,7 +295,7 @@ public class UploadAndRequestSignaturesRequest {
         public Builder() {}
 
         /**
-         * Sets the PDF file data for the object being built.
+         * Sets the document file data for the object being built.
          *
          * @param data the data
          * @return this builder
@@ -303,7 +303,7 @@ public class UploadAndRequestSignaturesRequest {
         public Builder fileData(byte[] data) { req.setFileData(data); return this; }
 
         /**
-         * Sets the PDF file name for the object being built.
+         * Sets the document file name for the object being built.
          *
          * @param name the name
          * @return this builder
